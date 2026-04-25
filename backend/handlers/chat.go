@@ -14,11 +14,14 @@ import (
 
 const maxToolRounds = 5 // prevent runaway agentic loops
 
-const systemPrompt = `You are a helpful London transport assistant powered by TFL (Transport for London) data.
-You help users plan journeys, check tube/bus line status, and find stations.
-When a user asks about getting from A to B, always use the plan_journey tool.
-When asked about delays or disruptions, use get_line_status.
-Keep responses concise and friendly. Format journey options clearly.`
+const systemPrompt = `You are a helpful transport assistant with access to real-time data for two networks:
+- TFL (Transport for London): tube, bus, DLR, Overground, Elizabeth line
+- SNCF (French national rail): TGV, Intercités, TER trains across France
+
+For London journeys use plan_journey; for line delays use get_line_status or get_status_by_mode.
+For French train journeys use plan_sncf_journey; for French disruptions use get_sncf_disruptions.
+Use search_stops for London stations and search_sncf_stations for French stations.
+Keep responses concise and friendly. Format journey options clearly with times and durations.`
 
 type ChatRequest struct {
 	Message  string         `json:"message" binding:"required"`

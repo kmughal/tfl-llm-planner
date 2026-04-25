@@ -1,7 +1,9 @@
+import { useRef } from "react"
+import { motion, useInView } from "framer-motion"
 import { cn } from "../lib/utils"
 import type { ChatMessage, ToolEvent } from "../lib/types"
 import { ToolCallBadge } from "./ToolCallBadge"
-import { Train, Bus, MapPin } from "lucide-react"
+import { Train, Bus, MapPin, Clock, ArrowRight } from "lucide-react"
 
 // ── TFL line colours ──────────────────────────────────────────────────────────
 const LINE_COLOURS: Record<string, { bg: string; fg: string }> = {
@@ -20,46 +22,167 @@ const LINE_COLOURS: Record<string, { bg: string; fg: string }> = {
   dlr:          { bg: "#00A4A7", fg: "#fff" },
 }
 
-// ── Block-level parser ────────────────────────────────────────────────────────
+// ── Block types ───────────────────────────────────────────────────────────────
+type JourneyDetail = {
+  departure:   { time: string; station: string }
+  arrival:     { time: string; station: string }
+  duration:    string
+  connections: number | null
+  steps:       string[]
+}
+
 type Block =
   | { kind: "para";    lines: string[] }
   | { kind: "steps";   items: string[] }
+  | { kind: "route";   items: string[] }   // numbered list of station names
   | { kind: "bullets"; items: string[] }
   | { kind: "h3";      text: string }
+  | { kind: "journey"; optionNum: number; header: string; details: JourneyDetail }
+
+// ── Journey detail parsing ────────────────────────────────────────────────────
+function parseJourneyHeader(header: string, info: JourneyDetail): void {
+  const durM = /—\s*([\dh ]+min)/i.exec(header)
+  if (durM) info.duration = durM[1].trim().replaceAll(" ", "")
+  if (/\|\s*Direct/i.test(header)) {
+    info.connections = 0
+  } else {
+    const conM = /\|\s*(\d+)\s*connection/i.exec(header)
+    if (conM) info.connections = Number.parseInt(conM[1])
+  }
+}
+
+function mergeFragmentedLines(lines: string[]): string[] {
+  const result: string[] = []
+  for (const raw of lines) {
+    const t = raw.trim()
+    if (!t) continue
+    if (/^h?\d{2}$|^min$/.test(t) && result.length > 0) {
+      result[result.length - 1] += t
+    } else {
+      result.push(t)
+    }
+  }
+  return result
+}
+
+function applyConnectionLine(val: string, info: JourneyDetail): void {
+  if (/^0$|direct/i.test(val)) { info.connections = 0; return }
+  const n = Number.parseInt(val)
+  if (!Number.isNaN(n)) info.connections = n
+}
+
+function applyDetailLine(line: string, info: JourneyDetail): void {
+  const depM  = /^Depart(?:ure)?[:\s]+(\d{1,2}:\d{2})(?:\s+from\s+|\s+)(.+)/i.exec(line)
+  const arrM  = /^Arriv(?:al|es?)[:\s]+(\d{1,2}:\d{2})(?:\s+at\s+|\s+)(.+)/i.exec(line)
+  const bothM = /^Departs?:\s*(\S+)\s*\|\s*Arrives?:\s*(\S+)/i.exec(line)
+  const durM  = /^Journey\s+time[:\s]+(.+)/i.exec(line)
+  const conM  = /^Connections?[:\s]+(.+)/i.exec(line)
+  const stepM = /^Step\s+\d+:\s*(.+)/i.exec(line)
+
+  if (depM)                        { info.departure.time = depM[1]; info.departure.station = depM[2].trim() }
+  else if (arrM)                   { info.arrival.time   = arrM[1]; info.arrival.station   = arrM[2].trim() }
+  else if (bothM)                  { info.departure.time = bothM[1]; info.arrival.time     = bothM[2] }
+  else if (durM && !info.duration) { info.duration = durM[1].trim() }
+  else if (conM)                   { applyConnectionLine(conM[1].trim(), info) }
+  else if (stepM)                  { info.steps.push(stepM[1]) }
+}
+
+function parseJourneyDetails(header: string, rawLines: string[]): JourneyDetail {
+  const info: JourneyDetail = {
+    departure:   { time: "", station: "" },
+    arrival:     { time: "", station: "" },
+    duration:    "",
+    connections: null,
+    steps:       [],
+  }
+  parseJourneyHeader(header, info)
+  for (const line of mergeFragmentedLines(rawLines)) applyDetailLine(line, info)
+  return info
+}
+
+// ── Route detection (station-name lists vs step-by-step directions) ──────────
+const ACTION_VERBS = /\b(?:take|walk|get|board|exit|turn|follow|go|head|catch|ride|alight|transfer|towards?|depart|arrive|change|switch)\b/i
+
+function isRouteStop(item: string): boolean {
+  return item.length < 65 && !ACTION_VERBS.test(item)
+}
+
+function isRouteList(items: string[]): boolean {
+  if (items.length < 3) return false
+  return items.filter(isRouteStop).length >= Math.ceil(items.length * 0.75)
+}
+
+// ── Block-level parser ────────────────────────────────────────────────────────
+type LineKind =
+  | { t: "option";   num: number; raw: string }
+  | { t: "numbered"; text: string }
+  | { t: "bullet";   text: string }
+  | { t: "heading";  text: string }
+  | { t: "text";     text: string }
+
+function classifyLine(line: string): LineKind {
+  const opt = /^Option\s+(\d+)/i.exec(line)
+  if (opt) return { t: "option", num: Number.parseInt(opt[1]), raw: line }
+  const nm = /^(\d+)\.\s+(.+)/.exec(line)
+  if (nm)  return { t: "numbered", text: nm[2] }
+  const bm = /^[-*•]\s+(.+)/.exec(line)
+  if (bm)  return { t: "bullet",   text: bm[1] }
+  const hm = /^#{1,3}\s+(.+)/.exec(line)
+  if (hm)  return { t: "heading",  text: hm[1] }
+  return { t: "text", text: line }
+}
+
+type Accumulator =
+  | { kind: "para" | "steps" | "bullets"; lines: string[] }
+  | { kind: "journey"; optionNum: number; header: string; lines: string[] }
+
+type ListAcc = { kind: "para" | "steps" | "bullets"; lines: string[] }
+
+function flushAccumulator(acc: Accumulator, blocks: Block[]): void {
+  if (acc.kind === "journey") {
+    blocks.push({ kind: "journey", optionNum: acc.optionNum, header: acc.header, details: parseJourneyDetails(acc.header, acc.lines) })
+  } else if (acc.lines.length > 0) {
+    if (acc.kind === "steps")   blocks.push(isRouteList(acc.lines) ? { kind: "route", items: acc.lines } : { kind: "steps", items: acc.lines })
+    if (acc.kind === "bullets") blocks.push({ kind: "bullets", items: acc.lines })
+    if (acc.kind === "para")    blocks.push({ kind: "para",    lines: acc.lines })
+  }
+}
+
+// Returns (and creates if needed) a list accumulator of the correct kind.
+function ensureAccumulator(kind: ListAcc["kind"], acc: Accumulator | null, blocks: Block[]): ListAcc {
+  if (acc?.kind === kind) return acc as ListAcc
+  if (acc) flushAccumulator(acc, blocks)
+  return { kind, lines: [] }
+}
 
 function prep(text: string): string {
   return text
-    // Insert newline before numbered items that follow a sentence end
-    .replace(/([.!?;:])\s*(\d+\.)\s+/g, "$1\n$2 ")
-    // Insert blank line before transition phrases
-    .replace(/([.!?])\s+(Here'?s|Alternatively|The journey|Note:|Please check)/g, "$1\n\n$2")
+    .replaceAll(/([.!?;:])\s*(\d+\.)\s+/g, "$1\n$2 ")
+    .replaceAll(/([.!?])\s+(Here'?s|Alternatively|The journey|Note:|Please check)/g, "$1\n\n$2")
+    .replaceAll(/([^\n])(Option\s+\d+)/gi, "$1\n$2")
 }
 
 function parseBlocks(raw: string): Block[] {
   const blocks: Block[] = []
-  let cur: Block | null = null
-  const flush = () => { if (cur) { blocks.push(cur); cur = null } }
+  let acc: Accumulator | null = null
+  const flush = () => { if (acc) { flushAccumulator(acc, blocks); acc = null } }
 
   for (const line of prep(raw).split("\n")) {
     const t = line.trim()
     if (!t) { flush(); continue }
-
-    const nm = t.match(/^(\d+)\.\s+(.+)/)
-    const bm = t.match(/^[-*•]\s+(.+)/)
-    const hm = t.match(/^#{1,3}\s+(.+)/)
-
-    if (nm) {
-      if (cur?.kind !== "steps")   { flush(); cur = { kind: "steps",   items: [] } }
-      cur.items.push(nm[2])
-    } else if (bm) {
-      if (cur?.kind !== "bullets") { flush(); cur = { kind: "bullets", items: [] } }
-      cur.items.push(bm[1])
-    } else if (hm) {
-      flush()
-      blocks.push({ kind: "h3", text: hm[1] })
+    const lk = classifyLine(t)
+    if (lk.t === "option") {
+      flush(); acc = { kind: "journey", optionNum: lk.num, header: lk.raw, lines: [] }
+    } else if (acc?.kind === "journey") {
+      acc.lines.push(t)
+    } else if (lk.t === "numbered") {
+      acc = ensureAccumulator("steps", acc, blocks); acc.lines.push(lk.text)
+    } else if (lk.t === "bullet") {
+      acc = ensureAccumulator("bullets", acc, blocks); acc.lines.push(lk.text)
+    } else if (lk.t === "heading") {
+      flush(); blocks.push({ kind: "h3", text: lk.text })
     } else {
-      if (cur?.kind !== "para")    { flush(); cur = { kind: "para",    lines: [] } }
-      cur.lines.push(t)
+      acc = ensureAccumulator("para", acc, blocks); acc.lines.push(lk.text)
     }
   }
   flush()
@@ -67,47 +190,44 @@ function parseBlocks(raw: string): Block[] {
 }
 
 // ── Inline span tokeniser ─────────────────────────────────────────────────────
+// pos = character offset in original string — used as a stable, non-index key
 type Span =
-  | { k: "text";  v: string }
-  | { k: "bold";  v: string }
-  | { k: "tube";  v: string; line: string }
-  | { k: "bus";   v: string }
+  | { k: "text";  v: string; pos: number }
+  | { k: "bold";  v: string; pos: number }
+  | { k: "tube";  v: string; line: string; pos: number }
+  | { k: "bus";   v: string; pos: number }
 
+// Simplified bus pattern: one uppercase letter + 2-3 digits (e.g. H101, 296 excluded
+// here — numeric-only routes are too ambiguous to detect inline).
 const SPAN_RE = new RegExp(
   [
     /\*\*[^*]+\*\*/,
     /(?:central|circle|district|jubilee|metropolitan|northern|piccadilly|victoria|bakerloo|elizabeth|overground|dlr|hammersmith(?: & city| and city)?)(?: line)?/,
-    /(?:bus(?:es)? )?[A-Z][0-9]{2,3}(?:[,/\s]+(?:or\s+)?[A-Z]?[0-9]{2,3})*/,
+    /[A-Z]\d{2,3}/,
   ].map(r => r.source).join("|"),
   "gi"
 )
+
+function classifySpan(raw: string, pos: number): Span {
+  if (raw.startsWith("**")) return { k: "bold", v: raw.slice(2, -2), pos }
+  if (/^[A-Z]\d/i.test(raw)) return { k: "bus", v: raw, pos }
+  const lineKey = raw.toLowerCase()
+    .replace(/ line$/, "").replace(/ & city.*/, "").replace(/ and city.*/, "")
+    .split(" ")[0]
+  return { k: "tube", v: raw, line: lineKey, pos }
+}
 
 function tokenize(text: string): Span[] {
   const spans: Span[] = []
   let last = 0
   let m: RegExpExecArray | null
   const re = new RegExp(SPAN_RE.source, "gi")
-
   while ((m = re.exec(text)) !== null) {
-    if (m.index > last) spans.push({ k: "text", v: text.slice(last, m.index) })
-    const raw = m[0]
-
-    if (raw.startsWith("**")) {
-      spans.push({ k: "bold", v: raw.slice(2, -2) })
-    } else if (/^(?:buses?\s+)?[A-Z]\d/i.test(raw)) {
-      spans.push({ k: "bus", v: raw })
-    } else {
-      const lineKey = raw.toLowerCase()
-        .replace(/ line$/, "")
-        .replace(/ & city.*/, "")
-        .replace(/ and city.*/, "")
-        .split(" ")[0]
-      spans.push({ k: "tube", v: raw, line: lineKey })
-    }
+    if (m.index > last) spans.push({ k: "text", v: text.slice(last, m.index), pos: last })
+    spans.push(classifySpan(m[0], m.index))
     last = re.lastIndex
   }
-
-  if (last < text.length) spans.push({ k: "text", v: text.slice(last) })
+  if (last < text.length) spans.push({ k: "text", v: text.slice(last), pos: last })
   return spans
 }
 
@@ -115,36 +235,33 @@ function tokenize(text: string): Span[] {
 function Inline({ text }: { readonly text: string }) {
   return (
     <>
-      {tokenize(text).map((span, i) => {
+      {tokenize(text).map((span) => {
         if (span.k === "bold") {
-          return <strong key={i} className="font-semibold text-claude-text">{span.v}</strong>
+          return <strong key={`${span.k}-${span.pos}`} className="font-semibold text-claude-text">{span.v}</strong>
         }
         if (span.k === "tube") {
           const colour = LINE_COLOURS[span.line] ?? { bg: "#003688", fg: "#fff" }
           return (
             <span
-              key={i}
+              key={`${span.k}-${span.pos}`}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold mx-0.5 align-middle whitespace-nowrap"
               style={{ backgroundColor: colour.bg, color: colour.fg }}
             >
-              <Train className="w-2.5 h-2.5 shrink-0" />
-              {span.v}
+              <Train className="w-2.5 h-2.5 shrink-0" />{span.v}
             </span>
           )
         }
         if (span.k === "bus") {
           return (
             <span
-              key={i}
+              key={`${span.k}-${span.pos}`}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold mx-0.5 align-middle whitespace-nowrap bg-[#E1251B] text-white"
             >
-              <Bus className="w-2.5 h-2.5 shrink-0" />
-              {span.v}
+              <Bus className="w-2.5 h-2.5 shrink-0" />{span.v}
             </span>
           )
         }
-        // plain text — preserve newlines within a paragraph line
-        return <span key={i}>{span.v}</span>
+        return <span key={`${span.k}-${span.pos}`}>{span.v}</span>
       })}
     </>
   )
@@ -152,13 +269,171 @@ function Inline({ text }: { readonly text: string }) {
 
 // ── Step icon ─────────────────────────────────────────────────────────────────
 function StepIcon({ text }: { readonly text: string }) {
-  if (/\bwalk|foot|pedestrian/i.test(text)) {
-    return <MapPin className="w-3 h-3" />
-  }
-  if (/\bbus|coach/i.test(text)) {
-    return <Bus className="w-3 h-3" />
-  }
+  if (/\bwalk|foot|pedestrian/i.test(text)) return <MapPin className="w-3 h-3" />
+  if (/\bbus|coach/i.test(text))            return <Bus className="w-3 h-3" />
   return <Train className="w-3 h-3" />
+}
+
+// ── Journey card ──────────────────────────────────────────────────────────────
+const SNCF_RED = "#E2001A"
+
+function ConnectionDots({ connections }: { readonly connections: number }) {
+  const count = Math.min(connections, 3)
+  const positions = ["25%", "50%", "75%"] as const
+  return (
+    <>
+      {count >= 1 && <div className="absolute top-1/2 w-2 h-2 rounded-full bg-white border-2" style={{ borderColor: SNCF_RED, left: positions[0], transform: "translate(-50%, -50%)" }} />}
+      {count >= 2 && <div className="absolute top-1/2 w-2 h-2 rounded-full bg-white border-2" style={{ borderColor: SNCF_RED, left: positions[1], transform: "translate(-50%, -50%)" }} />}
+      {count >= 3 && <div className="absolute top-1/2 w-2 h-2 rounded-full bg-white border-2" style={{ borderColor: SNCF_RED, left: positions[2], transform: "translate(-50%, -50%)" }} />}
+    </>
+  )
+}
+
+function JourneyCard({ block }: { readonly block: Block & { kind: "journey" } }) {
+  const { optionNum, details } = block
+  const { departure, arrival, duration, connections, steps } = details
+  const isDirect = connections === 0
+  const hasTime  = departure.time || arrival.time
+
+  return (
+    <div className="rounded-xl overflow-hidden border border-[#E2001A]/20 shadow-sm bg-white">
+      <div className="flex items-center justify-between px-4 py-2.5 text-white" style={{ backgroundColor: SNCF_RED }}>
+        <div className="flex items-center gap-2">
+          <Train className="w-4 h-4 shrink-0" />
+          <span className="font-semibold text-sm">Option {optionNum}</span>
+        </div>
+        {duration && (
+          <div className="flex items-center gap-1.5 bg-white/20 rounded-full px-2.5 py-0.5">
+            <Clock className="w-3 h-3" />
+            <span className="text-xs font-semibold">{duration}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="px-4 py-3 flex flex-col gap-2.5">
+        {hasTime && (
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 shrink-0">
+              <div className="text-xl font-bold text-gray-900 tabular-nums leading-none">{departure.time || "—"}</div>
+              {departure.station && <div className="text-[11px] text-gray-500 mt-0.5 max-w-[110px] leading-tight line-clamp-2">{departure.station}</div>}
+            </div>
+
+            <div className="flex-1 flex items-center gap-0.5">
+              <div className="w-2 h-2 rounded-full border-2 shrink-0" style={{ borderColor: SNCF_RED }} />
+              <div className="flex-1 h-0.5 relative" style={{ backgroundColor: `${SNCF_RED}30` }}>
+                {connections !== null && connections > 0 && <ConnectionDots connections={connections} />}
+              </div>
+              <ArrowRight className="w-3 h-3 shrink-0" style={{ color: SNCF_RED }} />
+              <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: SNCF_RED }} />
+            </div>
+
+            <div className="min-w-0 shrink-0 text-right">
+              <div className="text-xl font-bold text-gray-900 tabular-nums leading-none">{arrival.time || "—"}</div>
+              {arrival.station && <div className="text-[11px] text-gray-500 mt-0.5 max-w-[110px] leading-tight line-clamp-2 text-right">{arrival.station}</div>}
+            </div>
+          </div>
+        )}
+
+        {connections !== null && (
+          isDirect
+            ? <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-0.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Direct</span>
+            : <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" />{connections} connection{connections === 1 ? "" : "s"}</span>
+        )}
+
+        {steps.length > 0 && (
+          <div className="border-t border-gray-100 pt-2 flex flex-col gap-1">
+            {steps.map((step) => (
+              <div key={step.slice(0, 30)} className="flex items-start gap-2 text-xs text-gray-600">
+                <Train className="w-3 h-3 mt-0.5 shrink-0" style={{ color: SNCF_RED }} />
+                <span>{step}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Animated train route diagram ─────────────────────────────────────────────
+const TRACK = "#1e3a5f"
+
+function RouteMap({ items }: { readonly items: string[] }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const inView = useInView(ref, { once: true, margin: "-40px" })
+  const last = items.length - 1
+
+  return (
+    <div ref={ref} className="rounded-xl overflow-hidden border border-[#1e3a5f]/15 bg-white shadow-sm">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#1e3a5f]/10 bg-[#f5f8ff]">
+        <Train className="w-3.5 h-3.5 text-[#1e3a5f]" />
+        <span className="text-xs font-semibold uppercase tracking-wide text-[#1e3a5f]">Route</span>
+        <span className="ml-auto text-xs text-gray-400">{items.length} stops</span>
+      </div>
+
+      {/* Stops */}
+      <div className="px-4 py-3">
+        {items.map((item, i) => {
+          const isTerminal = i === 0 || i === last
+          return (
+            <motion.div
+              key={item.slice(0, 30)}
+              className="flex gap-4 group cursor-default"
+              initial={{ opacity: 0, x: -10 }}
+              animate={inView ? { opacity: 1, x: 0 } : {}}
+              transition={{ duration: 0.28, delay: i * 0.07, ease: "easeOut" }}
+            >
+              {/* Track column */}
+              <div className="flex flex-col items-center shrink-0" style={{ width: 36 }}>
+                <motion.div
+                  className="z-10 flex items-center justify-center rounded-full border-2 shrink-0"
+                  style={{
+                    width: isTerminal ? 36 : 28,
+                    height: isTerminal ? 36 : 28,
+                    borderColor: TRACK,
+                    backgroundColor: isTerminal ? TRACK : "#fff",
+                    color: isTerminal ? "#fff" : TRACK,
+                  }}
+                  whileHover={{ scale: 1.18 }}
+                  transition={{ type: "spring", stiffness: 420, damping: 18 }}
+                >
+                  {isTerminal
+                    ? <Train className="w-3.5 h-3.5" />
+                    : <span className="text-[10px] font-bold">{i + 1}</span>
+                  }
+                </motion.div>
+
+                {i < last && (
+                  <motion.div
+                    className="rounded-full"
+                    style={{ width: 3, backgroundColor: `${TRACK}40`, minHeight: 18, flex: 1, marginTop: 2, marginBottom: 2 }}
+                    initial={{ scaleY: 0, originY: "top" }}
+                    animate={inView ? { scaleY: 1 } : {}}
+                    transition={{ duration: 0.2, delay: i * 0.07 + 0.18 }}
+                  />
+                )}
+              </div>
+
+              {/* Station name */}
+              <div
+                className="flex items-center text-sm leading-snug py-1 transition-colors duration-150 group-hover:text-[#1e3a5f]"
+                style={{
+                  paddingBottom: i < last ? 8 : 4,
+                  paddingTop: 6,
+                  fontWeight: isTerminal ? 600 : 400,
+                  color: isTerminal ? "#111827" : "#374151",
+                  minHeight: isTerminal ? 36 : 28,
+                }}
+              >
+                {item}
+              </div>
+            </motion.div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 // ── Block renderers ───────────────────────────────────────────────────────────
@@ -166,24 +441,15 @@ function StepList({ items }: { readonly items: string[] }) {
   return (
     <div className="flex flex-col mt-1">
       {items.map((item, i) => (
-        <div key={i} className="flex gap-3">
-          {/* step number + connector */}
+        <div key={item.slice(0, 30)} className="flex gap-3">
           <div className="flex flex-col items-center shrink-0">
-            <div
-              className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm"
-              style={{ backgroundColor: "#003688" }}
-            >
+            <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm" style={{ backgroundColor: "#003688" }}>
               {i + 1}
             </div>
-            {i < items.length - 1 && (
-              <div className="w-px flex-1 bg-[#003688]/20 my-1" />
-            )}
+            {i < items.length - 1 && <div className="w-px flex-1 bg-[#003688]/20 my-1" />}
           </div>
-          {/* content */}
           <div className={cn("text-sm text-claude-text leading-relaxed", i < items.length - 1 ? "pb-3" : "pb-0")}>
-            <span className="inline-flex items-center gap-1 text-[#003688] mr-1 align-middle">
-              <StepIcon text={item} />
-            </span>
+            <span className="inline-flex items-center gap-1 text-[#003688] mr-1 align-middle"><StepIcon text={item} /></span>
             <Inline text={item} />
           </div>
         </div>
@@ -193,54 +459,68 @@ function StepList({ items }: { readonly items: string[] }) {
 }
 
 function BulletList({ items }: { readonly items: string[] }) {
+  const last = items.length - 1
   return (
-    <ul className="flex flex-col gap-1.5 mt-1">
+    <div className="bg-[#f5f7fc] rounded-xl px-3 py-2.5 border border-[#003688]/10">
       {items.map((item, i) => (
-        <li key={i} className="flex gap-2 items-start text-sm text-claude-text leading-relaxed">
-          <div className="w-1.5 h-1.5 rounded-full bg-[#003688] mt-1.5 shrink-0" />
-          <Inline text={item} />
-        </li>
+        <div key={item.slice(0, 30)} className="flex gap-3">
+          {/* Rail dot + connector */}
+          <div className="flex flex-col items-center shrink-0">
+            <div
+              className={cn(
+                "w-3 h-3 rounded-full border-2 border-[#003688] mt-1 shrink-0",
+                i === 0 || i === last ? "bg-[#003688]" : "bg-white",
+              )}
+            />
+            {i < last && <div className="w-0.5 flex-1 bg-[#003688]/30 my-0.5" style={{ minHeight: "14px" }} />}
+          </div>
+          {/* Content */}
+          <div className={cn("text-sm text-claude-text leading-relaxed", i < last ? "pb-2.5" : "pb-0")}>
+            <Inline text={item} />
+          </div>
+        </div>
       ))}
-    </ul>
+    </div>
   )
 }
 
 function RichMessage({ text }: { readonly text: string }) {
-  const blocks = parseBlocks(text)
   return (
     <div className="flex flex-col gap-2.5">
-      {blocks.map((block, i) => {
+      {parseBlocks(text).map((block) => {
         if (block.kind === "h3") {
-          return (
-            <p key={i} className="text-xs font-semibold uppercase tracking-wide text-[#003688] mt-1">
-              {block.text}
-            </p>
-          )
+          return <p key={`h3-${block.text.slice(0, 20)}`} className="text-xs font-semibold uppercase tracking-wide text-[#003688] mt-1">{block.text}</p>
+        }
+        if (block.kind === "journey") {
+          return <JourneyCard key={`journey-${block.optionNum}`} block={block} />
+        }
+        if (block.kind === "route") {
+          return <RouteMap key={`route-${block.items[0]?.slice(0, 15)}`} items={block.items} />
         }
         if (block.kind === "steps") {
-          return (
-            <div key={i} className="bg-[#f5f7fc] rounded-xl px-3 py-2.5 border border-[#003688]/10">
-              <StepList items={block.items} />
-            </div>
-          )
+          return <div key={`steps-${block.items[0]?.slice(0, 15)}`} className="bg-[#f5f7fc] rounded-xl px-3 py-2.5 border border-[#003688]/10"><StepList items={block.items} /></div>
         }
         if (block.kind === "bullets") {
-          return <BulletList key={i} items={block.items} />
+          return <BulletList key={`bullets-${block.items[0]?.slice(0, 15)}`} items={block.items} />
         }
-        // paragraph
         return (
-          <p key={i} className="text-sm text-claude-text leading-relaxed">
-            {block.lines.map((line, j) => (
-              <span key={j}>
-                {j > 0 && <br />}
-                <Inline text={line} />
-              </span>
-            ))}
+          <p key={`para-${block.lines[0]?.slice(0, 15)}`} className="text-sm text-claude-text leading-relaxed">
+            <Inline text={block.lines.join(" ")} />
           </p>
         )
       })}
     </div>
   )
+}
+
+// ── Message content — extracted to avoid nested ternary ───────────────────────
+function MessageContent({ message, isUser }: { readonly message: ChatMessage; readonly isUser: boolean }) {
+  if (!message.content) {
+    if (message.streaming) return <span className="inline-block w-1.5 h-4 bg-claude-muted rounded-sm animate-blink" />
+    return null
+  }
+  if (isUser) return <span>{message.content}</span>
+  return <RichMessage text={message.content} />
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -257,7 +537,6 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
           ))}
         </div>
       )}
-
       <div
         className={cn(
           "px-4 py-3 text-sm leading-relaxed",
@@ -266,12 +545,7 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
             : "bg-white border border-claude-border rounded-3xl rounded-bl-md max-w-[90%] shadow-sm text-claude-text",
         )}
       >
-        {message.content
-          ? isUser
-            ? <span>{message.content}</span>
-            : <RichMessage text={message.content} />
-          : message.streaming && <span className="inline-block w-1.5 h-4 bg-claude-muted rounded-sm animate-blink" />
-        }
+        <MessageContent message={message} isUser={isUser} />
       </div>
     </div>
   )

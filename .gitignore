@@ -1,0 +1,5 @@
+.env
+node_modules/
+frontend/dist/
+backend/tfl-backend
+mcp-server/tfl-mcp-server
