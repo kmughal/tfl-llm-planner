@@ -151,8 +151,8 @@ func (s *streamState) toMessage() *Message {
 	calls := make([]ToolCall, len(s.fragments))
 	for idx, f := range s.fragments {
 		calls[idx] = ToolCall{
-			ID:   f.id,
-			Type: "function",
+			ID:       f.id,
+			Type:     "function",
 			Function: FunctionCall{Name: f.name, Arguments: f.arguments.String()},
 		}
 	}
@@ -205,6 +205,7 @@ func (c *Client) Chat(ctx context.Context, messages []Message, tools []Tool) (*M
 		return nil, fmt.Errorf("ollama returned no choices")
 	}
 	msg := cr.Choices[0].Message
+	fmt.Printf("Result returned is:", cr.Choices[0])
 	return &msg, nil
 }
 

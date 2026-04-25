@@ -74,6 +74,7 @@ function applyEvent(
   let event = ""
   let data = ""
   for (const line of block.split("\n")) {
+    console.log("Received line:", line)
     if (line.startsWith("event: ")) event = line.slice(7).trim()
     if (line.startsWith("data: "))  data  = line.slice(6).trim()
   }
