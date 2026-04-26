@@ -3,33 +3,72 @@ package sncf
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"time"
 )
 
 const baseURL = "https://api.sncf.com/v1/coverage/sncf"
 
 type Client struct {
-	http   *http.Client
-	apiKey string
+	http    *http.Client
+	apiKey  string
+	saveDir string
 }
 
 func NewClient(apiKey string) *Client {
+	dir := "responses"
+	_ = os.MkdirAll(dir, 0755)
 	return &Client{
-		http:   &http.Client{Timeout: 15 * time.Second},
-		apiKey: apiKey,
+		http:    &http.Client{Timeout: 15 * time.Second},
+		apiKey:  apiKey,
+		saveDir: dir,
 	}
 }
 
-func (c *Client) get(path string, params url.Values) (*http.Response, error) {
+func (c *Client) get(path string, params url.Values) ([]byte, error) {
 	u := fmt.Sprintf("%s%s?%s", baseURL, path, params.Encode())
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.SetBasicAuth(c.apiKey, "")
-	return c.http.Do(req)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("sncf returned %d for %s", resp.StatusCode, path)
+	}
+
+	return body, nil
+}
+
+func (c *Client) saveJSON(name string, data []byte) {
+	ts := time.Now().Format("20060102T150405")
+	fname := filepath.Join(c.saveDir, fmt.Sprintf("sncf_%s_%s.json", name, ts))
+	var pretty []byte
+	var tmp any
+	if json.Unmarshal(data, &tmp) == nil {
+		pretty, _ = json.MarshalIndent(tmp, "", "  ")
+	}
+	if pretty == nil {
+		pretty = data
+	}
+	if err := os.WriteFile(fname, pretty, 0644); err != nil {
+		fmt.Printf("warn: could not save response: %v\n", err)
+	}
 }
 
 // ── Places ───────────────────────────────────────────────────────────────────
@@ -63,18 +102,14 @@ func (c *Client) SearchPlaces(query string) ([]Place, error) {
 	params.Add("type[]", "stop_area")
 	params.Set("count", "5")
 
-	resp, err := c.get("/places", params)
+	body, err := c.get("/places", params)
 	if err != nil {
-		return nil, fmt.Errorf("sncf request failed: %w", err)
+		return nil, fmt.Errorf("sncf places: %w", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("sncf returned %d for place search %q", resp.StatusCode, query)
-	}
+	c.saveJSON("places", body)
 
 	var result PlacesResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("decode places: %w", err)
 	}
 	return result.Places, nil
@@ -129,21 +164,16 @@ func (c *Client) PlanJourney(fromID, toID, datetime string, count int) (*Journey
 	params.Set("count", fmt.Sprintf("%d", count))
 	params.Set("datetime_represents", "departure")
 
-	resp, err := c.get("/journeys", params)
+	body, err := c.get("/journeys", params)
 	if err != nil {
-		return nil, fmt.Errorf("sncf request failed: %w", err)
+		return nil, fmt.Errorf("sncf journeys: %w", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("sncf returned %d for journey %s→%s", resp.StatusCode, fromID, toID)
-	}
+	c.saveJSON("journeys", body)
 
 	var result JourneysResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("decode journeys: %w", err)
 	}
-	fmt.Printf("Result from Journey: %+v\n", result)
 	return &result, nil
 }
 
@@ -186,21 +216,16 @@ func (c *Client) GetDisruptions(count int) (*DisruptionsResponse, error) {
 	params := url.Values{}
 	params.Set("count", fmt.Sprintf("%d", count))
 
-	resp, err := c.get("/disruptions", params)
+	body, err := c.get("/disruptions", params)
 	if err != nil {
-		return nil, fmt.Errorf("sncf request failed: %w", err)
+		return nil, fmt.Errorf("sncf disruptions: %w", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("sncf returned %d for disruptions", resp.StatusCode)
-	}
+	c.saveJSON("disruptions", body)
 
 	var result DisruptionsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("decode disruptions: %w", err)
 	}
-	fmt.Println("Result from Disruptions: %+v\n", result)
 	return &result, nil
 }
 
@@ -228,20 +253,15 @@ func (c *Client) GetDepartures(stopAreaID string, count int) (*DeparturesRespons
 	params := url.Values{}
 	params.Set("count", fmt.Sprintf("%d", count))
 
-	resp, err := c.get(fmt.Sprintf("/stop_areas/%s/departures", stopAreaID), params)
+	body, err := c.get(fmt.Sprintf("/stop_areas/%s/departures", stopAreaID), params)
 	if err != nil {
-		return nil, fmt.Errorf("sncf request failed: %w", err)
+		return nil, fmt.Errorf("sncf departures: %w", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("sncf returned %d for departures at %s", resp.StatusCode, stopAreaID)
-	}
+	c.saveJSON("departures", body)
 
 	var result DeparturesResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("decode departures: %w", err)
 	}
-	fmt.Printf("Result from Departures: %+v\n", result)
 	return &result, nil
 }
