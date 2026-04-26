@@ -3,8 +3,11 @@ package tfl
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -12,18 +15,30 @@ import (
 const baseURL = "https://api.tfl.gov.uk"
 
 type Client struct {
-	http   *http.Client
-	appKey string // optional — higher rate limits
+	http    *http.Client
+	appKey  string // optional — higher rate limits
+	saveDir string
 }
 
 func NewClient(appKey string) *Client {
+	dir := resolveResponsesDir()
+	_ = os.MkdirAll(dir, 0755)
 	return &Client{
-		http:   &http.Client{Timeout: 15 * time.Second},
-		appKey: appKey,
+		http:    &http.Client{Timeout: 15 * time.Second},
+		appKey:  appKey,
+		saveDir: dir,
 	}
 }
 
-func (c *Client) get(path string, params url.Values) (*http.Response, error) {
+func resolveResponsesDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "responses"
+	}
+	return filepath.Join(filepath.Dir(exe), "responses")
+}
+
+func (c *Client) get(path string, params url.Values) ([]byte, error) {
 	if c.appKey != "" {
 		params.Set("app_key", c.appKey)
 	}
@@ -35,7 +50,39 @@ func (c *Client) get(path string, params url.Values) (*http.Response, error) {
 	}
 	// TFL blocks Go's default user-agent; send a browser-like one
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; tfl-llm-sample/1.0)")
-	return c.http.Do(req)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("tfl returned %d for %s", resp.StatusCode, path)
+	}
+
+	return body, nil
+}
+
+func (c *Client) saveJSON(name string, data []byte) {
+	ts := time.Now().Format("20060102T150405")
+	fname := filepath.Join(c.saveDir, fmt.Sprintf("tfl_%s_%s.json", name, ts))
+	var pretty []byte
+	var tmp any
+	if json.Unmarshal(data, &tmp) == nil {
+		pretty, _ = json.MarshalIndent(tmp, "", "  ")
+	}
+	if pretty == nil {
+		pretty = data
+	}
+	if err := os.WriteFile(fname, pretty, 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "warn: could not save tfl response: %v\n", err)
+	}
 }
 
 func requestErr(err error) error { return fmt.Errorf("tfl request failed: %w", err) }
@@ -58,11 +105,11 @@ type JourneyResults struct {
 }
 
 type Journey struct {
-	StartDateTime   string  `json:"startDateTime"`
-	ArrivalDateTime string  `json:"arrivalDateTime"`
-	Duration        int     `json:"duration"`
-	Legs            []Leg   `json:"legs"`
-	Fare            *Fare   `json:"fare,omitempty"`
+	StartDateTime   string `json:"startDateTime"`
+	ArrivalDateTime string `json:"arrivalDateTime"`
+	Duration        int    `json:"duration"`
+	Legs            []Leg  `json:"legs"`
+	Fare            *Fare  `json:"fare,omitempty"`
 }
 
 type Leg struct {
@@ -122,10 +169,10 @@ type StopSearchResult struct {
 }
 
 type StopMatch struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Lat  float64 `json:"lat"`
-	Lon  float64 `json:"lon"`
+	ID    string   `json:"id"`
+	Name  string   `json:"name"`
+	Lat   float64  `json:"lat"`
+	Lon   float64  `json:"lon"`
 	Modes []string `json:"modes"`
 }
 
@@ -149,18 +196,14 @@ func (c *Client) PlanJourney(from, to, time24h, modes, preference string) (*Jour
 		params.Set("journeyPreference", preference)
 	}
 
-	resp, err := c.get(path, params)
+	body, err := c.get(path, params)
 	if err != nil {
 		return nil, requestErr(err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("tfl returned %d for journey %s→%s", resp.StatusCode, from, to)
-	}
+	c.saveJSON("journey", body)
 
 	var result JourneyResults
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("decode journey response: %w", err)
 	}
 	return &result, nil
@@ -170,18 +213,14 @@ func (c *Client) PlanJourney(from, to, time24h, modes, preference string) (*Jour
 func (c *Client) GetLineStatus(lines string) ([]LineStatus, error) {
 	path := fmt.Sprintf("/Line/%s/Status", pathJoin(lines))
 
-	resp, err := c.get(path, url.Values{})
+	body, err := c.get(path, url.Values{})
 	if err != nil {
 		return nil, requestErr(err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("tfl returned %d for line status %s", resp.StatusCode, lines)
-	}
+	c.saveJSON("line_status", body)
 
 	var result []LineStatus
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("decode line status: %w", err)
 	}
 	return result, nil
@@ -192,18 +231,14 @@ func (c *Client) GetLineStatus(lines string) ([]LineStatus, error) {
 func (c *Client) GetLineStatusByMode(modes string) ([]LineStatus, error) {
 	path := fmt.Sprintf("/Line/Mode/%s/Status", pathJoin(modes))
 
-	resp, err := c.get(path, url.Values{})
+	body, err := c.get(path, url.Values{})
 	if err != nil {
 		return nil, requestErr(err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("tfl returned %d for mode status %s", resp.StatusCode, modes)
-	}
+	c.saveJSON("line_status_by_mode", body)
 
 	var result []LineStatus
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("decode mode status: %w", err)
 	}
 	return result, nil
@@ -217,18 +252,14 @@ func (c *Client) SearchStops(query string) (*StopSearchResult, error) {
 	modes := []string{"tube", "bus", "dlr", "overground", "elizabeth-line", "national-rail"}
 	params.Set("modes", strings.Join(modes, ","))
 
-	resp, err := c.get("/StopPoint/Search", params)
+	body, err := c.get("/StopPoint/Search", params)
 	if err != nil {
 		return nil, requestErr(err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("tfl returned %d for stop search %q", resp.StatusCode, query)
-	}
+	c.saveJSON("stop_search", body)
 
 	var result StopSearchResult
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("decode stop search: %w", err)
 	}
 	return &result, nil

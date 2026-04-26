@@ -1,8 +1,8 @@
 const SUGGESTIONS = [
   "How do I get from Paddington to London Bridge?",
-  "What's the fastest route from King's Cross to Canary Wharf?",
   "Is the Central line running normally?",
-  "Find stations near Waterloo",
+  "Plan a journey from Paris Gare du Nord to Lyon Part-Dieu",
+  "Are there any disruptions on SNCF today?",
 ]
 
 export function SuggestionPills({ onSelect }: { onSelect: (s: string) => void }) {

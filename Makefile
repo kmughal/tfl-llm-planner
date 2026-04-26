@@ -1,10 +1,10 @@
 include .env
 export
 
-.PHONY: dev mcp backend frontend
+.PHONY: dev mcp backend frontend llm
 
-dev: ## Start all three services in parallel
-	@$(MAKE) -j3 mcp backend frontend
+dev: ## Start all services in parallel
+	@$(MAKE) -j4 llm mcp backend frontend
 
 mcp: ## Start the MCP server
 	@echo "→ MCP server on :$${MCP_PORT:-8081}"
@@ -17,3 +17,7 @@ backend: ## Start the Go backend
 frontend: ## Start the Vite dev server
 	@echo "→ Frontend on :5173"
 	@cd frontend && npm run dev
+
+llm: ## Start LLM server
+	@echo "→ Starting LLM server on :$${LLM_PORT:-8082}"
+	ollama serve 

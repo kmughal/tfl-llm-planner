@@ -25,8 +25,8 @@ export default function App() {
           <Train className="w-4 h-4 text-white" />
         </div>
         <div>
-          <h1 className="text-sm font-semibold text-claude-text leading-none">TFL Journey Planner</h1>
-          <p className="text-xs text-claude-muted mt-0.5">Powered by Ollama + MCP</p>
+          <h1 className="text-sm font-semibold text-claude-text leading-none">Journey Planner</h1>
+          <p className="text-xs text-claude-muted mt-0.5">TFL &amp; SNCF · Powered by Ollama + MCP</p>
         </div>
       </header>
 
@@ -40,8 +40,8 @@ export default function App() {
                 <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-tfl-tube mx-auto mb-4">
                   <Train className="w-7 h-7 text-white" />
                 </div>
-                <h2 className="text-xl font-semibold text-claude-text">London transport assistant</h2>
-                <p className="text-sm text-claude-muted mt-1">Plan journeys, check line status, find stations</p>
+                <h2 className="text-xl font-semibold text-claude-text">Transport assistant</h2>
+                <p className="text-sm text-claude-muted mt-1">Plan journeys across TFL and SNCF networks</p>
               </div>
               <SuggestionPills onSelect={sendMessage} />
             </div>
@@ -62,7 +62,7 @@ export default function App() {
         <div className="max-w-2xl mx-auto">
           <ChatInput onSend={sendMessage} disabled={loading} />
           <p className="text-center text-xs text-claude-muted mt-2">
-            Real-time TFL data · Free &amp; open source
+            Real-time TFL &amp; SNCF data · Free &amp; open source
           </p>
         </div>
       </footer>

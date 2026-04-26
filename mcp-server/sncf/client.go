@@ -20,13 +20,21 @@ type Client struct {
 }
 
 func NewClient(apiKey string) *Client {
-	dir := "responses"
+	dir := resolveResponsesDir()
 	_ = os.MkdirAll(dir, 0755)
 	return &Client{
 		http:    &http.Client{Timeout: 15 * time.Second},
 		apiKey:  apiKey,
 		saveDir: dir,
 	}
+}
+
+func resolveResponsesDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "responses"
+	}
+	return filepath.Join(filepath.Dir(exe), "responses")
 }
 
 func (c *Client) get(path string, params url.Values) ([]byte, error) {
@@ -67,7 +75,7 @@ func (c *Client) saveJSON(name string, data []byte) {
 		pretty = data
 	}
 	if err := os.WriteFile(fname, pretty, 0644); err != nil {
-		fmt.Printf("warn: could not save response: %v\n", err)
+		fmt.Fprintf(os.Stderr, "warn: could not save sncf response: %v\n", err)
 	}
 }
 
