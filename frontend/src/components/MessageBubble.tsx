@@ -290,28 +290,33 @@ function StepIcon({ text }: { readonly text: string }) {
   return <Train className="w-3 h-3" />
 }
 
-// ── Journey card ──────────────────────────────────────────────────────────────
+// ── Journey card colors ───────────────────────────────────────────────────────
+// Detect network from the raw message text so TFL and SNCF cards look distinct.
+const TFL_BLUE = "#003688"
 const SNCF_RED = "#E2001A"
 
+function detectJourneyColor(rawText: string): string {
+  return /^sncf\s/i.test(rawText.trimStart()) ? SNCF_RED : TFL_BLUE
+}
+
 // ── Horizontal animated stop timeline ────────────────────────────────────────
-// Per-stop timing: each stop waits for the track segment before it to finish.
-// track segment i takes TRACK_DUR seconds; dot i appears TRACK_DUR after segment i-1 starts.
-const STOP_STEP  = 0.32  // seconds between stop "arrivals"
-const TRACK_DUR  = 0.28  // duration of each track segment animation
-const DOT_DUR    = 0.2
+// Each stop "arrives" sequentially: track draws first, then dot pops in.
+const STOP_STEP = 0.32
+const TRACK_DUR = 0.28
+const DOT_DUR   = 0.2
 
 function stopDelay(i: number) { return i * STOP_STEP }
 
-function HorizontalRoute({ stops }: { readonly stops: Stop[] }) {
-  const ref = useRef<HTMLDivElement>(null)
+function HorizontalRoute({ stops, color }: { readonly stops: Stop[]; readonly color: string }) {
+  const ref   = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: "-40px" })
-  const last = stops.length - 1
+  const last  = stops.length - 1
 
   return (
     <div ref={ref} className="overflow-x-auto -mx-4 px-4 py-1 scrollbar-none">
       <div style={{ minWidth: `${Math.max(stops.length * 100, 280)}px` }}>
 
-        {/* Times — appear just before the dot */}
+        {/* Times */}
         <div className="flex">
           {stops.map((s, i) => (
             <motion.div
@@ -327,32 +332,30 @@ function HorizontalRoute({ stops }: { readonly stops: Stop[] }) {
           ))}
         </div>
 
-        {/* Track */}
+        {/* Track + dots */}
         <div className="flex items-center py-0.5">
           {stops.map((s, i) => (
             <div key={`r-${s.name}-${s.time}`} className="flex items-center" style={{ flex: i < last ? 1 : "none" }}>
-              {/* Dot — pops in when this stop "arrives" */}
               <motion.div
                 className="rounded-full border-[2.5px] shrink-0 cursor-default"
                 style={{
                   width:           i === 0 || i === last ? 20 : 14,
                   height:          i === 0 || i === last ? 20 : 14,
-                  borderColor:     SNCF_RED,
-                  backgroundColor: i === 0 || i === last ? SNCF_RED : "#fff",
-                  boxShadow:       `0 0 0 ${i === 0 || i === last ? 5 : 3}px ${SNCF_RED}22`,
+                  borderColor:     color,
+                  backgroundColor: i === 0 || i === last ? color : "#fff",
+                  boxShadow:       `0 0 0 ${i === 0 || i === last ? 5 : 3}px ${color}22`,
                   zIndex: 10,
                   position: "relative",
                 }}
                 initial={{ scale: 0, opacity: 0 }}
                 animate={inView ? { scale: 1, opacity: 1 } : {}}
                 transition={{ delay: stopDelay(i), type: "spring", stiffness: 480, damping: 16 }}
-                whileHover={{ scale: 1.5, boxShadow: `0 0 0 8px ${SNCF_RED}28` }}
+                whileHover={{ scale: 1.5, boxShadow: `0 0 0 8px ${color}28` }}
               />
-              {/* Track segment — draws after this dot, leading to the next stop */}
               {i < last && (
                 <motion.div
                   className="flex-1 h-[2.5px] origin-left"
-                  style={{ backgroundColor: SNCF_RED }}
+                  style={{ backgroundColor: color }}
                   initial={{ scaleX: 0 }}
                   animate={inView ? { scaleX: 1 } : {}}
                   transition={{ delay: stopDelay(i) + 0.08, duration: TRACK_DUR, ease: "easeInOut" }}
@@ -362,7 +365,7 @@ function HorizontalRoute({ stops }: { readonly stops: Stop[] }) {
           ))}
         </div>
 
-        {/* Names — slide up just after the dot */}
+        {/* Names */}
         <div className="flex">
           {stops.map((s, i) => (
             <motion.div
@@ -385,32 +388,39 @@ function HorizontalRoute({ stops }: { readonly stops: Stop[] }) {
   )
 }
 
-function ConnectionDots({ connections }: { readonly connections: number }) {
+function ConnectionDots({ connections, color }: { readonly connections: number; readonly color: string }) {
   const count = Math.min(connections, 3)
   const positions = ["25%", "50%", "75%"] as const
   return (
     <>
-      {count >= 1 && <div className="absolute top-1/2 w-2 h-2 rounded-full bg-white border-2" style={{ borderColor: SNCF_RED, left: positions[0], transform: "translate(-50%, -50%)" }} />}
-      {count >= 2 && <div className="absolute top-1/2 w-2 h-2 rounded-full bg-white border-2" style={{ borderColor: SNCF_RED, left: positions[1], transform: "translate(-50%, -50%)" }} />}
-      {count >= 3 && <div className="absolute top-1/2 w-2 h-2 rounded-full bg-white border-2" style={{ borderColor: SNCF_RED, left: positions[2], transform: "translate(-50%, -50%)" }} />}
+      {count >= 1 && <div className="absolute top-1/2 w-2 h-2 rounded-full bg-white border-2" style={{ borderColor: color, left: positions[0], transform: "translate(-50%, -50%)" }} />}
+      {count >= 2 && <div className="absolute top-1/2 w-2 h-2 rounded-full bg-white border-2" style={{ borderColor: color, left: positions[1], transform: "translate(-50%, -50%)" }} />}
+      {count >= 3 && <div className="absolute top-1/2 w-2 h-2 rounded-full bg-white border-2" style={{ borderColor: color, left: positions[2], transform: "translate(-50%, -50%)" }} />}
     </>
   )
 }
 
-function JourneyCard({ block }: { readonly block: Block & { kind: "journey" } }) {
+// Detect network label from step text like "Elizabeth line (elizabeth-line, 12 min)"
+function stepNetworkLabel(step: string): string {
+  const m = /\(([^,)]+),/.exec(step)
+  return m ? m[1].trim() : ""
+}
+
+function JourneyCard({ block, color }: { readonly block: Block & { kind: "journey" }; readonly color: string }) {
   const { optionNum, details } = block
   const { departure, arrival, duration, connections, steps, stops } = details
-  const isDirect  = connections === 0
-  const hasStops  = stops.length >= 2
-  const hasTime   = departure.time || arrival.time
+  const isDirect = connections === 0
+  const hasStops = stops.length >= 2
+  const hasTime  = departure.time || arrival.time
 
   return (
-    <div className="rounded-xl overflow-hidden border border-[#E2001A]/20 shadow-sm bg-white">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 text-white" style={{ backgroundColor: SNCF_RED }}>
+    <div className="rounded-xl overflow-hidden shadow-sm bg-white" style={{ border: `1px solid ${color}25` }}>
+
+      {/* Header band */}
+      <div className="flex items-center justify-between px-4 py-2.5 text-white" style={{ backgroundColor: color }}>
         <div className="flex items-center gap-2">
           <Train className="w-4 h-4 shrink-0" />
-          <span className="font-semibold text-sm">Option {optionNum}</span>
+          <span className="font-semibold text-sm tracking-tight">Option {optionNum}</span>
         </div>
         <div className="flex items-center gap-2">
           {connections !== null && (
@@ -427,11 +437,11 @@ function JourneyCard({ block }: { readonly block: Block & { kind: "journey" } })
         </div>
       </div>
 
-      <div className="px-4 py-3 flex flex-col gap-2.5">
-        {/* Horizontal animated route — shown when stop data is available */}
-        {hasStops && <HorizontalRoute stops={stops} />}
+      <div className="px-4 py-3 flex flex-col gap-3">
+        {/* Animated stop timeline */}
+        {hasStops && <HorizontalRoute stops={stops} color={color} />}
 
-        {/* Fallback simple timeline when no stops available */}
+        {/* Fallback dep→arr bar when no stop data */}
         {!hasStops && hasTime && (
           <div className="flex items-center gap-2">
             <div className="min-w-0 shrink-0">
@@ -439,12 +449,12 @@ function JourneyCard({ block }: { readonly block: Block & { kind: "journey" } })
               {departure.station && <div className="text-[11px] text-gray-500 mt-0.5 max-w-[110px] leading-tight line-clamp-2">{departure.station}</div>}
             </div>
             <div className="flex-1 flex items-center gap-0.5">
-              <div className="w-2 h-2 rounded-full border-2 shrink-0" style={{ borderColor: SNCF_RED }} />
-              <div className="flex-1 h-0.5 relative" style={{ backgroundColor: `${SNCF_RED}30` }}>
-                {connections !== null && connections > 0 && <ConnectionDots connections={connections} />}
+              <div className="w-2 h-2 rounded-full border-2 shrink-0" style={{ borderColor: color }} />
+              <div className="flex-1 h-0.5 relative" style={{ backgroundColor: `${color}30` }}>
+                {connections !== null && connections > 0 && <ConnectionDots connections={connections} color={color} />}
               </div>
-              <ArrowRight className="w-3 h-3 shrink-0" style={{ color: SNCF_RED }} />
-              <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: SNCF_RED }} />
+              <ArrowRight className="w-3 h-3 shrink-0" style={{ color }} />
+              <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
             </div>
             <div className="min-w-0 shrink-0 text-right">
               <div className="text-xl font-bold text-gray-900 tabular-nums leading-none">{arrival.time || "—"}</div>
@@ -453,15 +463,20 @@ function JourneyCard({ block }: { readonly block: Block & { kind: "journey" } })
           </div>
         )}
 
-        {/* Train steps */}
+        {/* Step-by-step legs */}
         {steps.length > 0 && (
-          <div className="border-t border-gray-100 pt-2 flex flex-col gap-1">
-            {steps.map((step) => (
-              <div key={step.slice(0, 40)} className="flex items-start gap-2 text-xs text-gray-600">
-                <Train className="w-3 h-3 mt-0.5 shrink-0" style={{ color: SNCF_RED }} />
-                <span>{step}</span>
-              </div>
-            ))}
+          <div className="border-t pt-2 flex flex-col gap-1.5" style={{ borderColor: `${color}15` }}>
+            {steps.map((step) => {
+              const mode = stepNetworkLabel(step)
+              return (
+                <div key={step.slice(0, 40)} className="flex items-start gap-2 text-xs text-gray-600">
+                  <span className="mt-0.5 shrink-0" style={{ color }}>
+                    <StepIcon text={mode || step} />
+                  </span>
+                  <Inline text={step} />
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
@@ -599,6 +614,7 @@ function BulletList({ items }: { readonly items: string[] }) {
 }
 
 function RichMessage({ text }: { readonly text: string }) {
+  const jColor = detectJourneyColor(text)
   return (
     <div className="flex flex-col gap-2.5">
       {parseBlocks(text).map((block) => {
@@ -606,7 +622,7 @@ function RichMessage({ text }: { readonly text: string }) {
           return <p key={`h3-${block.text.slice(0, 20)}`} className="text-xs font-semibold uppercase tracking-wide text-[#003688] mt-1">{block.text}</p>
         }
         if (block.kind === "journey") {
-          return <JourneyCard key={`journey-${block.optionNum}`} block={block} />
+          return <JourneyCard key={`journey-${block.optionNum}`} block={block} color={jColor} />
         }
         if (block.kind === "route") {
           return <RouteMap key={`route-${block.items[0]?.slice(0, 15)}`} items={block.items} />

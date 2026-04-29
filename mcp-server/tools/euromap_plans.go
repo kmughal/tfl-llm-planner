@@ -30,7 +30,17 @@ ALWAYS use this tool (instead of plan_journey or plan_sncf_journey) when:
   - The user asks what international trains are running between the UK and Europe
   - Origin or destination is St Pancras, Ebbsfleet, Ashford, Calais, Lille, Paris Nord, Brussels Midi, Amsterdam
 
-Returns map data and stop times for each service. Defaults to today if no date is given.`),
+ALWAYS provide "from" and "to" when the user specifies an origin and/or destination.
+Known stations: London/St Pancras (SPX), Paris/Paris Nord (PNO), Brussels/Brussels Midi (BXL),
+Amsterdam (ASD), Rotterdam (RTD), Lille (LIL), Ebbsfleet (EBF), Ashford (ASI), Calais (CFR).
+
+Returns map data and stop times for each matching service. Defaults to today if no date is given.`),
+		mcp.WithString("from",
+			mcp.Description("Origin station name or code, e.g. 'Brussels Midi', 'BXL', 'London', 'Paris'. Used to filter services."),
+		),
+		mcp.WithString("to",
+			mcp.Description("Destination station name or code, e.g. 'Paris', 'PNO', 'London', 'Brussels'. Used to filter services."),
+		),
 		mcp.WithString("fromDateTime",
 			mcp.Description("Start date/time in ISO8601 format, e.g. '2025-05-12T00:00:00Z'. Omit to use today's date."),
 		),
@@ -145,12 +155,22 @@ func HandleGetEuromapPlans(client *euromap.Client) func(context.Context, mcp.Cal
 		}
 		ranges := req.GetString("ranges", defaultRanges)
 
+		originCode := resolveStationCode(req.GetString("from", ""))
+		destCode := resolveStationCode(req.GetString("to", ""))
+
 		plans, err := client.GetPlans(fromDateTime, ranges)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf(euromapAPIErr, err)), nil
 		}
+
+		plans = filterPlansByRoute(plans, originCode, destCode)
+
 		if len(plans) == 0 {
-			return mcp.NewToolResultText(fmt.Sprintf("No plans found from %s (ranges: %s)", fromDateTime, ranges)), nil
+			label := fmt.Sprintf("from %s (ranges: %s)", fromDateTime, ranges)
+			if originCode != "" || destCode != "" {
+				label = fmt.Sprintf("%s → %s on %s", originCode, destCode, fromDateTime)
+			}
+			return mcp.NewToolResultText(fmt.Sprintf("No plans found for %s", label)), nil
 		}
 		return mcp.NewToolResultText(formatPlans(fromDateTime, ranges, plans)), nil
 	}
@@ -173,6 +193,84 @@ func HandleGetEuromapTechnicalPlans(client *euromap.Client) func(context.Context
 		}
 		return mcp.NewToolResultText(formatTechnicalPlans(fromDateTime, ranges, plans)), nil
 	}
+}
+
+// ── Station alias resolution ──────────────────────────────────────────────────
+
+var stationAliases = map[string]string{
+	"london":               "SPX",
+	"st pancras":           "SPX",
+	"st pancras international": "SPX",
+	"paris":                "PNO",
+	"paris nord":           "PNO",
+	"paris gare du nord":   "PNO",
+	"brussels":             "BXL",
+	"brussels midi":        "BXL",
+	"bruxelles midi":       "BXL",
+	"bruxelles":            "BXL",
+	"amsterdam":            "ASD",
+	"amsterdam centraal":   "ASD",
+	"rotterdam":            "RTD",
+	"rotterdam centraal":   "RTD",
+	"lille":                "LIL",
+	"lille europe":         "LIL",
+	"ebbsfleet":            "EBF",
+	"ashford":              "ASI",
+	"calais":               "CFR",
+	"calais frethun":       "CFR",
+}
+
+// resolveStationCode returns the upper-case short code for a station name or
+// passes through an already-uppercase code (e.g. "BXL") unchanged.
+func resolveStationCode(input string) string {
+	if input == "" {
+		return ""
+	}
+	lower := strings.ToLower(strings.TrimSpace(input))
+	if code, ok := stationAliases[lower]; ok {
+		return code
+	}
+	// If it looks like a station code already (2-3 uppercase letters), use it.
+	return strings.ToUpper(input)
+}
+
+// planMatchesRoute returns true when the plan's station list contains both
+// originCode and destCode, with originCode appearing before destCode.
+func planMatchesRoute(p euromap.Plan, originCode, destCode string) bool {
+	originSeq := -1
+	destSeq := -1
+	for _, s := range p.Stations {
+		if strings.EqualFold(s.ShortCode, originCode) {
+			originSeq = s.SequenceNumber
+		}
+		if strings.EqualFold(s.ShortCode, destCode) {
+			destSeq = s.SequenceNumber
+		}
+	}
+	if originCode != "" && originSeq < 0 {
+		return false
+	}
+	if destCode != "" && destSeq < 0 {
+		return false
+	}
+	if originCode != "" && destCode != "" {
+		return originSeq < destSeq
+	}
+	return true
+}
+
+// filterPlansByRoute returns only plans that match origin and/or destination.
+func filterPlansByRoute(plans euromap.PlansResponse, originCode, destCode string) euromap.PlansResponse {
+	if originCode == "" && destCode == "" {
+		return plans
+	}
+	out := make(euromap.PlansResponse, 0, len(plans))
+	for _, p := range plans {
+		if planMatchesRoute(p, originCode, destCode) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // ── Handler helpers ───────────────────────────────────────────────────────────

@@ -79,12 +79,13 @@ Never repeat what the tool already said in paragraph form.`,
 }
 
 type ChatRequest struct {
-	Message  string         `json:"message" binding:"required"`
-	History  []llm.Message  `json:"history"`
+	Message string        `json:"message" binding:"required"`
+	History []llm.Message `json:"history"` // full LLM message sequence from previous turns
 }
 
 type ChatResponse struct {
-	Reply string `json:"reply"`
+	Reply    string        `json:"reply"`
+	Messages []llm.Message `json:"messages"` // full sequence for the client to replay next turn
 }
 
 type Handler struct {
@@ -133,7 +134,7 @@ func (h *Handler) Chat(c *gin.Context) {
 		}
 	}
 
-	reply, err := h.runAgentLoop(ctx, messages, tools, func(token string) {
+	reply, finalMessages, err := h.runAgentLoop(ctx, messages, tools, func(token string) {
 		b, _ := json.Marshal(token)
 		sendEvent("token", string(b))
 	}, sendEvent)
@@ -143,8 +144,24 @@ func (h *Handler) Chat(c *gin.Context) {
 		return
 	}
 
-	b, _ := json.Marshal(ChatResponse{Reply: reply})
+	// Return the full message sequence minus system messages so the client can
+	// replay it verbatim as history on the next turn — this preserves tool
+	// call/result pairs that would otherwise be lost.
+	b, _ := json.Marshal(ChatResponse{Reply: reply, Messages: clientHistory(finalMessages)})
 	sendEvent("done", string(b))
+}
+
+// clientHistory strips system messages from the full message sequence.
+// System messages are rebuilt fresh every turn; sending them as history
+// would duplicate instructions and inflate token usage.
+func clientHistory(msgs []llm.Message) []llm.Message {
+	out := make([]llm.Message, 0, len(msgs))
+	for _, m := range msgs {
+		if m.Role != "system" {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // journeyTools is the set of tools whose results must be reproduced verbatim.
@@ -177,33 +194,33 @@ func cleanJourneyResult(s string) string {
 }
 
 // runAgentLoop runs the LLM → tool-call → LLM loop until the model stops calling tools.
-// If the LLM ignores the journey format, the structured tool result is used directly
-// as the reply — the frontend's "done" event overwrites any streamed prose.
+// Returns the final reply, the complete message sequence (for the client to replay as
+// history on the next turn), and any error.
 func (h *Handler) runAgentLoop(
 	ctx context.Context,
 	messages []llm.Message,
 	tools []llm.Tool,
 	onToken func(string),
 	sendEvent func(string, string),
-) (string, error) {
+) (string, []llm.Message, error) {
 	var journeyResult string // last structured journey tool result
 
 	for range maxToolRounds {
 		msg, err := h.llm.StreamChat(ctx, messages, tools, onToken)
 		if err != nil {
-			return "", fmt.Errorf("LLM error: %w", err)
+			return "", nil, fmt.Errorf("LLM error: %w", err)
 		}
 		messages = append(messages, *msg)
 
 		if len(msg.ToolCalls) == 0 {
-			return h.resolveFinalReply(msg.Content, journeyResult), nil
+			return h.resolveFinalReply(msg.Content, journeyResult), messages, nil
 		}
 
 		var updated []llm.Message
 		updated, journeyResult = h.executeToolCalls(ctx, msg.ToolCalls, journeyResult, sendEvent)
 		messages = append(messages, updated...)
 	}
-	return "", fmt.Errorf("exceeded %d tool rounds without a final answer", maxToolRounds)
+	return "", nil, fmt.Errorf("exceeded %d tool rounds without a final answer", maxToolRounds)
 }
 
 // resolveFinalReply returns the LLM content, or the saved journey result when
