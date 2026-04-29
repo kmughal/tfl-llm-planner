@@ -1,31 +1,50 @@
-import { useState, useRef, type KeyboardEvent } from "react"
+import { useState, useRef, useEffect, type KeyboardEvent } from "react"
 import { ArrowUp } from "lucide-react"
 import { cn } from "../lib/utils"
 
 interface Props {
-  readonly onSend: (text: string) => void
-  readonly disabled: boolean
+  readonly onSend:    (text: string) => void
+  readonly disabled:  boolean
+  readonly prefill?:  string
 }
 
-export function ChatInput({ onSend, disabled }: Props) {
-  const [text, setText] = useState("")
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+export function ChatInput({ onSend, disabled, prefill }: Props) {
+  const [text, setText]   = useState("")
+  const textareaRef       = useRef<HTMLTextAreaElement>(null)
+  const lastPrefillRef    = useRef("")
+
+  // When a template suggestion is clicked, fill the input and select the
+  // first {placeholder} so the user can start typing immediately.
+  useEffect(() => {
+    if (!prefill || prefill === lastPrefillRef.current) return
+    lastPrefillRef.current = prefill
+    setText(prefill)
+    // Defer so the textarea has re-rendered with the new value
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (!el) return
+      el.focus()
+      el.style.height = "auto"
+      el.style.height = Math.min(el.scrollHeight, 160) + "px"
+      const start = prefill.indexOf("{")
+      const end   = prefill.indexOf("}") + 1
+      if (start !== -1 && end > start) {
+        el.setSelectionRange(start, end)
+      }
+    })
+  }, [prefill])
 
   const submit = () => {
     const trimmed = text.trim()
     if (!trimmed || disabled) return
     onSend(trimmed)
     setText("")
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto"
-    }
+    lastPrefillRef.current = ""
+    if (textareaRef.current) textareaRef.current.style.height = "auto"
   }
 
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      submit()
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit() }
   }
 
   const handleInput = () => {

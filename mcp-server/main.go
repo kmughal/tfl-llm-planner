@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/mark3labs/mcp-go/server"
+	"tfl-mcp-server/euromap"
 	"tfl-mcp-server/sncf"
 	"tfl-mcp-server/tfl"
 	"tfl-mcp-server/tools"
@@ -13,6 +14,7 @@ import (
 func main() {
 	tflClient := tfl.NewClient(os.Getenv("TFL_APP_KEY"))
 	sncfClient := sncf.NewClient(os.Getenv("SNCF_API_KEY"))
+	euromapClient := euromap.NewClient(os.Getenv("EUROMAP_CLIENT_ID"), os.Getenv("EUROMAP_CLIENT_SECRET"))
 
 	s := server.NewMCPServer(
 		"transport-journey-planner",
@@ -30,6 +32,12 @@ func main() {
 	s.AddTool(tools.PlanSNCFJourneyTool(), tools.HandlePlanSNCFJourney(sncfClient))
 	s.AddTool(tools.SearchSNCFStationsTool(), tools.HandleSearchSNCFStations(sncfClient))
 	s.AddTool(tools.GetSNCFDisruptionsTool(), tools.HandleGetSNCFDisruptions(sncfClient))
+
+	// Euromap (Eurostar) tools
+	s.AddTool(tools.GetEuromapPlansTool(), tools.HandleGetEuromapPlans(euromapClient))
+	s.AddTool(tools.GetEuromapTechnicalPlansTool(), tools.HandleGetEuromapTechnicalPlans(euromapClient))
+	s.AddTool(tools.GetEuromapPlanByIDTool(), tools.HandleGetEuromapPlanByID(euromapClient))
+	s.AddTool(tools.GetEuromapTechnicalPlanByIDTool(), tools.HandleGetEuromapTechnicalPlanByID(euromapClient))
 
 	transport := os.Getenv("MCP_TRANSPORT") // "stdio" (default) or "sse"
 

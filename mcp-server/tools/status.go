@@ -40,10 +40,20 @@ func HandleGetLineStatus(client *tfl.Client) func(context.Context, mcp.CallToolR
 
 		var sb strings.Builder
 		fmt.Fprintln(&sb, "TFL Line Status:")
+		disrupted := 0
 		for _, s := range statuses {
 			for _, st := range s.LineStatuses {
 				fmt.Fprintln(&sb, formatStatusLine(s.Name, st))
+				if st.StatusSeverity < 10 {
+					disrupted++
+				}
 			}
+		}
+
+		if disrupted > 0 {
+			fmt.Fprintf(&sb, "\nHINT: %d line(s) have disruptions. Summarise the disrupted lines clearly for the user. If they want to travel between two stations, call plan_journey — it will route around disruptions automatically.", disrupted)
+		} else {
+			fmt.Fprintln(&sb, "\nHINT: All queried lines are running normally. Tell the user good news concisely and offer to plan a journey if they have a destination in mind.")
 		}
 		return mcp.NewToolResultText(sb.String()), nil
 	}

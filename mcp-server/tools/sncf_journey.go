@@ -12,7 +12,7 @@ import (
 func PlanSNCFJourneyTool() mcp.Tool {
 	return mcp.NewTool(
 		"plan_sncf_journey",
-		mcp.WithDescription("Plan a train journey on the SNCF French rail network. Searches for stations by name and returns journey options with departure/arrival times, duration, train type, and number of connections."),
+		mcp.WithDescription("Plan a domestic train journey within France on the SNCF network (TGV, Intercités, TER). Use when BOTH origin AND destination are in France (e.g. Paris→Lyon, Marseille→Nice). Do NOT use for any journey involving the UK or Channel Tunnel — use get_euromap_plans instead."),
 		mcp.WithString("from",
 			mcp.Required(),
 			mcp.Description("Origin station name (e.g. 'Paris Gare de Lyon', 'Lyon Part-Dieu', 'Marseille Saint-Charles')"),
@@ -90,14 +90,38 @@ func formatSNCFJourneys(from, to string, journeys []sncf.Journey) string {
 			formatSNCFTime(j.ArrivalDatetime),
 		)
 
-		for k, sec := range j.Sections {
-			if sec.Type == "waiting" || sec.Type == "crow_fly" {
+		// Collect unique route stops from all public-transport sections
+		type stopInfo struct{ name, time string }
+		var stops []stopInfo
+		for _, sec := range j.Sections {
+			if sec.Type == "waiting" || sec.Type == "crow_fly" || sec.Type == "street_network" {
 				continue
 			}
+			fromTime := formatSNCFTime(sec.DepartureDatetime)
+			toTime := formatSNCFTime(sec.ArrivalDatetime)
+			if len(stops) == 0 || stops[len(stops)-1].name != sec.From.Name {
+				stops = append(stops, stopInfo{sec.From.Name, fromTime})
+			}
+			stops = append(stops, stopInfo{sec.To.Name, toTime})
+		}
+		for _, s := range stops {
+			if s.time != "" {
+				fmt.Fprintf(&sb, "  Stop: %s (%s)\n", s.name, s.time)
+			} else {
+				fmt.Fprintf(&sb, "  Stop: %s\n", s.name)
+			}
+		}
+
+		stepNum := 0
+		for _, sec := range j.Sections {
+			if sec.Type == "waiting" || sec.Type == "crow_fly" || sec.Type == "street_network" {
+				continue
+			}
+			stepNum++
 			secMins := sec.Duration / 60
 			if sec.DisplayInfo != nil {
 				fmt.Fprintf(&sb, "  Step %d: %s %s → %s (%d min)\n",
-					k+1,
+					stepNum,
 					sec.DisplayInfo.CommercialMode,
 					sec.DisplayInfo.Label,
 					sec.DisplayInfo.Direction,
@@ -105,7 +129,7 @@ func formatSNCFJourneys(from, to string, journeys []sncf.Journey) string {
 				)
 			} else {
 				fmt.Fprintf(&sb, "  Step %d: %s → %s (%d min)\n",
-					k+1, sec.From.Name, sec.To.Name, secMins,
+					stepNum, sec.From.Name, sec.To.Name, secMins,
 				)
 			}
 		}

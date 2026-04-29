@@ -3,7 +3,15 @@ import { motion, useInView } from "framer-motion"
 import { cn } from "../lib/utils"
 import type { ChatMessage, ToolEvent } from "../lib/types"
 import { ToolCallBadge } from "./ToolCallBadge"
+import { EuromapCard } from "./EuromapCard"
 import { Train, Bus, MapPin, Clock, ArrowRight } from "lucide-react"
+
+const EUROMAP_TOOLS = new Set([
+  "get_euromap_plans",
+  "get_euromap_technical_plans",
+  "get_euromap_plan_by_id",
+  "get_euromap_technical_plan_by_id",
+])
 
 // ── TFL line colours ──────────────────────────────────────────────────────────
 const LINE_COLOURS: Record<string, { bg: string; fg: string }> = {
@@ -23,12 +31,15 @@ const LINE_COLOURS: Record<string, { bg: string; fg: string }> = {
 }
 
 // ── Block types ───────────────────────────────────────────────────────────────
+type Stop = { name: string; time: string }
+
 type JourneyDetail = {
   departure:   { time: string; station: string }
   arrival:     { time: string; station: string }
   duration:    string
   connections: number | null
   steps:       string[]
+  stops:       Stop[]
 }
 
 type Block =
@@ -78,6 +89,8 @@ function applyDetailLine(line: string, info: JourneyDetail): void {
   const durM  = /^Journey\s+time[:\s]+(.+)/i.exec(line)
   const conM  = /^Connections?[:\s]+(.+)/i.exec(line)
   const stepM = /^Step\s+\d+:\s*(.+)/i.exec(line)
+  const stopM = /^Stop:\s*(.+?)\s*\((\d{1,2}:\d{2})\)\s*$/i.exec(line)
+  const stopBareM = stopM ? null : /^Stop:\s*(.+)$/i.exec(line)
 
   if (depM)                        { info.departure.time = depM[1]; info.departure.station = depM[2].trim() }
   else if (arrM)                   { info.arrival.time   = arrM[1]; info.arrival.station   = arrM[2].trim() }
@@ -85,6 +98,8 @@ function applyDetailLine(line: string, info: JourneyDetail): void {
   else if (durM && !info.duration) { info.duration = durM[1].trim() }
   else if (conM)                   { applyConnectionLine(conM[1].trim(), info) }
   else if (stepM)                  { info.steps.push(stepM[1]) }
+  else if (stopM)                  { info.stops.push({ name: stopM[1].trim(), time: stopM[2] }) }
+  else if (stopBareM)              { info.stops.push({ name: stopBareM[1].trim(), time: "" }) }
 }
 
 function parseJourneyDetails(header: string, rawLines: string[]): JourneyDetail {
@@ -94,6 +109,7 @@ function parseJourneyDetails(header: string, rawLines: string[]): JourneyDetail 
     duration:    "",
     connections: null,
     steps:       [],
+    stops:       [],
   }
   parseJourneyHeader(header, info)
   for (const line of mergeFragmentedLines(rawLines)) applyDetailLine(line, info)
@@ -277,6 +293,88 @@ function StepIcon({ text }: { readonly text: string }) {
 // ── Journey card ──────────────────────────────────────────────────────────────
 const SNCF_RED = "#E2001A"
 
+// ── Horizontal animated stop timeline ────────────────────────────────────────
+function HorizontalRoute({ stops }: { readonly stops: Stop[] }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const inView = useInView(ref, { once: true, margin: "-40px" })
+  const last = stops.length - 1
+
+  return (
+    <div ref={ref} className="overflow-x-auto -mx-4 px-4 py-1 scrollbar-none">
+      <div style={{ minWidth: `${Math.max(stops.length * 90, 260)}px` }}>
+
+        {/* Times */}
+        <div className="flex">
+          {stops.map((s, i) => (
+            <motion.div
+              key={`t-${s.name}-${s.time}`}
+              className="flex-1 text-center text-[11px] font-bold tabular-nums pb-1.5 leading-none"
+              style={{ color: i === 0 || i === last ? "#111827" : "#9ca3af" }}
+              initial={{ opacity: 0, y: -6 }}
+              animate={inView ? { opacity: 1, y: 0 } : {}}
+              transition={{ delay: i * 0.08 + 0.1, duration: 0.22 }}
+            >
+              {s.time}
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Track */}
+        <div className="flex items-center py-0.5">
+          {stops.map((s, i) => (
+            <div key={`r-${s.name}-${s.time}`} className="flex items-center" style={{ flex: i < last ? 1 : "none" }}>
+              <motion.div
+                className="rounded-full border-[2.5px] shrink-0 cursor-default"
+                style={{
+                  width:  i === 0 || i === last ? 18 : 13,
+                  height: i === 0 || i === last ? 18 : 13,
+                  borderColor: SNCF_RED,
+                  backgroundColor: i === 0 || i === last ? SNCF_RED : "#fff",
+                  boxShadow: `0 0 0 ${i === 0 || i === last ? 4 : 3}px ${SNCF_RED}22`,
+                  zIndex: 10,
+                  position: "relative",
+                }}
+                initial={{ scale: 0, opacity: 0 }}
+                animate={inView ? { scale: 1, opacity: 1 } : {}}
+                transition={{ delay: i * 0.08, type: "spring", stiffness: 520, damping: 18 }}
+                whileHover={{ scale: 1.45, boxShadow: `0 0 0 7px ${SNCF_RED}30` }}
+              />
+              {i < last && (
+                <motion.div
+                  className="flex-1 h-[2px] origin-left"
+                  style={{ backgroundColor: SNCF_RED }}
+                  initial={{ scaleX: 0 }}
+                  animate={inView ? { scaleX: 1 } : {}}
+                  transition={{ delay: i * 0.08 + 0.04, duration: 0.22, ease: "easeOut" }}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Names */}
+        <div className="flex">
+          {stops.map((s, i) => (
+            <motion.div
+              key={`n-${s.name}-${s.time}`}
+              className="flex-1 text-center text-[10px] leading-tight pt-1.5 px-0.5"
+              style={{
+                fontWeight: i === 0 || i === last ? 600 : 400,
+                color: i === 0 || i === last ? "#111827" : "#6b7280",
+              }}
+              initial={{ opacity: 0, y: 6 }}
+              animate={inView ? { opacity: 1, y: 0 } : {}}
+              transition={{ delay: i * 0.08 + 0.14, duration: 0.22 }}
+            >
+              {s.name}
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ConnectionDots({ connections }: { readonly connections: number }) {
   const count = Math.min(connections, 3)
   const positions = ["25%", "50%", "75%"] as const
@@ -291,33 +389,45 @@ function ConnectionDots({ connections }: { readonly connections: number }) {
 
 function JourneyCard({ block }: { readonly block: Block & { kind: "journey" } }) {
   const { optionNum, details } = block
-  const { departure, arrival, duration, connections, steps } = details
-  const isDirect = connections === 0
-  const hasTime  = departure.time || arrival.time
+  const { departure, arrival, duration, connections, steps, stops } = details
+  const isDirect  = connections === 0
+  const hasStops  = stops.length >= 2
+  const hasTime   = departure.time || arrival.time
 
   return (
     <div className="rounded-xl overflow-hidden border border-[#E2001A]/20 shadow-sm bg-white">
+      {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 text-white" style={{ backgroundColor: SNCF_RED }}>
         <div className="flex items-center gap-2">
           <Train className="w-4 h-4 shrink-0" />
           <span className="font-semibold text-sm">Option {optionNum}</span>
         </div>
-        {duration && (
-          <div className="flex items-center gap-1.5 bg-white/20 rounded-full px-2.5 py-0.5">
-            <Clock className="w-3 h-3" />
-            <span className="text-xs font-semibold">{duration}</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {connections !== null && (
+            isDirect
+              ? <span className="flex items-center gap-1 bg-white/20 rounded-full px-2 py-0.5 text-[11px] font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-emerald-300" />Direct</span>
+              : <span className="flex items-center gap-1 bg-white/20 rounded-full px-2 py-0.5 text-[11px] font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-amber-300" />{connections} change{connections === 1 ? "" : "s"}</span>
+          )}
+          {duration && (
+            <div className="flex items-center gap-1.5 bg-white/20 rounded-full px-2.5 py-0.5">
+              <Clock className="w-3 h-3" />
+              <span className="text-xs font-semibold">{duration}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="px-4 py-3 flex flex-col gap-2.5">
-        {hasTime && (
+        {/* Horizontal animated route — shown when stop data is available */}
+        {hasStops && <HorizontalRoute stops={stops} />}
+
+        {/* Fallback simple timeline when no stops available */}
+        {!hasStops && hasTime && (
           <div className="flex items-center gap-2">
             <div className="min-w-0 shrink-0">
               <div className="text-xl font-bold text-gray-900 tabular-nums leading-none">{departure.time || "—"}</div>
               {departure.station && <div className="text-[11px] text-gray-500 mt-0.5 max-w-[110px] leading-tight line-clamp-2">{departure.station}</div>}
             </div>
-
             <div className="flex-1 flex items-center gap-0.5">
               <div className="w-2 h-2 rounded-full border-2 shrink-0" style={{ borderColor: SNCF_RED }} />
               <div className="flex-1 h-0.5 relative" style={{ backgroundColor: `${SNCF_RED}30` }}>
@@ -326,7 +436,6 @@ function JourneyCard({ block }: { readonly block: Block & { kind: "journey" } })
               <ArrowRight className="w-3 h-3 shrink-0" style={{ color: SNCF_RED }} />
               <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: SNCF_RED }} />
             </div>
-
             <div className="min-w-0 shrink-0 text-right">
               <div className="text-xl font-bold text-gray-900 tabular-nums leading-none">{arrival.time || "—"}</div>
               {arrival.station && <div className="text-[11px] text-gray-500 mt-0.5 max-w-[110px] leading-tight line-clamp-2 text-right">{arrival.station}</div>}
@@ -334,16 +443,11 @@ function JourneyCard({ block }: { readonly block: Block & { kind: "journey" } })
           </div>
         )}
 
-        {connections !== null && (
-          isDirect
-            ? <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-0.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Direct</span>
-            : <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" />{connections} connection{connections === 1 ? "" : "s"}</span>
-        )}
-
+        {/* Train steps */}
         {steps.length > 0 && (
           <div className="border-t border-gray-100 pt-2 flex flex-col gap-1">
             {steps.map((step) => (
-              <div key={step.slice(0, 30)} className="flex items-start gap-2 text-xs text-gray-600">
+              <div key={step.slice(0, 40)} className="flex items-start gap-2 text-xs text-gray-600">
                 <Train className="w-3 h-3 mt-0.5 shrink-0" style={{ color: SNCF_RED }} />
                 <span>{step}</span>
               </div>
@@ -531,10 +635,21 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
   return (
     <div className={cn("flex flex-col gap-2 animate-fade-in", isUser ? "items-end" : "items-start")}>
       {!isUser && toolEvents.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 px-1">
-          {toolEvents.map((ev) => (
-            <ToolCallBadge key={`${ev.type}-${ev.name}`} event={ev} />
-          ))}
+        <div className="flex flex-col gap-2 w-full max-w-[90%]">
+          {/* Regular tool badges (and euromap tool_call pending badges) */}
+          <div className="flex flex-wrap gap-1.5 px-1">
+            {toolEvents
+              .filter(ev => !EUROMAP_TOOLS.has(ev.name) || ev.type === "tool_call")
+              .map((ev) => (
+                <ToolCallBadge key={`${ev.type}-${ev.name}`} event={ev} />
+              ))}
+          </div>
+          {/* Euromap map cards — rendered from raw tool result data */}
+          {toolEvents
+            .filter(ev => EUROMAP_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)
+            .map((ev) => (
+              <EuromapCard key={`euromap-${ev.name}`} result={ev.result ?? ""} />
+            ))}
         </div>
       )}
       <div

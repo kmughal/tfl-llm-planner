@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Train } from "lucide-react"
 import { useChat } from "./hooks/useChat"
 import { MessageBubble } from "./components/MessageBubble"
@@ -8,7 +8,8 @@ import "./index.css"
 
 export default function App() {
   const { messages, loading, sendMessage } = useChat()
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const bottomRef   = useRef<HTMLDivElement>(null)
+  const [prefill, setPrefill] = useState("")
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -26,7 +27,7 @@ export default function App() {
         </div>
         <div>
           <h1 className="text-sm font-semibold text-claude-text leading-none">Journey Planner</h1>
-          <p className="text-xs text-claude-muted mt-0.5">TFL &amp; SNCF · Powered by Ollama + MCP</p>
+          <p className="text-xs text-claude-muted mt-0.5">TFL · SNCF · Eurostar · Powered by Ollama + MCP</p>
         </div>
       </header>
 
@@ -41,9 +42,12 @@ export default function App() {
                   <Train className="w-7 h-7 text-white" />
                 </div>
                 <h2 className="text-xl font-semibold text-claude-text">Transport assistant</h2>
-                <p className="text-sm text-claude-muted mt-1">Plan journeys across TFL and SNCF networks</p>
+                <p className="text-sm text-claude-muted mt-1">TFL · SNCF · Eurostar — plan journeys across three networks</p>
               </div>
-              <SuggestionPills onSelect={sendMessage} />
+              <SuggestionPills
+                onSelect={sendMessage}
+                onTemplate={setPrefill}
+              />
             </div>
           ) : (
             <div className="flex flex-col gap-4">
@@ -60,9 +64,13 @@ export default function App() {
       {/* Input */}
       <footer className="px-4 py-4 border-t border-claude-border bg-claude-bg">
         <div className="max-w-2xl mx-auto">
-          <ChatInput onSend={sendMessage} disabled={loading} />
+          <ChatInput
+            onSend={sendMessage}
+            disabled={loading}
+            prefill={prefill}
+          />
           <p className="text-center text-xs text-claude-muted mt-2">
-            Real-time TFL &amp; SNCF data · Free &amp; open source
+            Real-time TFL · SNCF · Eurostar data · Free &amp; open source
           </p>
         </div>
       </footer>
