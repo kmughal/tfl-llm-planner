@@ -193,6 +193,7 @@ type DisruptionsResponse struct {
 
 type Disruption struct {
 	ID                 string           `json:"id"`
+	Status             string           `json:"status"` // "active", "past", "future"
 	Severity           Severity         `json:"severity"`
 	Messages           []DisruptionMsg  `json:"messages"`
 	ImpactedObjects    []ImpactedObject `json:"impacted_objects"`
@@ -219,10 +220,13 @@ type Period struct {
 	End   string `json:"end"`
 }
 
-// GetDisruptions returns active disruptions on the SNCF network.
+// GetDisruptions returns currently active disruptions on the SNCF network.
 func (c *Client) GetDisruptions(count int) (*DisruptionsResponse, error) {
+	now := time.Now().UTC().Format("20060102T150405")
 	params := url.Values{}
 	params.Set("count", fmt.Sprintf("%d", count))
+	params.Set("since", now)
+	params.Set("until", now)
 
 	body, err := c.get("/disruptions", params)
 	if err != nil {

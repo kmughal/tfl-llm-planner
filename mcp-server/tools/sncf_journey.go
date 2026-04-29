@@ -12,17 +12,41 @@ import (
 func PlanSNCFJourneyTool() mcp.Tool {
 	return mcp.NewTool(
 		"plan_sncf_journey",
-		mcp.WithDescription("Plan a domestic train journey within France on the SNCF network (TGV, Intercités, TER). Use when BOTH origin AND destination are in France (e.g. Paris→Lyon, Marseille→Nice). Do NOT use for any journey involving the UK or Channel Tunnel — use get_euromap_plans instead."),
+		mcp.WithDescription(`Plan a domestic train journey within France on the SNCF network (TGV, Intercités, TER, Ouigo).
+
+Use this tool when BOTH the origin AND destination are cities or stations inside France.
+Do NOT use for any journey that crosses into the UK or goes through the Channel Tunnel — use get_euromap_plans for those.
+
+Common routes:
+  Paris → Lyon         (~2h by TGV, departs Paris Gare de Lyon)
+  Paris → Marseille    (~3h20 by TGV, departs Paris Gare de Lyon)
+  Paris → Bordeaux     (~2h10 by TGV, departs Paris Montparnasse)
+  Paris → Strasbourg   (~1h50 by TGV, departs Paris Gare de l'Est)
+  Paris → Nantes       (~2h10 by TGV, departs Paris Montparnasse)
+  Paris → Lille        (~1h by TGV, departs Paris Gare du Nord)
+  Lyon → Marseille     (~1h40 by TGV)
+  Bordeaux → Toulouse  (~2h10 by TGV)
+
+Hints:
+  - Use the full station name when possible (e.g. 'Paris Gare de Lyon' not just 'Paris') to avoid ambiguity.
+  - Paris has several mainline termini — each serves different regions:
+      Gare de Lyon   → southeast (Lyon, Marseille, Nice, Geneva)
+      Montparnasse   → southwest (Bordeaux, Nantes, Toulouse, Rennes)
+      Gare du Nord   → north (Lille, Calais, Eurostar)
+      Gare de l'Est  → east (Strasbourg, Reims, Metz)
+      Saint-Lazare   → northwest (Normandy, Cherbourg)
+  - If the user says 'Paris' without a terminus, infer the correct one from the destination.
+  - Omit 'datetime' to get the next available trains.`),
 		mcp.WithString("from",
 			mcp.Required(),
-			mcp.Description("Origin station name (e.g. 'Paris Gare de Lyon', 'Lyon Part-Dieu', 'Marseille Saint-Charles')"),
+			mcp.Description("Origin station name, e.g. 'Paris Gare de Lyon', 'Paris Montparnasse', 'Lyon Part-Dieu', 'Bordeaux Saint-Jean', 'Marseille Saint-Charles', 'Strasbourg', 'Toulouse Matabiau', 'Nice Ville', 'Nantes', 'Rennes'"),
 		),
 		mcp.WithString("to",
 			mcp.Required(),
-			mcp.Description("Destination station name"),
+			mcp.Description("Destination station name, e.g. 'Lyon Part-Dieu', 'Marseille Saint-Charles', 'Bordeaux Saint-Jean', 'Toulouse Matabiau', 'Strasbourg', 'Nantes', 'Rennes', 'Nice Ville', 'Montpellier Saint-Roch', 'Lille Flandres'"),
 		),
 		mcp.WithString("datetime",
-			mcp.Description("Departure date/time in YYYYMMDDTHHmmss format (e.g. '20260425T090000'). Omit for next available departures."),
+			mcp.Description("Desired departure date and time in YYYYMMDDTHHmmss format, e.g. '20260602T083000' for 2 June 2026 at 08:30. Omit to get the next available departures from now."),
 		),
 	)
 }
