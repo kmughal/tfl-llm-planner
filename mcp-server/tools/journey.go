@@ -12,7 +12,21 @@ import (
 func PlanJourneyTool() mcp.Tool {
 	return mcp.NewTool(
 		"plan_journey",
-		mcp.WithDescription("Plan a journey between two locations WITHIN London using TFL (tube, bus, DLR, Overground, Elizabeth line). Use when the user asks how to travel between two London places. Do NOT use for journeys outside London or involving France/Belgium/Eurostar."),
+		mcp.WithDescription(`Plan a journey between two locations WITHIN Greater London using the TFL network (tube, bus, DLR, Overground, Elizabeth line, tram).
+
+SCOPE — use ONLY when BOTH origin AND destination are inside the M25 / Greater London area.
+
+NEVER use for:
+  - Any journey to or from Paris, Brussels, or Amsterdam → use get_euromap_plans
+  - Any journey wholly within France → use plan_sncf_journey
+  - "London to Paris", "London to Brussels", "St Pancras to Paris" → use get_euromap_plans
+  - Any mention of Eurostar or the Channel Tunnel → use get_euromap_plans
+
+Examples that SHOULD use this tool:
+  - "Paddington to London Bridge"
+  - "How do I get to Canary Wharf from King's Cross?"
+  - "From Heathrow to Waterloo"
+  - "Victoria to Stratford"`),
 		mcp.WithString("from",
 			mcp.Required(),
 			mcp.Description("Origin: station name, address, or postcode (e.g. 'Paddington', 'SW1A 1AA')"),
@@ -68,6 +82,13 @@ func HandlePlanJourney(client *tfl.Client) func(context.Context, mcp.CallToolReq
 }
 
 func writeJourney(sb *strings.Builder, i int, j tfl.Journey) {
+	writeJourneyHeader(sb, i, j)
+	writeJourneyStops(sb, j.Legs)
+	writeJourneySteps(sb, j.Legs)
+	fmt.Fprintln(sb)
+}
+
+func writeJourneyHeader(sb *strings.Builder, i int, j tfl.Journey) {
 	connections := len(j.Legs) - 1
 	fmt.Fprintf(sb, "Option %d — %d min", i+1, j.Duration)
 	if j.Fare != nil && j.Fare.TotalCost > 0 {
@@ -79,23 +100,53 @@ func writeJourney(sb *strings.Builder, i int, j tfl.Journey) {
 		fmt.Fprintf(sb, " | %d connection(s)", connections)
 	}
 	fmt.Fprintf(sb, "\n  Departs: %s | Arrives: %s\n", formatTime(j.StartDateTime), formatTime(j.ArrivalDateTime))
+}
 
-	// Stop: lines drive the animated horizontal route in the frontend
-	for k, leg := range j.Legs {
-		if k == 0 {
-			fmt.Fprintf(sb, "  Stop: %s (%s)\n", leg.DeparturePoint.CommonName, formatTime(leg.DepartureTime))
+// writeJourneyStops emits Stop: lines for every station on the journey,
+// including intermediate stops from each leg's path when available.
+func writeJourneyStops(sb *strings.Builder, legs []tfl.Leg) {
+	seen := map[string]bool{}
+	emit := func(name, t string) {
+		if seen[name] {
+			return
 		}
-		fmt.Fprintf(sb, "  Stop: %s (%s)\n", leg.ArrivalPoint.CommonName, formatTime(leg.ArrivalTime))
+		seen[name] = true
+		if t != "" {
+			fmt.Fprintf(sb, "  Stop: %s (%s)\n", name, t)
+		} else {
+			fmt.Fprintf(sb, "  Stop: %s\n", name)
+		}
 	}
+	for k, leg := range legs {
+		if k == 0 {
+			emit(leg.DeparturePoint.CommonName, formatTime(leg.DepartureTime))
+		}
+		emitLegIntermediates(leg, emit)
+		emit(leg.ArrivalPoint.CommonName, formatTime(leg.ArrivalTime))
+	}
+}
 
-	for k, leg := range j.Legs {
+func emitLegIntermediates(leg tfl.Leg, emit func(name, t string)) {
+	if leg.Path == nil {
+		return
+	}
+	dep := leg.DeparturePoint.CommonName
+	arr := leg.ArrivalPoint.CommonName
+	for _, sp := range leg.Path.StopPoints {
+		if sp.Name != dep && sp.Name != arr {
+			emit(sp.Name, "")
+		}
+	}
+}
+
+func writeJourneySteps(sb *strings.Builder, legs []tfl.Leg) {
+	for k, leg := range legs {
 		fmt.Fprintf(sb, "  Step %d: %s (%s, %d min)\n",
 			k+1, leg.Instruction.Summary, leg.Mode.Name, leg.Duration)
 		if len(leg.Disruptions) > 0 {
 			fmt.Fprintf(sb, "    ⚠ Disruption: %s\n", leg.Disruptions[0].Description)
 		}
 	}
-	fmt.Fprintln(sb)
 }
 
 func formatJourneys(from, to string, journeys []tfl.Journey) string {

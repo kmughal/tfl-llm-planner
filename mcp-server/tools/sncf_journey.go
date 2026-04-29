@@ -14,6 +14,13 @@ func PlanSNCFJourneyTool() mcp.Tool {
 		"plan_sncf_journey",
 		mcp.WithDescription(`Plan a domestic train journey within France on the SNCF network (TGV, Intercités, TER, Ouigo).
 
+SCOPE — use ONLY when BOTH origin AND destination are cities or stations inside metropolitan France.
+
+NEVER use for:
+  - Paris → London, Lille → London, any route involving St Pancras → use get_euromap_plans
+  - Any route through the Channel Tunnel → use get_euromap_plans
+  - London journeys → use plan_journey (TFL)
+
 Use this tool when BOTH the origin AND destination are cities or stations inside France.
 Do NOT use for any journey that crosses into the UK or goes through the Channel Tunnel — use get_euromap_plans for those.
 

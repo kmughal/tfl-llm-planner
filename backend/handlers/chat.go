@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -54,8 +55,25 @@ Pass dates to get_euromap_plans / get_euromap_technical_plans as ISO8601, e.g. "
 - "Eurostar technical plans" → get_euromap_technical_plans
 - Never call plan_sncf_journey for any journey involving the UK
 
-## Response style
-Be concise and friendly. Show times, durations, and connections clearly.`,
+## Journey response format — MANDATORY RULE
+When a tool returns journey options in "Option N —" format, you MUST reproduce that EXACT structure.
+Do NOT paraphrase, summarise, or rewrite journeys as prose sentences.
+
+BAD (never do this):
+  "Take the Elizabeth line from Paddington and alight at Waterloo..."
+
+GOOD (always do this — copy the Option block verbatim from the tool result):
+  Option 1 — 22min | Direct
+    Departs: 09:05 | Arrives: 09:27
+    Stop: Paddington (09:05)
+    Stop: London Bridge (09:27)
+    Step 1: Elizabeth line (elizabeth-line, 22 min)
+
+The UI renders each "Option N —" block as an interactive animated card. If you rewrite it as prose, the card will not appear. Always output the raw "Option N — ..." blocks from the tool result, then add a one-sentence comment below if needed.
+
+## General response style
+Be concise. For status checks, one sentence per line per disrupted item is enough.
+Never repeat what the tool already said in paragraph form.`,
 		today, yesterday, tomorrow, today,
 	)
 }
@@ -129,7 +147,38 @@ func (h *Handler) Chat(c *gin.Context) {
 	sendEvent("done", string(b))
 }
 
+// journeyTools is the set of tools whose results must be reproduced verbatim.
+var journeyTools = map[string]bool{
+	"plan_journey":      true,
+	"plan_sncf_journey": true,
+}
+
+// journeyFormatReminder is injected right before the final LLM turn whenever a
+// journey tool was called, so the model sees it as the freshest instruction.
+const journeyFormatReminder = `FORMAT RULE — mandatory for this turn only:
+The tool above returned journey options in "Option N —" format.
+You MUST output those Option blocks verbatim. Do NOT convert them to prose sentences.
+Each "Option N —" line triggers an animated journey card in the UI. Prose breaks it.
+After the Option blocks you may add one short sentence of context if needed.`
+
+// containsJourneyFormat reports whether s contains the structured Option format
+// that the frontend's journey card renderer looks for.
+func containsJourneyFormat(s string) bool {
+	return strings.Contains(s, "Option 1")
+}
+
+// cleanJourneyResult strips the backend HINT footer before sending the tool
+// result directly to the frontend (the hint was only meant for the LLM).
+func cleanJourneyResult(s string) string {
+	if idx := strings.LastIndex(s, "HINT:"); idx != -1 {
+		return strings.TrimSpace(s[:idx])
+	}
+	return strings.TrimSpace(s)
+}
+
 // runAgentLoop runs the LLM → tool-call → LLM loop until the model stops calling tools.
+// If the LLM ignores the journey format, the structured tool result is used directly
+// as the reply — the frontend's "done" event overwrites any streamed prose.
 func (h *Handler) runAgentLoop(
 	ctx context.Context,
 	messages []llm.Message,
@@ -137,41 +186,76 @@ func (h *Handler) runAgentLoop(
 	onToken func(string),
 	sendEvent func(string, string),
 ) (string, error) {
+	var journeyResult string // last structured journey tool result
+
 	for range maxToolRounds {
 		msg, err := h.llm.StreamChat(ctx, messages, tools, onToken)
 		if err != nil {
 			return "", fmt.Errorf("LLM error: %w", err)
 		}
-
 		messages = append(messages, *msg)
 
-		// No tool calls → final answer
 		if len(msg.ToolCalls) == 0 {
-			return msg.Content, nil
+			return h.resolveFinalReply(msg.Content, journeyResult), nil
 		}
 
-		// Execute each tool call via MCP
-		for _, tc := range msg.ToolCalls {
-			log.Printf("[tool] call  name=%s args=%s", tc.Function.Name, tc.Function.Arguments)
-			sendEvent("tool_call", fmt.Sprintf(`{"name":%q}`, tc.Function.Name))
-
-			result, err := h.mcp.CallTool(ctx, tc.Function.Name, tc.Function.Arguments)
-			if err != nil {
-				result = fmt.Sprintf("Tool error: %v", err)
-			}
-
-			log.Printf("[tool] result name=%s result=%.200s", tc.Function.Name, result)
-			sendEvent("tool_result", fmt.Sprintf(`{"name":%q,"result":%q}`, tc.Function.Name, result))
-
-			messages = append(messages, llm.Message{
-				Role:       "tool",
-				ToolCallID: tc.ID,
-				Name:       tc.Function.Name,
-				Content:    result,
-			})
-		}
+		var updated []llm.Message
+		updated, journeyResult = h.executeToolCalls(ctx, msg.ToolCalls, journeyResult, sendEvent)
+		messages = append(messages, updated...)
 	}
 	return "", fmt.Errorf("exceeded %d tool rounds without a final answer", maxToolRounds)
+}
+
+// resolveFinalReply returns the LLM content, or the saved journey result when
+// the LLM failed to reproduce the structured Option format.
+func (h *Handler) resolveFinalReply(llmContent, journeyResult string) string {
+	if journeyResult != "" && !containsJourneyFormat(llmContent) {
+		log.Printf("[journey] LLM produced prose — overriding with structured tool result")
+		return journeyResult
+	}
+	return llmContent
+}
+
+// executeToolCalls runs every tool call in one LLM turn, appends tool-result
+// messages, and returns an updated journeyResult if a journey tool was called.
+func (h *Handler) executeToolCalls(
+	ctx context.Context,
+	calls []llm.ToolCall,
+	journeyResult string,
+	sendEvent func(string, string),
+) ([]llm.Message, string) {
+	msgs := make([]llm.Message, 0, len(calls)+1)
+	journeyToolCalled := false
+
+	for _, tc := range calls {
+		log.Printf("[tool] call  name=%s args=%s", tc.Function.Name, tc.Function.Arguments)
+		sendEvent("tool_call", fmt.Sprintf(`{"name":%q}`, tc.Function.Name))
+
+		result, err := h.mcp.CallTool(ctx, tc.Function.Name, tc.Function.Arguments)
+		if err != nil {
+			result = fmt.Sprintf("Tool error: %v", err)
+		}
+
+		if journeyTools[tc.Function.Name] && containsJourneyFormat(result) {
+			journeyResult = cleanJourneyResult(result)
+			journeyToolCalled = true
+		}
+
+		log.Printf("[tool] result name=%s result=%.200s", tc.Function.Name, result)
+		sendEvent("tool_result", fmt.Sprintf(`{"name":%q,"result":%q}`, tc.Function.Name, result))
+
+		msgs = append(msgs, llm.Message{
+			Role:       "tool",
+			ToolCallID: tc.ID,
+			Name:       tc.Function.Name,
+			Content:    result,
+		})
+	}
+
+	if journeyToolCalled {
+		msgs = append(msgs, llm.Message{Role: "system", Content: journeyFormatReminder})
+	}
+	return msgs, journeyResult
 }
 
 // Health handles GET /api/health

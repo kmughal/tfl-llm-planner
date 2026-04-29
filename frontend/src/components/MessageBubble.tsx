@@ -294,6 +294,14 @@ function StepIcon({ text }: { readonly text: string }) {
 const SNCF_RED = "#E2001A"
 
 // ── Horizontal animated stop timeline ────────────────────────────────────────
+// Per-stop timing: each stop waits for the track segment before it to finish.
+// track segment i takes TRACK_DUR seconds; dot i appears TRACK_DUR after segment i-1 starts.
+const STOP_STEP  = 0.32  // seconds between stop "arrivals"
+const TRACK_DUR  = 0.28  // duration of each track segment animation
+const DOT_DUR    = 0.2
+
+function stopDelay(i: number) { return i * STOP_STEP }
+
 function HorizontalRoute({ stops }: { readonly stops: Stop[] }) {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: "-40px" })
@@ -301,18 +309,18 @@ function HorizontalRoute({ stops }: { readonly stops: Stop[] }) {
 
   return (
     <div ref={ref} className="overflow-x-auto -mx-4 px-4 py-1 scrollbar-none">
-      <div style={{ minWidth: `${Math.max(stops.length * 90, 260)}px` }}>
+      <div style={{ minWidth: `${Math.max(stops.length * 100, 280)}px` }}>
 
-        {/* Times */}
+        {/* Times — appear just before the dot */}
         <div className="flex">
           {stops.map((s, i) => (
             <motion.div
               key={`t-${s.name}-${s.time}`}
               className="flex-1 text-center text-[11px] font-bold tabular-nums pb-1.5 leading-none"
               style={{ color: i === 0 || i === last ? "#111827" : "#9ca3af" }}
-              initial={{ opacity: 0, y: -6 }}
+              initial={{ opacity: 0, y: -8 }}
               animate={inView ? { opacity: 1, y: 0 } : {}}
-              transition={{ delay: i * 0.08 + 0.1, duration: 0.22 }}
+              transition={{ delay: stopDelay(i), duration: DOT_DUR, ease: "easeOut" }}
             >
               {s.time}
             </motion.div>
@@ -323,36 +331,38 @@ function HorizontalRoute({ stops }: { readonly stops: Stop[] }) {
         <div className="flex items-center py-0.5">
           {stops.map((s, i) => (
             <div key={`r-${s.name}-${s.time}`} className="flex items-center" style={{ flex: i < last ? 1 : "none" }}>
+              {/* Dot — pops in when this stop "arrives" */}
               <motion.div
                 className="rounded-full border-[2.5px] shrink-0 cursor-default"
                 style={{
-                  width:  i === 0 || i === last ? 18 : 13,
-                  height: i === 0 || i === last ? 18 : 13,
-                  borderColor: SNCF_RED,
+                  width:           i === 0 || i === last ? 20 : 14,
+                  height:          i === 0 || i === last ? 20 : 14,
+                  borderColor:     SNCF_RED,
                   backgroundColor: i === 0 || i === last ? SNCF_RED : "#fff",
-                  boxShadow: `0 0 0 ${i === 0 || i === last ? 4 : 3}px ${SNCF_RED}22`,
+                  boxShadow:       `0 0 0 ${i === 0 || i === last ? 5 : 3}px ${SNCF_RED}22`,
                   zIndex: 10,
                   position: "relative",
                 }}
                 initial={{ scale: 0, opacity: 0 }}
                 animate={inView ? { scale: 1, opacity: 1 } : {}}
-                transition={{ delay: i * 0.08, type: "spring", stiffness: 520, damping: 18 }}
-                whileHover={{ scale: 1.45, boxShadow: `0 0 0 7px ${SNCF_RED}30` }}
+                transition={{ delay: stopDelay(i), type: "spring", stiffness: 480, damping: 16 }}
+                whileHover={{ scale: 1.5, boxShadow: `0 0 0 8px ${SNCF_RED}28` }}
               />
+              {/* Track segment — draws after this dot, leading to the next stop */}
               {i < last && (
                 <motion.div
-                  className="flex-1 h-[2px] origin-left"
+                  className="flex-1 h-[2.5px] origin-left"
                   style={{ backgroundColor: SNCF_RED }}
                   initial={{ scaleX: 0 }}
                   animate={inView ? { scaleX: 1 } : {}}
-                  transition={{ delay: i * 0.08 + 0.04, duration: 0.22, ease: "easeOut" }}
+                  transition={{ delay: stopDelay(i) + 0.08, duration: TRACK_DUR, ease: "easeInOut" }}
                 />
               )}
             </div>
           ))}
         </div>
 
-        {/* Names */}
+        {/* Names — slide up just after the dot */}
         <div className="flex">
           {stops.map((s, i) => (
             <motion.div
@@ -360,11 +370,11 @@ function HorizontalRoute({ stops }: { readonly stops: Stop[] }) {
               className="flex-1 text-center text-[10px] leading-tight pt-1.5 px-0.5"
               style={{
                 fontWeight: i === 0 || i === last ? 600 : 400,
-                color: i === 0 || i === last ? "#111827" : "#6b7280",
+                color:      i === 0 || i === last ? "#111827" : "#6b7280",
               }}
-              initial={{ opacity: 0, y: 6 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={inView ? { opacity: 1, y: 0 } : {}}
-              transition={{ delay: i * 0.08 + 0.14, duration: 0.22 }}
+              transition={{ delay: stopDelay(i) + 0.1, duration: DOT_DUR, ease: "easeOut" }}
             >
               {s.name}
             </motion.div>

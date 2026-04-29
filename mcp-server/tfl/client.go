@@ -121,6 +121,15 @@ type Leg struct {
 	ArrivalPoint   StopPoint    `json:"arrivalPoint"`
 	Mode           Mode         `json:"mode"`
 	Disruptions    []Disruption `json:"disruptions"`
+	Path           *LegPath     `json:"path,omitempty"`
+}
+
+type LegPath struct {
+	StopPoints []NamedPoint `json:"stopPoints"`
+}
+
+type NamedPoint struct {
+	Name string `json:"name"`
 }
 
 type Instruction struct {

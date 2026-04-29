@@ -17,10 +17,12 @@ var knownModes = []string{
 func GetStatusByModeTool() mcp.Tool {
 	return mcp.NewTool(
 		"get_status_by_mode",
-		mcp.WithDescription("Get current service status for all lines belonging to one or more transport modes. "+
-			"Use for broad questions like 'Give me line status for London', 'How are the tubes running today?', 'All TFL lines status'. "+
+		mcp.WithDescription("Get service status for ALL TFL lines in a given mode group (TFL ONLY — not SNCF, not Eurostar). "+
+			"Use for broad London questions: 'How are the tubes running?', 'Give me all TFL line statuses', 'Any disruptions on London transport today?'. "+
 			"For a full London overview pass modes='tube,dlr,overground,elizabeth-line'. "+
-			"For a specific named line (e.g. 'Central line') use get_line_status instead."),
+			"For a single named line (e.g. 'Central line') use get_line_status instead. "+
+			"For French train disruptions use get_sncf_disruptions. "+
+			"For Eurostar services use get_euromap_plans."),
 		mcp.WithString("modes",
 			mcp.Required(),
 			mcp.Description(fmt.Sprintf(

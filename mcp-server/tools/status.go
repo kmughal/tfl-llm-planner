@@ -19,7 +19,18 @@ var knownLines = []string{
 func GetLineStatusTool() mcp.Tool {
 	return mcp.NewTool(
 		"get_line_status",
-		mcp.WithDescription("Get current service status for one or more TFL lines. Returns severity, description and any disruption reason."),
+		mcp.WithDescription(`Get current service status for one or more TFL (Transport for London) lines.
+Returns severity, description and disruption reason for each queried line.
+
+SCOPE — TFL ONLY. Covers: tube, DLR, Overground, Elizabeth line, tram, bus.
+NEVER use for French trains → use get_sncf_disruptions for SNCF.
+NEVER use for Eurostar → use get_euromap_plans for cross-channel services.
+
+Use this tool when the user asks about a SPECIFIC named London line, e.g.:
+  - "Is the Central line running?"
+  - "What's happening on the Jubilee line?"
+  - "Is there a delay on the Piccadilly line?"
+For ALL London lines at once use get_status_by_mode with modes='tube,dlr,overground,elizabeth-line'.`),
 		mcp.WithString("lines",
 			mcp.Description(fmt.Sprintf(
 				"Comma-separated line IDs. Known lines: %s. Use 'all' for every tube line.",

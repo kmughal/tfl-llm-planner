@@ -22,7 +22,15 @@ const (
 func GetEuromapPlansTool() mcp.Tool {
 	return mcp.NewTool(
 		"get_euromap_plans",
-		mcp.WithDescription("Fetch Eurostar commercial service schedules with station stops and coordinates. Use for ANY cross-channel journey (London↔Paris, London↔Brussels, London↔Amsterdam) or when the user mentions 'Eurostar', 'Channel Tunnel', or asks what trains are running between the UK and Europe. Returns map data for each service. Defaults to today if no date given."),
+		mcp.WithDescription(`Fetch Eurostar commercial service schedules with station stops and coordinates.
+
+ALWAYS use this tool (instead of plan_journey or plan_sncf_journey) when:
+  - The journey crosses the Channel Tunnel: London ↔ Paris, London ↔ Brussels, London ↔ Amsterdam
+  - The user mentions "Eurostar", "Channel Tunnel", "St Pancras International", or "cross-channel"
+  - The user asks what international trains are running between the UK and Europe
+  - Origin or destination is St Pancras, Ebbsfleet, Ashford, Calais, Lille, Paris Nord, Brussels Midi, Amsterdam
+
+Returns map data and stop times for each service. Defaults to today if no date is given.`),
 		mcp.WithString("fromDateTime",
 			mcp.Description("Start date/time in ISO8601 format, e.g. '2025-05-12T00:00:00Z'. Omit to use today's date."),
 		),

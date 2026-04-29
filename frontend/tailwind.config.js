@@ -32,6 +32,16 @@ export default {
           cycle:      "#f8a800",
           rail:       "#0099cc",
         },
+        sncf: {
+          red:  "#e2001a",
+          bg:   "#fff0f1",
+          border: "#fbcdd1",
+        },
+        eurostar: {
+          navy: "#003366",
+          bg:   "#eff6ff",
+          border: "#bfdbfe",
+        },
       },
       fontFamily: {
         sans: ['"Inter"', 'system-ui', 'sans-serif'],
