@@ -1,10 +1,10 @@
-import { useRef } from "react"
+import { useCallback, useRef, useState } from "react"
 import { motion, useInView } from "framer-motion"
 import { cn } from "../lib/utils"
 import type { ChatMessage, ToolEvent } from "../lib/types"
 import { ToolCallBadge } from "./ToolCallBadge"
 import { EuromapCard } from "./EuromapCard"
-import { Train, Bus, MapPin, Clock, ArrowRight } from "lucide-react"
+import { Train, Bus, MapPin, Clock, ArrowRight, Volume2, VolumeX } from "lucide-react"
 
 const EUROMAP_TOOLS = new Set([
   "get_euromap_plans",
@@ -627,6 +627,60 @@ function MessageContent({ message, isUser }: { readonly message: ChatMessage; re
   return <RichMessage text={message.content} />
 }
 
+// ── Text-to-speech ────────────────────────────────────────────────────────────
+
+// Strip markdown and control chars so speechSynthesis reads clean prose.
+function toPlainText(content: string): string {
+  return content
+    .replaceAll(/\*\*(.+?)\*\*/g, "$1")
+    .replaceAll(/^#{1,3}\s+/gm, "")
+    .replaceAll(/^[-*•]\s+/gm, "")
+    .replaceAll(/^\d+\.\s+/gm, "")
+    .replaceAll(/[⚠🚫]/gu, "")
+    .replaceAll(/\s{2,}/g, " ")
+    .trim()
+}
+
+function SpeakButton({ content }: { readonly content: string }) {
+  const [speaking, setSpeaking] = useState(false)
+
+  const toggle = useCallback(() => {
+    if (!globalThis.speechSynthesis) return
+    if (speaking) {
+      globalThis.speechSynthesis.cancel()
+      setSpeaking(false)
+      return
+    }
+    const utterance = new SpeechSynthesisUtterance(toPlainText(content))
+    utterance.lang  = "en-GB"
+    utterance.onend   = () => setSpeaking(false)
+    utterance.onerror = () => setSpeaking(false)
+    globalThis.speechSynthesis.speak(utterance)
+    setSpeaking(true)
+  }, [content, speaking])
+
+  if (!globalThis.speechSynthesis) return null
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      className={cn(
+        "mt-1.5 flex items-center gap-1 text-[11px] transition-colors",
+        speaking
+          ? "text-claude-accent"
+          : "text-claude-muted hover:text-claude-text",
+      )}
+      aria-label={speaking ? "Stop speaking" : "Read aloud"}
+    >
+      {speaking
+        ? <VolumeX className="w-3.5 h-3.5" />
+        : <Volume2 className="w-3.5 h-3.5" />}
+      <span>{speaking ? "Stop" : "Read aloud"}</span>
+    </button>
+  )
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 export function MessageBubble({ message }: { readonly message: ChatMessage }) {
   const isUser = message.role === "user"
@@ -661,6 +715,9 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
         )}
       >
         <MessageContent message={message} isUser={isUser} />
+        {!isUser && message.content && !message.streaming && (
+          <SpeakButton content={message.content} />
+        )}
       </div>
     </div>
   )
