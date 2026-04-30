@@ -155,7 +155,7 @@ func formatJourneys(from, to string, journeys []tfl.Journey) string {
 	for i, j := range journeys {
 		writeJourney(&sb, i, j)
 	}
-	sb.WriteString("HINT: Present each journey using the EXACT 'Option N —' heading format above. Do NOT rewrite as narrative prose. Each option will be rendered as an interactive animated card in the UI.")
+	sb.WriteString("HINT: Present each journey using the EXACT 'Option N —' heading format above. Copy ALL lines verbatim — including every individual 'Stop:' line for every intermediate stop. Do NOT rewrite as narrative prose. Do NOT summarise stops as '8 stops' or similar — every Stop: line must appear in your output. Each 'Option N —' line triggers an animated journey card in the UI that shows all stop names; omitting Stop: lines breaks the display.")
 	return sb.String()
 }
 

@@ -38,6 +38,7 @@ func main() {
 	s.AddTool(tools.GetEuromapTechnicalPlansTool(), tools.HandleGetEuromapTechnicalPlans(euromapClient))
 	s.AddTool(tools.GetEuromapPlanByIDTool(), tools.HandleGetEuromapPlanByID(euromapClient))
 	s.AddTool(tools.GetEuromapTechnicalPlanByIDTool(), tools.HandleGetEuromapTechnicalPlanByID(euromapClient))
+	s.AddTool(tools.GetEuromapDashboardTool(), tools.HandleGetEuromapDashboard(euromapClient))
 
 	transport := os.Getenv("MCP_TRANSPORT") // "stdio" (default) or "sse"
 

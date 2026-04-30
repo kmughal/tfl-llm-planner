@@ -4,13 +4,16 @@ import { cn } from "../lib/utils"
 import type { ChatMessage, ToolEvent } from "../lib/types"
 import { ToolCallBadge } from "./ToolCallBadge"
 import { EuromapCard } from "./EuromapCard"
+import { EuromapDashboard } from "./EuromapDashboard"
 import { Train, Bus, MapPin, Clock, ArrowRight, Volume2, VolumeX } from "lucide-react"
 
+const DASHBOARD_TOOL = "get_eurostar_dashboard"
 const EUROMAP_TOOLS = new Set([
   "get_euromap_plans",
   "get_euromap_technical_plans",
   "get_euromap_plan_by_id",
   "get_euromap_technical_plan_by_id",
+  DASHBOARD_TOOL,
 ])
 
 // ── TFL line colours ──────────────────────────────────────────────────────────
@@ -438,8 +441,8 @@ function JourneyCard({ block, color }: { readonly block: Block & { kind: "journe
       </div>
 
       <div className="px-4 py-3 flex flex-col gap-3">
-        {/* Animated stop timeline */}
-        {hasStops && <HorizontalRoute stops={stops} color={color} />}
+        {/* Animated stop timeline — shown only for short journeys; vertical list handles larger sets */}
+        {hasStops && stops.length <= 6 && <HorizontalRoute stops={stops} color={color} />}
 
         {/* Fallback dep→arr bar when no stop data */}
         {!hasStops && hasTime && (
@@ -460,6 +463,53 @@ function JourneyCard({ block, color }: { readonly block: Block & { kind: "journe
               <div className="text-xl font-bold text-gray-900 tabular-nums leading-none">{arrival.time || "—"}</div>
               {arrival.station && <div className="text-[11px] text-gray-500 mt-0.5 max-w-[110px] leading-tight line-clamp-2 text-right">{arrival.station}</div>}
             </div>
+          </div>
+        )}
+
+        {/* All stops — vertical list */}
+        {hasStops && (
+          <div className="border-t pt-2 flex flex-col gap-0" style={{ borderColor: `${color}15` }}>
+            <div className="text-[10px] font-semibold uppercase tracking-wider pb-1.5" style={{ color: `${color}99` }}>
+              All stops · {stops.length}
+            </div>
+            {stops.map((stop, i) => {
+              const isFirst = i === 0
+              const isLast  = i === stops.length - 1
+              return (
+                <div key={`vs-${stop.name}-${i}`} className="flex items-stretch gap-2 min-w-0">
+                  {/* dot + connector */}
+                  <div className="flex flex-col items-center shrink-0" style={{ width: 14 }}>
+                    <div
+                      className="rounded-full border-2 shrink-0 mt-1"
+                      style={{
+                        width:           isFirst || isLast ? 10 : 7,
+                        height:          isFirst || isLast ? 10 : 7,
+                        borderColor:     color,
+                        backgroundColor: isFirst || isLast ? color : "#fff",
+                      }}
+                    />
+                    {!isLast && (
+                      <div className="flex-1 w-px min-h-[10px]" style={{ backgroundColor: `${color}35` }} />
+                    )}
+                  </div>
+                  {/* name + time */}
+                  <div className="flex items-center justify-between w-full pb-1.5 min-w-0">
+                    <span
+                      className="text-xs leading-snug truncate"
+                      style={{
+                        fontWeight: isFirst || isLast ? 600 : 400,
+                        color:      isFirst || isLast ? "#111827" : "#4b5563",
+                      }}
+                    >
+                      {stop.name}
+                    </span>
+                    {stop.time && (
+                      <span className="text-[10px] tabular-nums text-gray-400 ml-2 shrink-0">{stop.time}</span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 
@@ -724,12 +774,14 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
                 <ToolCallBadge key={`${ev.type}-${ev.name}`} event={ev} />
               ))}
           </div>
-          {/* Euromap map cards — rendered from raw tool result data */}
+          {/* Euromap map cards / dashboard — rendered from raw tool result data */}
           {toolEvents
             .filter(ev => EUROMAP_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)
-            .map((ev) => (
-              <EuromapCard key={`euromap-${ev.name}`} result={ev.result ?? ""} />
-            ))}
+            .map((ev) =>
+              ev.name === DASHBOARD_TOOL
+                ? <EuromapDashboard key={`dashboard-${ev.name}`} result={ev.result ?? ""} />
+                : <EuromapCard key={`euromap-${ev.name}`} result={ev.result ?? ""} />
+            )}
         </div>
       )}
       <div

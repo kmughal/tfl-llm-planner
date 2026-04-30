@@ -361,38 +361,120 @@ func technicalPlanByServiceCodeFallback(client *euromap.Client, planID, date, se
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 
+// maxDetailedPlans is the threshold above which formatPlans switches to a
+// concise text summary instead of emitting individual map cards.
+const maxDetailedPlans = 5
+
+// ukOriginCodes are Eurostar station codes located in the UK.
+var ukOriginCodes = map[string]bool{"SPX": true, "EBF": true, "ASI": true}
+
 func formatPlans(fromDateTime, ranges string, plans euromap.PlansResponse) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "Eurostar Plans from %s (ranges: %s) — %d result(s):\n\n", fromDateTime, ranges, len(plans))
-
-	for _, p := range plans {
-		dep := fmtISOTime(p.DepartureDatetime)
-		arr := fmtISOTime(p.ArrivalDatetime)
-
-		fmt.Fprintf(&sb, "Plan %s | %s | Service %s | %s\n", p.PlanID, titleCase(p.PlanType), p.ServiceCode, p.Status)
-		fmt.Fprintf(&sb, "Departs: %s | Arrives: %s | %d stations\n", dep, arr, len(p.Stations))
-		for _, s := range p.Stations {
-			fmt.Fprintf(&sb, "  %d. %s (%s, %s)", s.SequenceNumber, s.ShortCode, s.StopType, s.Country)
-			if s.DepartureDatetime != "" {
-				fmt.Fprintf(&sb, " dep:%s", fmtISOTime(s.DepartureDatetime))
-			}
-			if s.ArrivalDatetime != "" {
-				fmt.Fprintf(&sb, " arr:%s", fmtISOTime(s.ArrivalDatetime))
-			}
-			fmt.Fprintln(&sb)
+	fmt.Fprintf(&sb, "Eurostar Plans %s — %d service(s):\n\n", fmtISODate(fromDateTime), len(plans))
+	if len(plans) > maxDetailedPlans {
+		writePlansSummary(&sb, fromDateTime, plans)
+	} else {
+		for _, p := range plans {
+			writePlanDetail(&sb, p)
 		}
-
-		fmt.Fprintf(&sb, "PLAN_START:%s|%s|%s|%s|%s|%s\n", p.PlanID, p.PlanType, p.ServiceCode, p.Status, dep, arr)
-		for _, s := range p.Stations {
-			fmt.Fprintf(&sb, "MAP_STATION:%s|%s|%s|%s|%s|%s\n",
-				s.ShortCode, s.StopType, s.Latitude, s.Longitude,
-				fmtISOTime(s.DepartureDatetime), fmtISOTime(s.ArrivalDatetime),
-			)
-		}
-		fmt.Fprintln(&sb, "PLAN_END")
-		fmt.Fprintln(&sb)
 	}
 	return sb.String()
+}
+
+type planStats struct {
+	statusGroups   map[string][]string
+	outbound       int
+	firstDep       string
+	lastDep        string
+}
+
+func aggregatePlans(plans euromap.PlansResponse) planStats {
+	st := planStats{statusGroups: map[string][]string{}}
+	for _, p := range plans {
+		st.statusGroups[p.Status] = append(st.statusGroups[p.Status], p.ServiceCode)
+		if len(p.Stations) > 0 && ukOriginCodes[strings.ToUpper(p.Stations[0].ShortCode)] {
+			st.outbound++
+		}
+		updateDepRange(&st.firstDep, &st.lastDep, fmtISOTime(p.DepartureDatetime))
+	}
+	return st
+}
+
+func updateDepRange(first, last *string, dep string) {
+	if dep == "" {
+		return
+	}
+	if *first == "" || dep < *first {
+		*first = dep
+	}
+	if *last == "" || dep > *last {
+		*last = dep
+	}
+}
+
+func writeStatusGroups(sb *strings.Builder, groups map[string][]string) {
+	for _, status := range []string{"active", "cancelled", "suspended", "amended"} {
+		if codes := groups[status]; len(codes) > 0 {
+			fmt.Fprintf(sb, "%s (%d): %s\n", titleCase(status), len(codes), strings.Join(codes, " "))
+			delete(groups, status)
+		}
+	}
+	for status, codes := range groups {
+		fmt.Fprintf(sb, "%s (%d): %s\n", titleCase(status), len(codes), strings.Join(codes, " "))
+	}
+}
+
+func writePlansSummary(sb *strings.Builder, fromDateTime string, plans euromap.PlansResponse) {
+	st := aggregatePlans(plans)
+	inbound := len(plans) - st.outbound
+	cancelledCodes := st.statusGroups["cancelled"]
+
+	fmt.Fprintf(sb, "Direction: %d outbound (UK→Europe), %d inbound (Europe→UK)\n\n", st.outbound, inbound)
+	writeStatusGroups(sb, st.statusGroups)
+
+	sb.WriteString("\nHINT: Bulk status query. Respond with 2–4 sentences: total services, status breakdown (active/cancelled/etc.), direction split. Do NOT render individual service cards or list every train number.")
+
+	// Machine-readable block parsed by the frontend StatusSummaryCard.
+	// Format: date|total|active|cancelled|outbound|inbound|firstDep|lastDep|cancelledCodes(csv)
+	fmt.Fprintf(sb, "\nSTATUS_SUMMARY_START:%s|%d|%d|%d|%d|%d|%s|%s|%s\nSTATUS_SUMMARY_END\n",
+		fmtISODate(fromDateTime),
+		len(plans),
+		len(st.statusGroups["active"]),
+		len(cancelledCodes),
+		st.outbound,
+		inbound,
+		st.firstDep,
+		st.lastDep,
+		strings.Join(cancelledCodes, ","),
+	)
+}
+
+func writePlanDetail(sb *strings.Builder, p euromap.Plan) {
+	dep := fmtISOTime(p.DepartureDatetime)
+	arr := fmtISOTime(p.ArrivalDatetime)
+
+	fmt.Fprintf(sb, "Plan %s | %s | Service %s | %s\n", p.PlanID, titleCase(p.PlanType), p.ServiceCode, p.Status)
+	fmt.Fprintf(sb, "Departs: %s | Arrives: %s | %d stations\n", dep, arr, len(p.Stations))
+	for _, s := range p.Stations {
+		fmt.Fprintf(sb, "  %d. %s (%s, %s)", s.SequenceNumber, s.ShortCode, s.StopType, s.Country)
+		if s.DepartureDatetime != "" {
+			fmt.Fprintf(sb, " dep:%s", fmtISOTime(s.DepartureDatetime))
+		}
+		if s.ArrivalDatetime != "" {
+			fmt.Fprintf(sb, " arr:%s", fmtISOTime(s.ArrivalDatetime))
+		}
+		fmt.Fprintln(sb)
+	}
+
+	fmt.Fprintf(sb, "PLAN_START:%s|%s|%s|%s|%s|%s\n", p.PlanID, p.PlanType, p.ServiceCode, p.Status, dep, arr)
+	for _, s := range p.Stations {
+		fmt.Fprintf(sb, "MAP_STATION:%s|%s|%s|%s|%s|%s\n",
+			s.ShortCode, s.StopType, s.Latitude, s.Longitude,
+			fmtISOTime(s.DepartureDatetime), fmtISOTime(s.ArrivalDatetime),
+		)
+	}
+	fmt.Fprintln(sb, "PLAN_END")
+	fmt.Fprintln(sb)
 }
 
 func passagePointTimes(pp euromap.PassagePoint) (dep, arr string) {
@@ -449,6 +531,13 @@ func formatTechnicalPlans(fromDateTime, ranges string, plans euromap.TechnicalPl
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+func fmtISODate(dt string) string {
+	if len(dt) >= 10 {
+		return dt[:10]
+	}
+	return dt
+}
 
 func fmtISOTime(dt string) string {
 	if dt == "" {

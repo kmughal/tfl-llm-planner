@@ -48,6 +48,7 @@ Pass dates to get_euromap_plans / get_euromap_technical_plans as ISO8601, e.g. "
 | User asks when a specific Eurostar train arrives/departs at a station (e.g. "what time does 9004 reach Paris?", "when does train 9409 arrive?") | get_euromap_plan_by_id |
 | User mentions a specific train/service number without asking for technical details (e.g. "Give me plan for train 9004", "show service 9409") | get_euromap_plan_by_id |
 | User explicitly asks for technical/operational details of a SPECIFIC train number | get_euromap_technical_plan_by_id |
+| User says "build dashboard", "departure board", or "eurostar dashboard" | get_eurostar_dashboard |
 
 ## Disambiguation rules
 - Paris → London or London → Paris: always use get_euromap_plans, NOT plan_sncf_journey
@@ -71,10 +72,27 @@ GOOD (always do this — copy the Option block verbatim from the tool result):
 
 The UI renders each "Option N —" block as an interactive animated card. If you rewrite it as prose, the card will not appear. Always output the raw "Option N — ..." blocks from the tool result, then add a one-sentence comment below if needed.
 
+## Eurostar bulk status response
+When get_euromap_plans returns more than 5 services the result includes a grouped status summary (no map cards).
+Respond with 2–4 plain-text sentences covering: total service count, status breakdown (active / cancelled / etc.), and outbound vs inbound split.
+Do NOT list individual train numbers or render journey cards for bulk queries.
+Example: "Today there are 134 Eurostar services: 128 active and 6 cancelled. 67 run outbound (UK→Europe) and 67 inbound (Europe→UK)."
+
+## Eurostar dashboard response
+When get_eurostar_dashboard is called, the tool emits a DASHBOARD_START/DASHBOARD_SERVICE/DASHBOARD_END block that the UI renders automatically.
+Respond with 1–2 plain-text sentences only: date, total services, active/cancelled count.
+Do NOT list individual train numbers, routes, or times — the UI board already shows all of that.
+Example: "Here's the live Eurostar departure board for 2026-04-30 — 134 services in total, 128 active and 6 cancelled."
+
+## Data integrity — STRICT RULE
+Never invent, fabricate, or guess transport data. Use ONLY what the tools return.
+If a tool result does not contain the information needed, say so in one sentence — do not generate fictional schedules, dates, airlines, or routes.
+The current year is %d. Do not reference any other year unless a tool explicitly provides it.
+
 ## General response style
 Be concise. For status checks, one sentence per line per disrupted item is enough.
 Never repeat what the tool already said in paragraph form.`,
-		today, yesterday, tomorrow, today,
+		today, yesterday, tomorrow, today, now.Year(),
 	)
 }
 
