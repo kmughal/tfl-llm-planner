@@ -52,11 +52,11 @@ function parseDisruptions(raw: string): { stats: DisruptionStats; items: Disrupt
 }
 
 // ── Per-effect styling ────────────────────────────────────────────────────────
-function effectStyle(effect: string): { color: string; bg: string; label: string } {
-  if (effect === "NO_SERVICE")          return { color: "#ef4444", bg: "#fef2f2", label: "No Service" }
-  if (effect === "SIGNIFICANT_DELAYS")  return { color: "#f59e0b", bg: "#fffbeb", label: "Delays" }
-  if (effect === "REDUCED_SERVICE")     return { color: "#f97316", bg: "#fff7ed", label: "Reduced" }
-  return { color: "#6b7280", bg: "#f9fafb", label: "Alert" }
+function effectStyle(effect: string): { color: string; bg: string; label: string; fallbackMsg: string } {
+  if (effect === "NO_SERVICE")          return { color: "#ef4444", bg: "#fef2f2", label: "No Service",  fallbackMsg: "Service cancelled on this route" }
+  if (effect === "SIGNIFICANT_DELAYS")  return { color: "#f59e0b", bg: "#fffbeb", label: "Delays",      fallbackMsg: "Significant delays reported" }
+  if (effect === "REDUCED_SERVICE")     return { color: "#f97316", bg: "#fff7ed", label: "Reduced",     fallbackMsg: "Reduced service in operation" }
+  return { color: "#6b7280", bg: "#f9fafb", label: "Alert", fallbackMsg: "Service disruption in progress" }
 }
 
 function EffectIcon({ effect, size = 14 }: { readonly effect: string; readonly size?: number }) {
@@ -117,16 +117,19 @@ function StatTile({
 
 // ── Single disruption card ────────────────────────────────────────────────────
 function DisruptionCard({ item, index }: { readonly item: Disruption; readonly index: number }) {
-  const { color, bg, label } = effectStyle(item.effect)
+  const { color, bg, label, fallbackMsg } = effectStyle(item.effect)
   const isNoService = item.effect === "NO_SERVICE"
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: "-20px" })
+
+  const displayName    = item.impacted || item.severityName || label
+  const displayMessage = item.message  || fallbackMsg
 
   return (
     <motion.div
       ref={ref}
       className="relative flex gap-0 overflow-hidden rounded-xl border bg-white"
-      style={{ borderColor: `${color}25` }}
+      style={{ borderColor: `${color}30`, minHeight: 56 }}
       initial={{ opacity: 0, y: 16 }}
       animate={inView ? { opacity: 1, y: 0 } : {}}
       transition={{ delay: index * 0.06, duration: 0.28, ease: "easeOut" }}
@@ -139,32 +142,30 @@ function DisruptionCard({ item, index }: { readonly item: Disruption; readonly i
       />
 
       <div className="flex-1 px-3 py-2.5 min-w-0">
-        {/* Top row: icon badge + impacted name + effect badge */}
+        {/* Top row: index badge + effect chip + impacted/severity name */}
         <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[9px] font-mono text-gray-400 tabular-nums w-4 shrink-0">
+            {index + 1}
+          </span>
           <span
-            className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+            className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
             style={{ backgroundColor: bg, color }}
           >
             <EffectIcon effect={item.effect} size={9} />
             {label}
           </span>
-
-          {item.impacted && (
-            <span className="flex items-center gap-1 text-[11px] font-semibold text-gray-700 truncate">
-              <Train style={{ width: 10, height: 10, color: "#6b7280", flexShrink: 0 }} />
-              <span className="truncate">{item.impacted}</span>
-            </span>
-          )}
+          <span className="flex items-center gap-1 text-[11px] font-semibold text-gray-700 min-w-0">
+            <Train style={{ width: 10, height: 10, color: "#6b7280", flexShrink: 0 }} />
+            <span className="truncate">{displayName}</span>
+          </span>
         </div>
 
-        {/* Message / cause */}
-        {item.message && (
-          <p className="text-[11px] text-gray-500 mt-1 leading-snug line-clamp-2">
-            {item.message}
-          </p>
-        )}
+        {/* Message / cause — always shown, uses fallback when empty */}
+        <p className="text-[11px] text-gray-500 mt-1 leading-snug line-clamp-2">
+          {displayMessage}
+        </p>
 
-        {/* Time window */}
+        {/* Time window — only when available */}
         {(item.begin || item.end) && (
           <div className="flex items-center gap-1 mt-1.5">
             <Clock style={{ width: 9, height: 9, color: "#9ca3af", flexShrink: 0 }} />
@@ -185,7 +186,7 @@ export function SNCFDisruptions({ result }: { readonly result: string }) {
   const { stats, items } = parsed
 
   return (
-    <div className="w-full rounded-2xl overflow-hidden border border-red-100 shadow-md" style={{ maxWidth: 560 }}>
+    <div className="w-full rounded-2xl overflow-hidden border border-red-100 shadow-md">
 
       {/* Header */}
       <div

@@ -41,6 +41,9 @@ func HandleGetEuromapLiveMap(client *euromap.Client) func(context.Context, mcp.C
 			fromDateTime = time.Now().UTC().Format(isoDateTimeZero)
 		}
 		ranges := req.GetString("ranges", defaultRanges)
+		if ranges == "" {
+			ranges = defaultRanges
+		}
 
 		plans, err := client.GetPlans(fromDateTime, ranges)
 		if err != nil {

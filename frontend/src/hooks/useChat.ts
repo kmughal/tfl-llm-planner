@@ -1,31 +1,62 @@
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import type { ChatMessage, LLMMessage, ToolEvent } from "../lib/types"
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080"
 
-export function useChat() {
-  const [messages, setMessages]       = useState<ChatMessage[]>([])
-  const [loading, setLoading]         = useState(false)
-  const llmHistoryRef                 = useRef<LLMMessage[]>([])  // full LLM sequence
-  const abortRef                      = useRef<AbortController | null>(null)
+// Module-level helper — keeps nesting shallow inside useCallback.
+function patchMessage(
+  id: string,
+  fn: (msg: ChatMessage) => ChatMessage,
+  prev: ChatMessage[],
+): ChatMessage[] {
+  return prev.map(m => (m.id === id ? fn(m) : m))
+}
+
+export function useChat(onSaved?: (messages: ChatMessage[], llmHistory: LLMMessage[]) => void) {
+  const [messages, setMessages]      = useState<ChatMessage[]>([])
+  const [loading, setLoading]        = useState(false)
+  const llmHistoryRef                = useRef<LLMMessage[]>([])
+  const messagesRef                  = useRef<ChatMessage[]>([])
+  const abortRef                     = useRef<AbortController | null>(null)
+  const onSavedRef                   = useRef(onSaved)
+
+  useEffect(() => { onSavedRef.current = onSaved }, [onSaved])
+
+  // Keeps messagesRef in sync whenever state is updated via a functional updater.
+  const syncedSet = useCallback((fn: (prev: ChatMessage[]) => ChatMessage[]) => {
+    setMessages(prev => {
+      const next = fn(prev)
+      messagesRef.current = next
+      return next
+    })
+  }, [setMessages])
+
+  // Replace the current session with a previously saved conversation.
+  const resetTo = useCallback((savedMessages: ChatMessage[], savedLlmHistory: LLMMessage[]) => {
+    const clean = savedMessages.map(m => ({ ...m, streaming: false }))
+    setMessages(clean)
+    messagesRef.current = clean
+    llmHistoryRef.current = savedLlmHistory
+    setLoading(false)
+  }, [setMessages])
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || loading) return
 
-    const userMsg: ChatMessage     = { id: crypto.randomUUID(), role: "user", content: text }
-    const assistantId              = crypto.randomUUID()
+    const userMsg: ChatMessage      = { id: crypto.randomUUID(), role: "user", content: text }
+    const assistantId               = crypto.randomUUID()
     const assistantMsg: ChatMessage = { id: assistantId, role: "assistant", content: "", streaming: true, toolEvents: [] }
 
-    setMessages(prev => [...prev, userMsg, assistantMsg])
+    syncedSet(prev => [...prev, userMsg, assistantMsg])
     setLoading(true)
     abortRef.current = new AbortController()
+
+    let savedSuccessfully = false
 
     try {
       const resp = await fetch(`${API_BASE}/api/chat`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        // Send the full LLM history (includes tool call/result pairs from
-        // previous turns) so the model has complete context.
         body:    JSON.stringify({ message: text, history: llmHistoryRef.current }),
         signal:  abortRef.current.signal,
       })
@@ -37,7 +68,7 @@ export function useChat() {
       let buffer    = ""
 
       const patch = (fn: (msg: ChatMessage) => ChatMessage) =>
-        setMessages(prev => prev.map(m => m.id === assistantId ? fn(m) : m))
+        syncedSet(prev => patchMessage(assistantId, fn, prev))
 
       while (true) {
         const { done, value } = await reader.read()
@@ -48,37 +79,41 @@ export function useChat() {
         buffer = blocks.pop() ?? ""
 
         for (const block of blocks.filter(Boolean)) {
-          applyEvent(block, patch, llmHistoryRef)
+          if (applyEvent(block, patch, llmHistoryRef)) savedSuccessfully = true
         }
       }
     } catch (err: unknown) {
       if (err instanceof Error && err.name === "AbortError") return
-      setMessages(prev => prev.map(m =>
+      syncedSet(prev => prev.map(m =>
         m.id === assistantId ? { ...m, content: "Something went wrong. Please try again.", streaming: false } : m
       ))
     } finally {
-      setMessages(prev => prev.map(m =>
+      syncedSet(prev => prev.map(m =>
         m.id === assistantId ? { ...m, streaming: false } : m
       ))
       setLoading(false)
+      if (savedSuccessfully) {
+        onSavedRef.current?.(messagesRef.current, llmHistoryRef.current)
+      }
     }
-  }, [loading])
+  }, [loading, syncedSet])
 
-  return { messages, loading, sendMessage }
+  return { messages, loading, sendMessage, resetTo }
 }
 
+// Returns true when the "done" event is processed (successful turn).
 function applyEvent(
   block:         string,
   patch:         (fn: (msg: ChatMessage) => ChatMessage) => void,
   llmHistoryRef: { current: LLMMessage[] },
-) {
+): boolean {
   let event = ""
   let data  = ""
   for (const line of block.split("\n")) {
     if (line.startsWith("event: ")) event = line.slice(7).trim()
     if (line.startsWith("data: "))  data  = line.slice(6).trim()
   }
-  if (!event || !data) return
+  if (!event || !data) return false
 
   switch (event) {
     case "token": {
@@ -101,14 +136,13 @@ function applyEvent(
     case "done": {
       const { reply, messages } = JSON.parse(data) as { reply: string; messages?: LLMMessage[] }
       patch(m => ({ ...m, content: reply, streaming: false }))
-      // Store the full LLM message sequence (user + assistant tool_calls + tool
-      // results + final assistant) so it can be replayed as history next turn.
       if (messages) llmHistoryRef.current = messages
-      break
+      return true
     }
     case "error": {
       patch(m => ({ ...m, content: `Error: ${data}`, streaming: false }))
       break
     }
   }
+  return false
 }

@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react"
-import { Train } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Train, History } from "lucide-react"
 import { useChat } from "./hooks/useChat"
+import { useConversations } from "./hooks/useConversations"
 import { LandingPage } from "./components/LandingPage"
 import { MessageBubble } from "./components/MessageBubble"
 import { ChatInput } from "./components/ChatInput"
+import { ConversationSidebar } from "./components/ConversationSidebar"
 import { NetworkBackground, type NetworkTheme } from "./components/NetworkBackground"
 import { LoadingCounter } from "./components/LoadingCounter"
+import type { ChatMessage, LLMMessage } from "./lib/types"
 import "./index.css"
 
 const TFL_TOOLS      = new Set(["plan_journey", "get_line_status", "get_status_by_mode", "search_stops"])
@@ -24,17 +27,26 @@ function NetworkPill({ color, label }: { readonly color: string; readonly label:
 }
 
 export default function App() {
-  const { messages, loading, sendMessage } = useChat()
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const [prefill, setPrefill] = useState("")
+  const [sidebarOpen, setSidebarOpen]   = useState(false)
+  const activeConvIdRef                 = useRef<string>(crypto.randomUUID())
+  const [activeConvId, setActiveConvId] = useState(activeConvIdRef.current)
+  const [prefill, setPrefill]           = useState("")
 
+  const { conversations, upsert, remove } = useConversations()
+
+  const handleSaved = useCallback((msgs: ChatMessage[], llmHist: LLMMessage[]) => {
+    upsert(activeConvIdRef.current, msgs, llmHist)
+  }, [upsert])
+
+  const { messages, loading, sendMessage, resetTo } = useChat(handleSaved)
+
+  const bottomRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
   const isEmpty = messages.length === 0
 
-  // True only while waiting for the first token — overlay disappears the moment text starts flowing
   const lastMsg = messages.at(-1)
   const isWaiting = loading && lastMsg?.role === "assistant" && !lastMsg.content
 
@@ -51,14 +63,50 @@ export default function App() {
     return null
   }, [messages])
 
+  function handleNewConversation() {
+    const id = crypto.randomUUID()
+    activeConvIdRef.current = id
+    setActiveConvId(id)
+    resetTo([], [])
+    setSidebarOpen(false)
+  }
+
+  function handleSelectConversation(id: string) {
+    const conv = conversations.find(c => c.id === id)
+    if (!conv) return
+    activeConvIdRef.current = id
+    setActiveConvId(id)
+    resetTo(conv.messages, conv.llmHistory)
+    setSidebarOpen(false)
+  }
+
   return (
     <div className="flex flex-col h-screen relative" style={{ background: "transparent" }}>
       <NetworkBackground theme={activeNetwork} />
       <LoadingCounter visible={isWaiting} theme={activeNetwork} />
 
+      <ConversationSidebar
+        open={sidebarOpen}
+        conversations={conversations}
+        activeId={activeConvId}
+        onNew={handleNewConversation}
+        onSelect={handleSelectConversation}
+        onDelete={remove}
+        onClose={() => setSidebarOpen(false)}
+      />
+
       {/* Header */}
       <header className="bg-white border-b border-gray-100 relative z-10">
         <div className="flex items-center gap-3 px-5 py-3">
+          {/* History toggle */}
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:bg-gray-100"
+            aria-label="Open conversation history"
+          >
+            <History className="text-gray-500" style={{ width: 16, height: 16 }} />
+          </button>
+
           {/* Logo */}
           <div className="flex items-center justify-center w-8 h-8 rounded-lg shrink-0" style={{ background: "linear-gradient(135deg, #e32017 0%, #003366 100%)" }}>
             <Train className="text-white" style={{ width: 16, height: 16 }} />
@@ -106,8 +154,6 @@ export default function App() {
           </p>
         </div>
       </footer>
-
     </div>
   )
 }
-

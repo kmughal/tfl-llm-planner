@@ -154,6 +154,9 @@ func HandleGetEuromapPlans(client *euromap.Client) func(context.Context, mcp.Cal
 			fromDateTime = time.Now().UTC().Format(isoDateTimeZero)
 		}
 		ranges := req.GetString("ranges", defaultRanges)
+		if ranges == "" {
+			ranges = defaultRanges
+		}
 
 		originCode := resolveStationCode(req.GetString("from", ""))
 		destCode := resolveStationCode(req.GetString("to", ""))
@@ -183,6 +186,9 @@ func HandleGetEuromapTechnicalPlans(client *euromap.Client) func(context.Context
 			fromDateTime = time.Now().UTC().Format(isoDateTimeZero)
 		}
 		ranges := req.GetString("ranges", defaultRanges)
+		if ranges == "" {
+			ranges = defaultRanges
+		}
 
 		plans, err := client.GetTechnicalPlans(fromDateTime, ranges)
 		if err != nil {

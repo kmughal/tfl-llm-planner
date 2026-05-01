@@ -27,3 +27,12 @@ export interface LLMMessage {
   tool_call_id?: string
   name?: string
 }
+
+export interface Conversation {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  messages: ChatMessage[]
+  llmHistory: LLMMessage[]
+}
