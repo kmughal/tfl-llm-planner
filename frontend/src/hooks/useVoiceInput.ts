@@ -3,21 +3,21 @@ import { useCallback, useEffect, useRef, useState } from "react"
 type SpeechRecognitionCtor = new () => SpeechRecognition
 
 function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
-  if (typeof window === "undefined") return null
+  if (globalThis.window === undefined) return null
   return (
-    window.SpeechRecognition ??
-    (window as Window & { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition ??
+    globalThis.window.SpeechRecognition ??
+    (globalThis.window as Window & { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition ??
     null
   )
 }
 
 export function useVoiceInput(onTranscript: (text: string) => void) {
   const [isListening, setIsListening] = useState(false)
+  const [interim, setInterim]         = useState("")
   const [error, setError]             = useState<string | null>(null)
   const recognitionRef                = useRef<SpeechRecognition | null>(null)
   const isSupported                   = !!getSpeechRecognitionCtor()
 
-  // Clean up on unmount
   useEffect(() => () => recognitionRef.current?.abort(), [])
 
   const start = useCallback(() => {
@@ -25,18 +25,20 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
     if (!SR) return
 
     setError(null)
+    setInterim("")
     const recognition = new SR()
     recognitionRef.current = recognition
 
     recognition.continuous     = false
-    recognition.interimResults = false
+    recognition.interimResults = true
     recognition.lang           = "en-GB"
 
     recognition.onstart = () => setIsListening(true)
-    recognition.onend   = () => setIsListening(false)
+    recognition.onend   = () => { setIsListening(false); setInterim("") }
 
     recognition.onerror = (e: SpeechRecognitionErrorEvent) => {
       setIsListening(false)
+      setInterim("")
       if (e.error === "not-allowed") {
         setError("Microphone permission denied")
       } else if (e.error !== "no-speech" && e.error !== "aborted") {
@@ -45,11 +47,16 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
     }
 
     recognition.onresult = (e: SpeechRecognitionEvent) => {
-      const transcript = Array.from(e.results)
-        .map(r => r[0].transcript)
-        .join(" ")
-        .trim()
-      if (transcript) onTranscript(transcript)
+      // Only look at the current result, not the entire accumulated list.
+      // With continuous=false there is always exactly one result index.
+      const result = e.results[e.resultIndex]
+      if (result.isFinal) {
+        const text = result[0].transcript.trim()
+        if (text) onTranscript(text)
+        setInterim("")
+      } else {
+        setInterim(result[0].transcript)
+      }
     }
 
     recognition.start()
@@ -57,5 +64,5 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
 
   const stop = useCallback(() => recognitionRef.current?.stop(), [])
 
-  return { isSupported, isListening, error, start, stop }
+  return { isSupported, isListening, interim, error, start, stop }
 }

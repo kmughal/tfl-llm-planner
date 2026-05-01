@@ -5,15 +5,21 @@ import type { ChatMessage, ToolEvent } from "../lib/types"
 import { ToolCallBadge } from "./ToolCallBadge"
 import { EuromapCard } from "./EuromapCard"
 import { EuromapDashboard } from "./EuromapDashboard"
+import { EuromapLiveMap } from "./EuromapLiveMap"
+import { SNCFDisruptions } from "./SNCFDisruptions"
 import { Train, Bus, MapPin, Clock, ArrowRight, Volume2, VolumeX } from "lucide-react"
 
-const DASHBOARD_TOOL = "get_eurostar_dashboard"
+const DASHBOARD_TOOL     = "get_eurostar_dashboard"
+const LIVEMAP_TOOL       = "get_eurostar_live_map"
+const DISRUPTIONS_TOOL   = "get_sncf_disruptions"
+const SNCF_RICH_TOOLS    = new Set([DISRUPTIONS_TOOL])
 const EUROMAP_TOOLS = new Set([
   "get_euromap_plans",
   "get_euromap_technical_plans",
   "get_euromap_plan_by_id",
   "get_euromap_technical_plan_by_id",
   DASHBOARD_TOOL,
+  LIVEMAP_TOOL,
 ])
 
 // ── TFL line colours ──────────────────────────────────────────────────────────
@@ -769,19 +775,28 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
           {/* Regular tool badges (and euromap tool_call pending badges) */}
           <div className="flex flex-wrap gap-1.5 px-1">
             {toolEvents
-              .filter(ev => !EUROMAP_TOOLS.has(ev.name) || ev.type === "tool_call")
+              .filter(ev => (!EUROMAP_TOOLS.has(ev.name) && !SNCF_RICH_TOOLS.has(ev.name)) || ev.type === "tool_call")
               .map((ev) => (
                 <ToolCallBadge key={`${ev.type}-${ev.name}`} event={ev} />
               ))}
           </div>
+          {/* SNCF rich cards */}
+          {toolEvents
+            .filter(ev => SNCF_RICH_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)
+            .map((ev) => {
+              const r = ev.result ?? ""
+              if (ev.name === DISRUPTIONS_TOOL) return <SNCFDisruptions key={`disruptions-${ev.name}`} result={r} />
+              return null
+            })}
           {/* Euromap map cards / dashboard — rendered from raw tool result data */}
           {toolEvents
             .filter(ev => EUROMAP_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)
-            .map((ev) =>
-              ev.name === DASHBOARD_TOOL
-                ? <EuromapDashboard key={`dashboard-${ev.name}`} result={ev.result ?? ""} />
-                : <EuromapCard key={`euromap-${ev.name}`} result={ev.result ?? ""} />
-            )}
+            .map((ev) => {
+              const r = ev.result ?? ""
+              if (ev.name === DASHBOARD_TOOL) return <EuromapDashboard key={`dashboard-${ev.name}`} result={r} />
+              if (ev.name === LIVEMAP_TOOL)   return <EuromapLiveMap   key={`livemap-${ev.name}`}   result={r} />
+              return <EuromapCard key={`euromap-${ev.name}`} result={r} />
+            })}
         </div>
       )}
       <div

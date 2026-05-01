@@ -43,37 +43,65 @@ func HandleGetSNCFDisruptions(client *sncf.Client) func(context.Context, mcp.Cal
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("SNCF API error: %v", err)), nil
 		}
-
 		if len(result.Disruptions) == 0 {
 			return mcp.NewToolResultText("No active disruptions on the SNCF network."), nil
 		}
-
-		var sb strings.Builder
-		fmt.Fprintf(&sb, "Active SNCF disruptions (%d):\n\n", len(result.Disruptions))
-		for _, d := range result.Disruptions {
-			sb.WriteString(formatDisruption(d))
-		}
-		return mcp.NewToolResultText(sb.String()), nil
+		return mcp.NewToolResultText(formatDisruptionsBlock(result.Disruptions)), nil
 	}
 }
 
-func formatDisruption(d sncf.Disruption) string {
+func countEffect(disruptions []sncf.Disruption, effect string) int {
+	n := 0
+	for _, d := range disruptions {
+		if d.Severity.Effect == effect {
+			n++
+		}
+	}
+	return n
+}
+
+func sanitiseField(s string) string {
+	return strings.NewReplacer("|", " ", "\n", " ", "\r", "").Replace(s)
+}
+
+func formatDisruptionsBlock(disruptions []sncf.Disruption) string {
+	noService := countEffect(disruptions, "NO_SERVICE")
+	delayed   := countEffect(disruptions, "SIGNIFICANT_DELAYS")
+	reduced   := countEffect(disruptions, "REDUCED_SERVICE")
+	other     := len(disruptions) - noService - delayed - reduced
+
 	var sb strings.Builder
-	icon := "⚠"
-	if d.Severity.Effect == "NO_SERVICE" {
-		icon = "🚫"
+	fmt.Fprintf(&sb, "DISRUPTIONS_START:%d|%d|%d|%d|%d\n",
+		len(disruptions), noService, delayed, reduced, other)
+
+	for _, d := range disruptions {
+		impacted := ""
+		if len(d.ImpactedObjects) > 0 {
+			impacted = d.ImpactedObjects[0].PtObject.Name
+		}
+		msg := ""
+		if len(d.Messages) > 0 {
+			msg = d.Messages[0].Text
+			if len(msg) > 90 {
+				msg = msg[:90]
+			}
+		}
+		begin, end := "", ""
+		if len(d.ApplicationPeriods) > 0 {
+			begin = formatSNCFTime(d.ApplicationPeriods[0].Begin)
+			end   = formatSNCFTime(d.ApplicationPeriods[0].End)
+		}
+		fmt.Fprintf(&sb, "DISRUPTION:%s|%s|%s|%s|%s|%s\n",
+			sanitiseField(d.Severity.Effect),
+			sanitiseField(d.Severity.Name),
+			sanitiseField(impacted),
+			sanitiseField(msg),
+			sanitiseField(begin),
+			sanitiseField(end),
+		)
 	}
-	fmt.Fprintf(&sb, "%s [%s] %s\n", icon, d.Status, d.Severity.Name)
-	if len(d.ImpactedObjects) > 0 {
-		fmt.Fprintf(&sb, "  Affects: %s\n", d.ImpactedObjects[0].PtObject.Name)
-	}
-	if len(d.Messages) > 0 {
-		fmt.Fprintf(&sb, "  %s\n", d.Messages[0].Text)
-	}
-	if len(d.ApplicationPeriods) > 0 {
-		p := d.ApplicationPeriods[0]
-		fmt.Fprintf(&sb, "  Period: %s → %s\n", formatSNCFTime(p.Begin), formatSNCFTime(p.End))
-	}
-	fmt.Fprintln(&sb)
+
+	fmt.Fprintln(&sb, "DISRUPTIONS_END")
+	fmt.Fprintf(&sb, "\nHINT: The frontend renders DISRUPTIONS blocks as animated cards. Reply with 1 sentence: total disruptions and the most severe type only.")
 	return sb.String()
 }

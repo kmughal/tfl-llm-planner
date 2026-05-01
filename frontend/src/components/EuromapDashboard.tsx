@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Train, ArrowRight, ChevronDown, ChevronUp, Search, X } from "lucide-react"
+import { Train, ChevronDown, ChevronUp, Search, X } from "lucide-react"
 import { cn } from "../lib/utils"
 
 const STATION_NAMES: Record<string, string> = {
@@ -193,6 +193,135 @@ function isRunningNow(dep: string, arr: string, now: string): boolean {
   return now >= dep && now <= arr
 }
 
+// ── Animated train badge ──────────────────────────────────────────────────────
+function trainIconAnimate(isNow: boolean, isCancelled: boolean) {
+  if (isNow) return { x: [0, 2, 0] }
+  if (isCancelled) return { rotate: [0, -5, 0] }
+  return {}
+}
+
+function trainIconTransition(isNow: boolean, isCancelled: boolean) {
+  if (isNow) return { duration: 1.1, repeat: Infinity, ease: "easeInOut" as const }
+  if (isCancelled) return { duration: 2.5, repeat: Infinity, ease: "easeInOut" as const }
+  return {}
+}
+
+function TrainBadge({
+  serviceCode,
+  color,
+  isNow,
+  isCancelled,
+}: {
+  readonly serviceCode: string
+  readonly color: string
+  readonly isNow: boolean
+  readonly isCancelled: boolean
+}) {
+  return (
+    <div className="shrink-0 w-14 flex flex-col items-center gap-[3px]">
+      {/* Train icon with motion */}
+      <div className="relative flex items-center justify-center" style={{ width: 40, height: 20 }}>
+        {/* Speed streaks — only for active trains */}
+        {isNow && (
+          <>
+            {[{ w: 12, top: 5,  delay: 0    },
+              { w: 7,  top: 11, delay: 0.18 },
+              { w: 9,  top: 15, delay: 0.08 }].map((s) => (
+              <motion.div
+                key={s.top}
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: s.top,
+                  width: s.w,
+                  height: 1.5,
+                  borderRadius: 1,
+                  background: `linear-gradient(to right, transparent, ${color})`,
+                  transformOrigin: "right center",
+                }}
+                animate={{ opacity: [0, 0.55, 0], scaleX: [0.3, 1, 0.3] }}
+                transition={{ duration: 0.9, delay: s.delay, repeat: Infinity, ease: "easeInOut" }}
+              />
+            ))}
+          </>
+        )}
+
+        {/* The train icon */}
+        <motion.div
+          style={{ position: "absolute", right: 2, top: 2, color }}
+          animate={trainIconAnimate(isNow, isCancelled)}
+          transition={trainIconTransition(isNow, isCancelled)}
+        >
+          <Train style={{ width: 14, height: 14 }} />
+        </motion.div>
+      </div>
+
+      {/* Service code */}
+      <span
+        className="text-[11px] font-black tabular-nums tracking-tight font-mono leading-none"
+        style={{
+          color,
+          textDecoration: isCancelled ? "line-through" : "none",
+          textDecorationColor: color,
+        }}
+      >
+        {serviceCode}
+      </span>
+    </div>
+  )
+}
+
+// ── Animated track with moving train ─────────────────────────────────────────
+function trackTransition(isNow: boolean) {
+  if (isNow) return { duration: 3.5, repeat: Infinity, ease: "linear" as const, repeatDelay: 0.8 }
+  return {}
+}
+
+function TrainTrackRoute({ isNow, isOutbound, isCancelled }: {
+  readonly isNow: boolean
+  readonly isOutbound: boolean
+  readonly isCancelled: boolean
+}) {
+  const color = isCancelled ? "#ef4444" : isNow ? "#d97706" : EURO_COLOR
+  const fromLeft = isOutbound ? "4%"  : "80%"
+  const toLeft   = isOutbound ? "80%" : "4%"
+
+  return (
+    <div className="relative" style={{ height: 16 }}>
+      {/* Track line */}
+      <div style={{
+        position: "absolute", top: "50%", left: 8, right: 8, height: 2,
+        transform: "translateY(-50%)", borderRadius: 1,
+        background: isCancelled
+          ? `repeating-linear-gradient(to right, ${color}55 0 5px, transparent 5px 9px)`
+          : `${color}25`,
+      }} />
+
+      {/* Station dots */}
+      <div style={{
+        position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)",
+        width: 7, height: 7, borderRadius: "50%", backgroundColor: color, opacity: 0.75,
+      }} />
+      <div style={{
+        position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)",
+        width: 7, height: 7, borderRadius: "50%", backgroundColor: color, opacity: 0.75,
+      }} />
+
+      {/* Moving train */}
+      <motion.div
+        style={{ position: "absolute", top: 2, color }}
+        initial={{ left: fromLeft }}
+        animate={{ left: isNow ? [fromLeft, toLeft] : fromLeft }}
+        transition={trackTransition(isNow)}
+      >
+        <div style={{ transform: isOutbound ? "none" : "scaleX(-1)" }}>
+          <Train style={{ width: 12, height: 12 }} />
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
 // ── Individual service row ────────────────────────────────────────────────────
 const UK_CODES = new Set(["SPX", "EBF", "ASI"])
 
@@ -229,29 +358,44 @@ function ServiceRow({
         />
       )}
 
+      {/* Shimmer sweep across active rows */}
+      {isNow && (
+        <motion.div
+          className="absolute inset-0 pointer-events-none rounded-xl overflow-hidden"
+          aria-hidden
+        >
+          <motion.div
+            style={{
+              position: "absolute", top: 0, bottom: 0, width: 60,
+              background: "linear-gradient(to right, transparent, rgba(251,191,36,0.12), transparent)",
+            }}
+            animate={{ x: [-60, 420] }}
+            transition={{ duration: 2.2, repeat: Infinity, ease: "linear", repeatDelay: 1.2 }}
+          />
+        </motion.div>
+      )}
+
       <button
         type="button"
         className="w-full text-left px-3 py-3 flex items-center gap-3 text-gray-900 min-h-[48px]"
         onClick={() => setExpanded(e => !e)}
       >
-        {/* Service number */}
-        <div className="shrink-0 w-12 text-center">
-          <span
-            className="text-sm font-black tabular-nums tracking-tight font-mono"
-            style={{ color: codeColor }}
-          >
-            {svc.serviceCode}
-          </span>
-        </div>
+        {/* Animated train badge */}
+        <TrainBadge
+          serviceCode={svc.serviceCode}
+          color={codeColor}
+          isNow={isNow}
+          isCancelled={isCancelled}
+        />
 
         {/* Route */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1 text-[11px] font-semibold text-gray-800 min-w-0">
-            <span className="truncate max-w-[80px]">{stationName(svc.origin)}</span>
-            <ArrowRight className="w-3 h-3 shrink-0 text-gray-400" />
-            <span className="truncate max-w-[80px]">{stationName(svc.dest)}</span>
+          <div className="flex items-center justify-between text-[11px] font-semibold text-gray-800">
+            <span className="truncate max-w-[72px]">{stationName(svc.origin)}</span>
+            <span className="truncate max-w-[72px] text-right">{stationName(svc.dest)}</span>
           </div>
-          <div className="text-[9px] text-gray-400 mt-0.5 flex items-center gap-1">
+          <TrainTrackRoute isNow={isNow} isOutbound={isOutbound} isCancelled={isCancelled} />
+          <div className="text-[9px] text-gray-400 flex items-center gap-1">
             <span
               className={cn(
                 "inline-block w-1.5 h-1.5 rounded-full",

@@ -49,6 +49,7 @@ Pass dates to get_euromap_plans / get_euromap_technical_plans as ISO8601, e.g. "
 | User mentions a specific train/service number without asking for technical details (e.g. "Give me plan for train 9004", "show service 9409") | get_euromap_plan_by_id |
 | User explicitly asks for technical/operational details of a SPECIFIC train number | get_euromap_technical_plan_by_id |
 | User says "build dashboard", "departure board", or "eurostar dashboard" | get_eurostar_dashboard |
+| User asks for a map of trains, live map, to plot trains, or "where are the trains" | get_eurostar_live_map |
 
 ## Disambiguation rules
 - Paris → London or London → Paris: always use get_euromap_plans, NOT plan_sncf_journey
@@ -83,6 +84,12 @@ When get_eurostar_dashboard is called, the tool emits a DASHBOARD_START/DASHBOAR
 Respond with 1–2 plain-text sentences only: date, total services, active/cancelled count.
 Do NOT list individual train numbers, routes, or times — the UI board already shows all of that.
 Example: "Here's the live Eurostar departure board for 2026-04-30 — 134 services in total, 128 active and 6 cancelled."
+
+## Eurostar live map response
+When get_eurostar_live_map is called, the tool emits LIVEMAP_START/LIVEMAP_SERVICE/LIVEMAP_END blocks that the UI renders automatically as an interactive animated map.
+Respond with 1–2 plain-text sentences only: date, total services, active/cancelled count.
+Do NOT list individual train numbers, routes, times, or stop details — the UI map already shows all of that.
+Example: "Here's the live Eurostar train map for 2026-04-30 — 134 services plotted, 128 active and 6 cancelled."
 
 ## Data integrity — STRICT RULE
 Never invent, fabricate, or guess transport data. Use ONLY what the tools return.
