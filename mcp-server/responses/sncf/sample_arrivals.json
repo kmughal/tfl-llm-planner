@@ -1,0 +1,106 @@
+{
+  "_note": "Sample response from GET /coverage/sncf/stop_areas/stop_area:SNCF:87581009/arrivals?count=10",
+  "_station": "Bordeaux Saint-Jean (stop_area:SNCF:87581009)",
+  "_endpoint": "https://api.sncf.com/v1/coverage/sncf/stop_areas/stop_area:SNCF:87581009/arrivals",
+  "arrivals": [
+    {
+      "stop_date_time": {
+        "arrival_date_time": "20260502T103500",
+        "base_arrival_date_time": "20260502T103500"
+      },
+      "display_informations": {
+        "commercial_mode": "TGV",
+        "label": "8410",
+        "direction": "Paris Montparnasse",
+        "color": "E05206",
+        "text_color": "FFFFFF",
+        "description": "",
+        "headsign": "8410"
+      },
+      "stop_point": {
+        "id": "stop_point:SNCF:87581009:Train",
+        "name": "Bordeaux Saint-Jean"
+      }
+    },
+    {
+      "stop_date_time": {
+        "arrival_date_time": "20260502T110800",
+        "base_arrival_date_time": "20260502T110000"
+      },
+      "display_informations": {
+        "commercial_mode": "TGV",
+        "label": "8412",
+        "direction": "Paris Montparnasse",
+        "color": "E05206",
+        "text_color": "FFFFFF",
+        "description": "",
+        "headsign": "8412"
+      },
+      "stop_point": {
+        "id": "stop_point:SNCF:87581009:Train",
+        "name": "Bordeaux Saint-Jean"
+      }
+    },
+    {
+      "stop_date_time": {
+        "arrival_date_time": "20260502T114500",
+        "base_arrival_date_time": "20260502T114500"
+      },
+      "display_informations": {
+        "commercial_mode": "Ouigo",
+        "label": "7200",
+        "direction": "Paris Montparnasse",
+        "color": "E2007A",
+        "text_color": "FFFFFF",
+        "description": "",
+        "headsign": "7200"
+      },
+      "stop_point": {
+        "id": "stop_point:SNCF:87581009:Train",
+        "name": "Bordeaux Saint-Jean"
+      }
+    },
+    {
+      "stop_date_time": {
+        "arrival_date_time": "20260502T121000",
+        "base_arrival_date_time": "20260502T121000"
+      },
+      "display_informations": {
+        "commercial_mode": "TGV",
+        "label": "8602",
+        "direction": "Toulouse Matabiau",
+        "color": "E05206",
+        "text_color": "FFFFFF",
+        "description": "",
+        "headsign": "8602"
+      },
+      "stop_point": {
+        "id": "stop_point:SNCF:87581009:Train",
+        "name": "Bordeaux Saint-Jean"
+      }
+    },
+    {
+      "stop_date_time": {
+        "arrival_date_time": "20260502T124500",
+        "base_arrival_date_time": "20260502T124500"
+      },
+      "display_informations": {
+        "commercial_mode": "TER",
+        "label": "862304",
+        "direction": "Périgueux",
+        "color": "6E6E6E",
+        "text_color": "FFFFFF",
+        "description": "",
+        "headsign": "862304"
+      },
+      "stop_point": {
+        "id": "stop_point:SNCF:87581009:Train",
+        "name": "Bordeaux Saint-Jean"
+      }
+    }
+  ],
+  "context": {
+    "timezone": "Europe/Paris",
+    "current_datetime": "20260502T102000"
+  }
+}

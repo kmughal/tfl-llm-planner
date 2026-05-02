@@ -1,0 +1,39 @@
+{
+  "_note": "Sample response from GET /Line/central,jubilee,elizabeth/Status",
+  "_endpoint": "https://api.tfl.gov.uk/Line/{ids}/Status",
+  "lines": [
+    {
+      "id": "central",
+      "name": "Central",
+      "lineStatuses": [
+        {
+          "statusSeverity": 10,
+          "statusSeverityDescription": "Good Service",
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "id": "jubilee",
+      "name": "Jubilee",
+      "lineStatuses": [
+        {
+          "statusSeverity": 5,
+          "statusSeverityDescription": "Part Closure",
+          "reason": "JUBILEE LINE: No service between Stanmore and Wembley Park due to a faulty train. Tickets are being accepted on London Buses and on Chiltern Railways."
+        }
+      ]
+    },
+    {
+      "id": "elizabeth",
+      "name": "Elizabeth line",
+      "lineStatuses": [
+        {
+          "statusSeverity": 10,
+          "statusSeverityDescription": "Good Service",
+          "reason": ""
+        }
+      ]
+    }
+  ]
+}

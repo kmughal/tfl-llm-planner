@@ -1,0 +1,34 @@
+{
+  "_note": "Sample response from GET /StopPoint/Search?query=King%27s+Cross&modes=tube,bus,dlr,overground,elizabeth-line,national-rail",
+  "_endpoint": "https://api.tfl.gov.uk/StopPoint/Search",
+  "matches": [
+    {
+      "id": "940GZZLUKSX",
+      "name": "King's Cross St. Pancras Underground Station",
+      "lat": 51.5308,
+      "lon": -0.1238,
+      "modes": ["tube"]
+    },
+    {
+      "id": "910GKNGX",
+      "name": "King's Cross National Rail Station",
+      "lat": 51.5308,
+      "lon": -0.1224,
+      "modes": ["national-rail", "elizabeth-line"]
+    },
+    {
+      "id": "910GSTPNCRS",
+      "name": "St. Pancras International",
+      "lat": 51.5320,
+      "lon": -0.1233,
+      "modes": ["national-rail"]
+    },
+    {
+      "id": "490013767A",
+      "name": "King's Cross Station / Euston Road",
+      "lat": 51.5303,
+      "lon": -0.1237,
+      "modes": ["bus"]
+    }
+  ]
+}

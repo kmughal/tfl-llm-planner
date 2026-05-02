@@ -1,0 +1,83 @@
+{
+  "_note": "Sample response from GET /v1/technical-plans/20260502-9005",
+  "_endpoint": "https://gateway.dm.eurostar.com/euromap-enabler/v1/technical-plans/{planID}",
+  "_planID": "20260502-9005",
+  "range": "P1D",
+  "status": "CONFIRMED",
+  "planID": "20260502-9005",
+  "planType": "TECHNICAL",
+  "serviceCode": "9005",
+  "travelDate": "2026-05-02",
+  "origin": {
+    "country": "GB",
+    "rrCode": "SPX",
+    "shortCode": "SPX"
+  },
+  "destination": {
+    "country": "FR",
+    "rrCode": "PNO",
+    "shortCode": "PNO"
+  },
+  "passagePoints": [
+    {
+      "id": "SPX",
+      "stopType": "ORIGIN",
+      "arrivalDateTime": null,
+      "departureDateTime": "2026-05-02T08:01:00",
+      "country": "GB",
+      "rrCode": "SPX",
+      "shortCode": "SPX",
+      "latitude": 51.5320,
+      "longitude": -0.1233,
+      "trackInformation": { "trackNumber": "6", "platform": "6" }
+    },
+    {
+      "id": "EBD",
+      "stopType": "INTERMEDIATE",
+      "arrivalDateTime": "2026-05-02T08:30:00",
+      "departureDateTime": "2026-05-02T08:35:00",
+      "country": "GB",
+      "rrCode": "EBD",
+      "shortCode": "EBD",
+      "latitude": 51.4416,
+      "longitude": 0.3206,
+      "trackInformation": { "trackNumber": "2", "platform": null }
+    },
+    {
+      "id": "CBF",
+      "stopType": "INTERMEDIATE",
+      "arrivalDateTime": "2026-05-02T08:52:00",
+      "departureDateTime": "2026-05-02T08:54:00",
+      "country": "GB",
+      "rrCode": "CBF",
+      "shortCode": "CBF",
+      "latitude": 51.0937,
+      "longitude": 1.1692,
+      "trackInformation": { "trackNumber": "1", "platform": null }
+    },
+    {
+      "id": "LIL",
+      "stopType": "INTERMEDIATE",
+      "arrivalDateTime": "2026-05-02T10:08:00",
+      "departureDateTime": "2026-05-02T10:12:00",
+      "country": "FR",
+      "rrCode": "LIL",
+      "shortCode": "LIL",
+      "latitude": 50.6375,
+      "longitude": 3.0700,
+      "trackInformation": { "trackNumber": "3", "platform": "3" }
+    },
+    {
+      "id": "PNO",
+      "stopType": "DESTINATION",
+      "arrivalDateTime": "2026-05-02T11:17:00",
+      "departureDateTime": null,
+      "country": "FR",
+      "rrCode": "PNO",
+      "shortCode": "PNO",
+      "latitude": 48.8809,
+      "longitude": 2.3553,
+      "trackInformation": { "trackNumber": "8", "platform": "8" }
+    }
+  ]
+}

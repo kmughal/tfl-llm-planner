@@ -1,0 +1,33 @@
+{
+  "_note": "Sample response from GET /v1/plans (dashboard view — today's full schedule)",
+  "_endpoint": "https://gateway.dm.eurostar.com/euromap-enabler/v1/plans",
+  "_description": "Departure board showing all Eurostar services for the day, used by get_eurostar_dashboard tool",
+  "total_services": 14,
+  "outbound": [
+    { "planID": "20260502-9001", "serviceCode": "9001", "departureDateTime": "2026-05-02T06:13:00", "arrivalDateTime": "2026-05-02T09:26:00", "origin": "SPX", "destination": "PNO", "status": "CONFIRMED" },
+    { "planID": "20260502-9005", "serviceCode": "9005", "departureDateTime": "2026-05-02T08:01:00", "arrivalDateTime": "2026-05-02T11:17:00", "origin": "SPX", "destination": "PNO", "status": "CONFIRMED", "stops": ["EBD"] },
+    { "planID": "20260502-9009", "serviceCode": "9009", "departureDateTime": "2026-05-02T09:31:00", "arrivalDateTime": "2026-05-02T12:47:00", "origin": "SPX", "destination": "PNO", "status": "CONFIRMED" },
+    { "planID": "20260502-9013", "serviceCode": "9013", "departureDateTime": "2026-05-02T10:01:00", "arrivalDateTime": "2026-05-02T14:17:00", "origin": "SPX", "destination": "BXS", "status": "CONFIRMED", "stops": ["LIL"] },
+    { "planID": "20260502-9017", "serviceCode": "9017", "departureDateTime": "2026-05-02T11:31:00", "arrivalDateTime": "2026-05-02T14:47:00", "origin": "SPX", "destination": "PNO", "status": "CONFIRMED" },
+    { "planID": "20260502-9021", "serviceCode": "9021", "departureDateTime": "2026-05-02T13:01:00", "arrivalDateTime": "2026-05-02T16:17:00", "origin": "SPX", "destination": "PNO", "status": "CONFIRMED" },
+    { "planID": "20260502-9025", "serviceCode": "9025", "departureDateTime": "2026-05-02T14:31:00", "arrivalDateTime": "2026-05-02T17:47:00", "origin": "SPX", "destination": "PNO", "status": "CONFIRMED" },
+    { "planID": "20260502-9029", "serviceCode": "9029", "departureDateTime": "2026-05-02T17:01:00", "arrivalDateTime": "2026-05-02T20:17:00", "origin": "SPX", "destination": "PNO", "status": "CONFIRMED" }
+  ],
+  "inbound": [
+    { "planID": "20260502-9402", "serviceCode": "9402", "departureDateTime": "2026-05-02T07:13:00", "arrivalDateTime": "2026-05-02T08:39:00", "origin": "PNO", "destination": "SPX", "status": "CONFIRMED" },
+    { "planID": "20260502-9406", "serviceCode": "9406", "departureDateTime": "2026-05-02T09:13:00", "arrivalDateTime": "2026-05-02T10:39:00", "origin": "PNO", "destination": "SPX", "status": "CONFIRMED" },
+    { "planID": "20260502-9410", "serviceCode": "9410", "departureDateTime": "2026-05-02T11:13:00", "arrivalDateTime": "2026-05-02T12:39:00", "origin": "PNO", "destination": "SPX", "status": "CONFIRMED" },
+    { "planID": "20260502-9414", "serviceCode": "9414", "departureDateTime": "2026-05-02T13:52:00", "arrivalDateTime": "2026-05-02T15:22:00", "origin": "BXS", "destination": "SPX", "status": "CONFIRMED", "stops": ["LIL"] },
+    { "planID": "20260502-9415", "serviceCode": "9415", "departureDateTime": "2026-05-02T18:01:00", "arrivalDateTime": "2026-05-02T21:20:00", "origin": "PNO", "destination": "SPX", "status": "CONFIRMED" },
+    { "planID": "20260502-9419", "serviceCode": "9419", "departureDateTime": "2026-05-02T19:13:00", "arrivalDateTime": "2026-05-02T20:39:00", "origin": "PNO", "destination": "SPX", "status": "CONFIRMED" }
+  ],
+  "station_codes": {
+    "SPX": "London St Pancras",
+    "PNO": "Paris Gare du Nord",
+    "BXS": "Brussels Midi",
+    "LIL": "Lille Europe",
+    "EBD": "Ebbsfleet International",
+    "ASD": "Amsterdam Centraal",
+    "RTD": "Rotterdam Centraal"
+  }
+}

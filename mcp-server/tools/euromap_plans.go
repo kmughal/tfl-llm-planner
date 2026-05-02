@@ -31,8 +31,8 @@ ALWAYS use this tool (instead of plan_journey or plan_sncf_journey) when:
   - Origin or destination is St Pancras, Ebbsfleet, Ashford, Calais, Lille, Paris Nord, Brussels Midi, Amsterdam
 
 ALWAYS provide "from" and "to" when the user specifies an origin and/or destination.
-Known stations: London/St Pancras (SPX), Paris/Paris Nord (PNO), Brussels/Brussels Midi (BXL),
-Amsterdam (ASD), Rotterdam (RTD), Lille (LIL), Ebbsfleet (EBF), Ashford (ASI), Calais (CFR).
+Known stations: London/St Pancras (SPX), Paris/Paris Nord (PNO), Brussels/Brussels Midi (BRU),
+Amsterdam (AMS), Rotterdam (RDM), Lille Europe (LEW), Calais Frethun (FTN), Liège (LIE), Marne-la-Vallée (MVC).
 
 Returns map data and stop times for each matching service. Defaults to today if no date is given.`),
 		mcp.WithString("from",
@@ -204,26 +204,31 @@ func HandleGetEuromapTechnicalPlans(client *euromap.Client) func(context.Context
 // ── Station alias resolution ──────────────────────────────────────────────────
 
 var stationAliases = map[string]string{
+	// UK
 	"london":               "SPX",
 	"st pancras":           "SPX",
 	"st pancras international": "SPX",
+	// France
 	"paris":                "PNO",
 	"paris nord":           "PNO",
 	"paris gare du nord":   "PNO",
-	"brussels":             "BXL",
-	"brussels midi":        "BXL",
-	"bruxelles midi":       "BXL",
-	"bruxelles":            "BXL",
-	"amsterdam":            "ASD",
-	"amsterdam centraal":   "ASD",
-	"rotterdam":            "RTD",
-	"rotterdam centraal":   "RTD",
-	"lille":                "LIL",
-	"lille europe":         "LIL",
-	"ebbsfleet":            "EBF",
-	"ashford":              "ASI",
-	"calais":               "CFR",
-	"calais frethun":       "CFR",
+	"lille":                "LEW",
+	"lille europe":         "LEW",
+	"calais":               "FTN",
+	"calais frethun":       "FTN",
+	"marne la vallee":      "MVC",
+	// Belgium
+	"brussels":             "BRU",
+	"brussels midi":        "BRU",
+	"bruxelles midi":       "BRU",
+	"bruxelles":            "BRU",
+	"liege":                "LIE",
+	"liège":                "LIE",
+	// Netherlands
+	"amsterdam":            "AMS",
+	"amsterdam centraal":   "AMS",
+	"rotterdam":            "RDM",
+	"rotterdam centraal":   "RDM",
 }
 
 // resolveStationCode returns the upper-case short code for a station name or
@@ -418,15 +423,33 @@ func updateDepRange(first, last *string, dep string) {
 	}
 }
 
+const codesPerRow = 10
+
+func writeCodeBlock(sb *strings.Builder, codes []string) {
+	for i, c := range codes {
+		if i > 0 && i%codesPerRow == 0 {
+			sb.WriteString("\n  ")
+		} else if i > 0 {
+			sb.WriteString(", ")
+		} else {
+			sb.WriteString("  ")
+		}
+		sb.WriteString(c)
+	}
+	sb.WriteByte('\n')
+}
+
 func writeStatusGroups(sb *strings.Builder, groups map[string][]string) {
 	for _, status := range []string{"active", "cancelled", "suspended", "amended"} {
 		if codes := groups[status]; len(codes) > 0 {
-			fmt.Fprintf(sb, "%s (%d): %s\n", titleCase(status), len(codes), strings.Join(codes, " "))
+			fmt.Fprintf(sb, "%s (%d):\n", titleCase(status), len(codes))
+			writeCodeBlock(sb, codes)
 			delete(groups, status)
 		}
 	}
 	for status, codes := range groups {
-		fmt.Fprintf(sb, "%s (%d): %s\n", titleCase(status), len(codes), strings.Join(codes, " "))
+		fmt.Fprintf(sb, "%s (%d):\n", titleCase(status), len(codes))
+		writeCodeBlock(sb, codes)
 	}
 }
 
@@ -438,7 +461,10 @@ func writePlansSummary(sb *strings.Builder, fromDateTime string, plans euromap.P
 	fmt.Fprintf(sb, "Direction: %d outbound (UK→Europe), %d inbound (Europe→UK)\n\n", st.outbound, inbound)
 	writeStatusGroups(sb, st.statusGroups)
 
-	sb.WriteString("\nHINT: Bulk status query. Respond with 2–4 sentences: total services, status breakdown (active/cancelled/etc.), direction split. Do NOT render individual service cards or list every train number.")
+	sb.WriteString("\nHINT: Bulk result — the service codes above (Active/Cancelled/etc. lines) are the ONLY data available. " +
+		"Rules: (1) If the user asked for a general status overview, respond with 2–4 sentences covering total, status breakdown, and direction split — do NOT list individual numbers. " +
+		"(2) If the user explicitly asked for service numbers/codes, copy them verbatim from the status-group lines above — do NOT add departure times, stations, or any detail not present here. " +
+		"NEVER invent departure times, station names, or route details — they are not in this result.")
 
 	// Machine-readable block parsed by the frontend StatusSummaryCard.
 	// Format: date|total|active|cancelled|outbound|inbound|firstDep|lastDep|cancelledCodes(csv)

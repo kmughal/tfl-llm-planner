@@ -1,0 +1,112 @@
+{
+  "_note": "Sample response from GET /coverage/sncf/disruptions?count=15&since=...&until=...",
+  "_endpoint": "https://api.sncf.com/v1/coverage/sncf/disruptions",
+  "disruptions": [
+    {
+      "id": "disruption:SNCF:2026-05-02:strike-TER-bordeaux",
+      "status": "active",
+      "severity": {
+        "name": "Perturbation importante",
+        "effect": "SIGNIFICANT_DELAYS",
+        "color": "#FF8000",
+        "priority": 1
+      },
+      "messages": [
+        {
+          "text": "Grève des agents de conduite TER Nouvelle-Aquitaine. Des retards importants sont à prévoir sur l'ensemble du réseau régional.",
+          "channel": {
+            "name": "moteur",
+            "content_type": "text/plain"
+          }
+        }
+      ],
+      "impacted_objects": [
+        {
+          "pt_object": {
+            "id": "network:SNCF:TER",
+            "name": "TER Nouvelle-Aquitaine",
+            "embedded_type": "network"
+          }
+        }
+      ],
+      "application_periods": [
+        {
+          "begin": "20260502T060000",
+          "end": "20260502T235959"
+        }
+      ]
+    },
+    {
+      "id": "disruption:SNCF:2026-05-02:infra-lyon-paris",
+      "status": "active",
+      "severity": {
+        "name": "Travaux",
+        "effect": "REDUCED_SERVICE",
+        "color": "#FFDD00",
+        "priority": 2
+      },
+      "messages": [
+        {
+          "text": "Travaux de maintenance sur la LGV Paris-Lyon entre Mâcon et Lyon. Certains TGV effectuent un arrêt supplémentaire.",
+          "channel": {
+            "name": "moteur",
+            "content_type": "text/plain"
+          }
+        }
+      ],
+      "impacted_objects": [
+        {
+          "pt_object": {
+            "id": "line:SNCF:Paris-Lyon",
+            "name": "TGV Paris ↔ Lyon",
+            "embedded_type": "line"
+          }
+        }
+      ],
+      "application_periods": [
+        {
+          "begin": "20260502T220000",
+          "end": "20260503T060000"
+        }
+      ]
+    },
+    {
+      "id": "disruption:SNCF:2026-05-02:cancelled-6807",
+      "status": "active",
+      "severity": {
+        "name": "Suppression totale",
+        "effect": "NO_SERVICE",
+        "color": "#FF0000",
+        "priority": 0
+      },
+      "messages": [
+        {
+          "text": "Train 6807 Paris Gare de Lyon → Grenoble supprimé en raison d'une défaillance de matériel roulant.",
+          "channel": {
+            "name": "moteur",
+            "content_type": "text/plain"
+          }
+        }
+      ],
+      "impacted_objects": [
+        {
+          "pt_object": {
+            "id": "trip:SNCF:2026-05-02:6807",
+            "name": "TGV 6807",
+            "embedded_type": "trip"
+          }
+        }
+      ],
+      "application_periods": [
+        {
+          "begin": "20260502T113000",
+          "end": "20260502T160000"
+        }
+      ]
+    }
+  ],
+  "context": {
+    "timezone": "Europe/Paris",
+    "current_datetime": "20260502T120000"
+  }
+}

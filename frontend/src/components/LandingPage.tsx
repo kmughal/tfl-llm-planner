@@ -343,17 +343,19 @@ const NETWORKS: {
   icon: React.ReactNode;
   title: string;
   meta: string;
+  featured?: boolean;
   CardBg: React.ComponentType;
   examples: { text: string; tool: string; template?: boolean }[];
 }[] = [
   {
     key: "EUROSTAR",
     tag: "EUROSTAR",
-    tagLabel: "International",
+    tagLabel: "Core Network",
     accent: "#003366",
     icon: <MapPin className="w-5 h-5" />,
     title: "Cross-Channel",
     meta: "London · Paris · Brussels · Amsterdam",
+    featured: true,
     CardBg: EuroCardBg,
     examples: [
       {
@@ -366,13 +368,13 @@ const NETWORKS: {
         tool: "get_euromap_plans",
       },
       {
+        text: "Last train from Paris to London tonight?",
+        tool: "get_euromap_plans",
+      },
+      {
         text: "Where does train {number} stop on {date}?",
         tool: "get_euromap_plan_by_id",
         template: true,
-      },
-      {
-        text: "Show technical plans for today",
-        tool: "get_euromap_technical_plans",
       },
       {
         text: "Technical plan for train {number} on {date}",
@@ -381,23 +383,39 @@ const NETWORKS: {
       },
     ],
   },
-
   {
     key: "SNCF",
     tag: "SNCF",
     tagLabel: "France",
     accent: "#c00014",
     icon: <Zap className="w-5 h-5" />,
-    title: "French Rail Network",
+    title: "French Rail",
     meta: "TGV · TER · Intercités",
     CardBg: SNCFCardBg,
     examples: [
       {
-        text: "Trains from Paris Lyon to Marseille",
+        text: "Next trains from Paris Gare de Lyon",
+        tool: "get_sncf_departures",
+      },
+      {
+        text: "Arrivals board at Lyon Part-Dieu",
+        tool: "get_sncf_arrivals",
+      },
+      {
+        text: "Full schedule for TGV {number}",
+        tool: "get_sncf_train",
+        template: true,
+      },
+      {
+        text: "Paris Montparnasse → Bordeaux trains",
         tool: "plan_sncf_journey",
       },
       { text: "Any SNCF disruptions today?", tool: "get_sncf_disruptions" },
-      { text: "Find stations near Bordeaux", tool: "search_sncf_stations" },
+      {
+        text: "Departures from {station}",
+        tool: "get_sncf_departures",
+        template: true,
+      },
     ],
   },
   {
@@ -421,6 +439,99 @@ const NETWORKS: {
   },
 ];
 
+// ── Selector card helpers ─────────────────────────────────────────────────────
+const GOLD = "#c9a227";
+
+function cardBorder(selected: boolean, featured: boolean, accent: string): string {
+  if (selected && featured) return `1.5px solid ${GOLD}70`;
+  if (selected)             return `1.5px solid ${accent}70`;
+  if (featured)             return `1.5px solid ${GOLD}45`;
+  return "1.5px solid rgba(0,0,0,0.06)";
+}
+
+function cardShadow(selected: boolean, featured: boolean, accent: string): string {
+  if (selected)  return `0 8px 32px ${accent}18, 0 2px 8px ${accent}0e`;
+  if (featured)  return `0 4px 18px ${accent}10, 0 1px 4px ${GOLD}12`;
+  return "0 2px 10px rgba(0,0,0,0.05)";
+}
+
+function barScaleX(selected: boolean, featured: boolean): number {
+  if (selected)  return 1;
+  if (featured)  return 0.6;
+  return 0.3;
+}
+
+function barOpacity(selected: boolean, featured: boolean): number {
+  if (selected)  return 1;
+  if (featured)  return 0.7;
+  return 0.35;
+}
+
+function CardAccentBar({ featured, accent, selected }: { readonly featured: boolean; readonly accent: string; readonly selected: boolean }) {
+  return (
+    <motion.div
+      className="absolute top-0 left-4 right-4 rounded-full"
+      style={{
+        background: featured ? `linear-gradient(to right, ${accent}, ${GOLD})` : accent,
+        height: featured ? 3.5 : 3,
+        originX: "left",
+      }}
+      animate={{ scaleX: barScaleX(selected, featured), opacity: barOpacity(selected, featured) }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+    />
+  );
+}
+
+function CardHeader({ tag, tagLabel, accent, featured }: { readonly tag: string; readonly tagLabel: string; readonly accent: string; readonly featured: boolean }) {
+  return (
+    <div className="relative z-10 flex items-center justify-between">
+      <span className="text-[9px] font-black tracking-[0.22em] px-2 py-0.5 rounded-full" style={{ backgroundColor: `${accent}10`, color: accent }}>
+        {tag}
+      </span>
+      <span className="text-[10px] font-semibold" style={{ color: featured ? GOLD : "#9ca3af" }}>
+        {tagLabel}
+      </span>
+    </div>
+  );
+}
+
+function CardIconTitle({ icon, title, meta, accent, featured }: { readonly icon: React.ReactNode; readonly title: string; readonly meta: string; readonly accent: string; readonly featured: boolean }) {
+  return (
+    <div className="relative z-10 flex items-center gap-3">
+      <div
+        className="flex items-center justify-center rounded-xl shrink-0"
+        style={{
+          width: featured ? 40 : 36,
+          height: featured ? 40 : 36,
+          backgroundColor: featured ? `${accent}12` : `${accent}0d`,
+          border: `1px solid ${featured ? GOLD : accent}22`,
+        }}
+      >
+        <span style={{ color: accent }}>{icon}</span>
+      </div>
+      <div>
+        <p className="font-bold text-gray-700 leading-tight" style={{ fontSize: featured ? 14 : 13 }}>{title}</p>
+        <p className="text-[10px] text-gray-400 font-medium mt-0.5">{meta}</p>
+      </div>
+    </div>
+  );
+}
+
+function CardSelectedDot({ selected, featured, accent }: { readonly selected: boolean; readonly featured: boolean; readonly accent: string }) {
+  const color = featured ? GOLD : accent;
+  return (
+    <motion.div
+      className="relative z-10 text-[10px] font-semibold flex items-center gap-1"
+      style={{ color }}
+      animate={{ opacity: selected ? 1 : 0, y: selected ? 0 : 4 }}
+      transition={{ duration: 0.18 }}
+    >
+      <span className="w-1 h-1 rounded-full inline-block" style={{ backgroundColor: color }} />
+      {selected ? "Showing examples" : ""}
+    </motion.div>
+  );
+}
+
 // ── Selector card ─────────────────────────────────────────────────────────────
 function NetworkCard({
   net,
@@ -433,87 +544,32 @@ function NetworkCard({
   readonly index: number;
   readonly onSelect: () => void;
 }) {
-  const { accent, tag, tagLabel, icon, title, meta, CardBg } = net;
+  const { accent, tag, tagLabel, icon, title, meta, CardBg, featured } = net;
+  const isFeatured = !!featured;
+
   return (
     <motion.button
       type="button"
       onClick={onSelect}
-      className="group relative flex-1 min-w-[200px] max-w-[290px] flex flex-col gap-3 rounded-2xl p-5 text-left bg-white"
+      className="group relative flex-1 flex flex-col gap-3 rounded-2xl p-5 text-left bg-white"
       style={{
-        border: selected
-          ? `1.5px solid ${accent}60`
-          : "1.5px solid rgba(0,0,0,0.06)",
-        boxShadow: selected
-          ? `0 8px 32px ${accent}14, 0 2px 8px ${accent}0e`
-          : "0 2px 10px rgba(0,0,0,0.05)",
+        minWidth: isFeatured ? 240 : 190,
+        maxWidth: isFeatured ? 340 : 260,
+        border: cardBorder(selected, isFeatured, accent),
+        boxShadow: cardShadow(selected, isFeatured, accent),
         transition: "border-color 0.2s, box-shadow 0.2s",
       }}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{
-        delay: 0.3 + index * 0.09,
-        type: "spring",
-        stiffness: 300,
-        damping: 28,
-      }}
+      transition={{ delay: 0.3 + index * 0.09, type: "spring", stiffness: 300, damping: 28 }}
       whileHover={{ y: -3, transition: { duration: 0.18 } }}
       whileTap={{ scale: 0.98 }}
     >
       <CardBg />
-
-      {/* Colored top accent bar — expands when selected */}
-      <motion.div
-        className="absolute top-0 left-4 right-4 rounded-full"
-        style={{ background: accent, height: 3, originX: "left" }}
-        animate={{ scaleX: selected ? 1 : 0.3, opacity: selected ? 1 : 0.35 }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
-      />
-
-      {/* Tag row */}
-      <div className="relative z-10 flex items-center justify-between">
-        <span
-          className="text-[9px] font-black tracking-[0.22em] px-2 py-0.5 rounded-full"
-          style={{ backgroundColor: `${accent}10`, color: accent }}
-        >
-          {tag}
-        </span>
-        <span className="text-[10px] text-gray-400 font-medium">
-          {tagLabel}
-        </span>
-      </div>
-
-      {/* Icon + title */}
-      <div className="relative z-10 flex items-center gap-3">
-        <div
-          className="flex items-center justify-center w-9 h-9 rounded-xl shrink-0"
-          style={{
-            backgroundColor: `${accent}0d`,
-            border: `1px solid ${accent}1a`,
-          }}
-        >
-          <span style={{ color: accent }}>{icon}</span>
-        </div>
-        <div>
-          <p className="text-[13px] font-bold text-gray-700 leading-tight">
-            {title}
-          </p>
-          <p className="text-[10px] text-gray-400 font-medium mt-0.5">{meta}</p>
-        </div>
-      </div>
-
-      {/* Selected indicator */}
-      <motion.div
-        className="relative z-10 text-[10px] font-semibold flex items-center gap-1"
-        style={{ color: accent }}
-        animate={{ opacity: selected ? 1 : 0, y: selected ? 0 : 4 }}
-        transition={{ duration: 0.18 }}
-      >
-        <span
-          className="w-1 h-1 rounded-full inline-block"
-          style={{ backgroundColor: accent }}
-        />
-        {selected ? "Showing examples" : ""}
-      </motion.div>
+      <CardAccentBar featured={isFeatured} accent={accent} selected={selected} />
+      <CardHeader tag={tag} tagLabel={tagLabel} accent={accent} featured={isFeatured} />
+      <CardIconTitle icon={icon} title={title} meta={meta} accent={accent} featured={isFeatured} />
+      <CardSelectedDot selected={selected} featured={isFeatured} accent={accent} />
     </motion.button>
   );
 }
@@ -619,7 +675,7 @@ export function LandingPage({
   readonly onSend: (msg: string) => void;
   readonly onTemplate: (t: string) => void;
 }) {
-  const [selected, setSelected] = useState<NetworkKey | null>(null);
+  const [selected, setSelected] = useState<NetworkKey | null>("EUROSTAR");
   const selectedNet = NETWORKS.find((n) => n.key === selected) ?? null;
 
   return (
@@ -630,21 +686,30 @@ export function LandingPage({
       <AnimatedBg selected={selected} />
 
       <div className="relative z-10 flex flex-col items-center gap-8 px-6 py-12 w-full max-w-4xl mx-auto">
-        {/* Live badge */}
+        {/* Wordmark + live badge row */}
         <motion.div
-          className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-emerald-100 shadow-sm"
+          className="flex items-center gap-3"
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.06 }}
         >
-          <motion.span
-            className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"
-            animate={{ opacity: [0.4, 1, 0.4] }}
-            transition={{ duration: 1.8, repeat: Infinity }}
-          />
-          <span className="text-[11px] font-semibold text-emerald-700 tracking-wide">
-            All networks live
+          <span
+            className="text-[13px] font-black tracking-[0.18em] uppercase"
+            style={{ color: "#003366", letterSpacing: "0.22em" }}
+          >
+            CHANNEX
           </span>
+          <div className="w-px h-3 bg-gray-200" />
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-emerald-100 shadow-sm">
+            <motion.span
+              className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"
+              animate={{ opacity: [0.4, 1, 0.4] }}
+              transition={{ duration: 1.8, repeat: Infinity }}
+            />
+            <span className="text-[11px] font-semibold text-emerald-700 tracking-wide">
+              Live
+            </span>
+          </div>
         </motion.div>
 
         {/* Headline */}
@@ -661,11 +726,11 @@ export function LandingPage({
                 damping: 28,
               }}
             >
-              {"Every train, live"}
+              {"Cross-channel, live"}
               <span
                 style={{
                   background:
-                    "linear-gradient(135deg, #e32017 0%, #9333ea 55%, #003366 100%)",
+                    "linear-gradient(135deg, #003366 0%, #c9a227 100%)",
                   WebkitBackgroundClip: "text",
                   WebkitTextFillColor: "transparent",
                 }}
@@ -678,10 +743,10 @@ export function LandingPage({
             className="h-[3px] rounded-full"
             style={{
               background:
-                "linear-gradient(to right, #e32017, #9333ea, #003366)",
+                "linear-gradient(to right, #003366, #c9a227)",
             }}
             initial={{ width: 0, opacity: 0 }}
-            animate={{ width: "55%", opacity: 1 }}
+            animate={{ width: "45%", opacity: 1 }}
             transition={{ delay: 0.5, duration: 0.6, ease: "easeOut" }}
           />
           <motion.p
@@ -690,8 +755,8 @@ export function LandingPage({
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.52 }}
           >
-            Live maps, departure boards, disruptions and journey planning — TFL,
-            SNCF and Eurostar.
+            Eurostar real-time intelligence — live maps, departure boards,
+            disruptions and journey planning. Plus TFL and SNCF.
           </motion.p>
         </div>
 

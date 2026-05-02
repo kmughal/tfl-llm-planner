@@ -277,3 +277,151 @@ func (c *Client) GetDepartures(stopAreaID string, count int) (*DeparturesRespons
 	}
 	return &result, nil
 }
+
+// ── Arrivals ─────────────────────────────────────────────────────────────────
+
+type ArrivalsResponse struct {
+	Arrivals []Arrival `json:"arrivals"`
+}
+
+type Arrival struct {
+	StopDateTime ArrivalStopDT `json:"stop_date_time"`
+	DisplayInfo  DisplayInfo   `json:"display_informations"`
+	StopPoint    struct {
+		Name string `json:"name"`
+	} `json:"stop_point"`
+}
+
+type ArrivalStopDT struct {
+	ArrivalDateTime     string `json:"arrival_date_time"`
+	BaseArrivalDateTime string `json:"base_arrival_date_time"`
+}
+
+// GetArrivals returns next arrivals at a stop area.
+func (c *Client) GetArrivals(stopAreaID string, count int) (*ArrivalsResponse, error) {
+	params := url.Values{}
+	params.Set("count", fmt.Sprintf("%d", count))
+
+	body, err := c.get(fmt.Sprintf("/stop_areas/%s/arrivals", stopAreaID), params)
+	if err != nil {
+		return nil, fmt.Errorf("sncf arrivals: %w", err)
+	}
+	c.saveJSON("arrivals", body)
+
+	var result ArrivalsResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("decode arrivals: %w", err)
+	}
+	return &result, nil
+}
+
+// ── Vehicle Journeys ──────────────────────────────────────────────────────────
+
+type PtObjectsResponse struct {
+	PtObjects []PtObject `json:"pt_objects"`
+}
+
+type PtObject struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	EmbeddedType string `json:"embedded_type"`
+}
+
+type VehicleJourneysResponse struct {
+	VehicleJourneys []VehicleJourney `json:"vehicle_journeys"`
+}
+
+type VehicleJourney struct {
+	ID             string      `json:"id"`
+	Name           string      `json:"name"`
+	Headsign       string      `json:"headsign"`
+	JourneyPattern *VJPattern  `json:"journey_pattern,omitempty"`
+	StopTimes      []StopTime  `json:"stop_times"`
+}
+
+type VJPattern struct {
+	Route *VJRoute `json:"route,omitempty"`
+}
+
+type VJRoute struct {
+	Direction *struct {
+		Name string `json:"name"`
+	} `json:"direction,omitempty"`
+}
+
+type StopTime struct {
+	DepartureTime string      `json:"departure_time"` // "HHMMSS"
+	ArrivalTime   string      `json:"arrival_time"`   // "HHMMSS"
+	StopPoint     VJStopPoint `json:"stop_point"`
+}
+
+type VJStopPoint struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// SearchTrainByNumber finds a vehicle journey by train number for a given date.
+// date format: YYYYMMDD — empty defaults to today.
+// Uses two strategies: headsign filter first, then pt_objects lookup.
+func (c *Client) SearchTrainByNumber(trainNumber, date string) (*VehicleJourneysResponse, error) {
+	if date == "" {
+		date = time.Now().UTC().Format("20060102")
+	}
+	since := date + "T000000"
+	until := date + "T235959"
+
+	// Strategy 1: vehicle_journeys with headsign filter (most direct)
+	params := url.Values{}
+	params.Set("headsign", trainNumber)
+	params.Set("since", since)
+	params.Set("until", until)
+	params.Set("count", "3")
+	params.Set("depth", "2")
+
+	body, err := c.get("/vehicle_journeys", params)
+	if err == nil {
+		var result VehicleJourneysResponse
+		if json.Unmarshal(body, &result) == nil && len(result.VehicleJourneys) > 0 {
+			c.saveJSON("vehicle_journey", body)
+			return &result, nil
+		}
+	}
+
+	// Strategy 2: pt_objects search → trip vehicle journeys
+	ptParams := url.Values{}
+	ptParams.Set("q", trainNumber)
+	ptParams.Add("type[]", "trip")
+	ptParams.Set("count", "5")
+
+	ptBody, ptErr := c.get("/pt_objects", ptParams)
+	if ptErr != nil {
+		if err != nil {
+			return nil, fmt.Errorf("sncf train search: %w", err)
+		}
+		return nil, fmt.Errorf("sncf train search (pt_objects): %w", ptErr)
+	}
+
+	var ptResult PtObjectsResponse
+	if jsonErr := json.Unmarshal(ptBody, &ptResult); jsonErr != nil || len(ptResult.PtObjects) == 0 {
+		return &VehicleJourneysResponse{}, nil
+	}
+
+	tripID := ptResult.PtObjects[0].ID
+	vjParams := url.Values{}
+	vjParams.Set("count", "1")
+	vjParams.Set("since", since)
+	vjParams.Set("until", until)
+	vjParams.Set("depth", "2")
+
+	vjBody, vjErr := c.get("/trips/"+tripID+"/vehicle_journeys", vjParams)
+	if vjErr != nil {
+		return &VehicleJourneysResponse{}, nil
+	}
+	c.saveJSON("vehicle_journey", vjBody)
+
+	var vjResult VehicleJourneysResponse
+	if jsonErr := json.Unmarshal(vjBody, &vjResult); jsonErr != nil {
+		return nil, fmt.Errorf("decode vehicle_journeys: %w", jsonErr)
+	}
+	return &vjResult, nil
+}

@@ -31,14 +31,17 @@ const GROUPS: {
   {
     label:  "SNCF · France",
     tag:    "SNCF",
-    color:  "#005f8e",
-    bg:     "#eff8ff",
-    border: "#93c5fd",
+    color:  "#c00014",
+    bg:     "#fff5f5",
+    border: "#fca5a5",
     icon:   <Train className="w-3.5 h-3.5" />,
     items: [
-      { text: "Plan a journey from Paris Gare de Lyon to Lyon Part-Dieu" },
+      { text: "Next departures from Paris Gare de Lyon" },
+      { text: "Arrivals board at Lyon Part-Dieu" },
+      { text: "Full schedule for TGV {number}", template: true },
+      { text: "Paris Montparnasse to Bordeaux trains" },
       { text: "Are there disruptions on French trains today?" },
-      { text: "Find SNCF stations in Bordeaux" },
+      { text: "Departures from {station}", template: true },
     ],
   },
   {

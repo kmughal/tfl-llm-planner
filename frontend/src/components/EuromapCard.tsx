@@ -9,6 +9,24 @@ const ES_NAVY  = "#003366"
 const ES_GOLD  = "#FFD700"
 const ES_TRACK = "#003366"
 
+const STATION_SLUG: Record<string, string> = {
+  SPX: "london", PNO: "paris", BRU: "brussels", BXS: "brussels",
+  AMS: "amsterdam", ASD: "amsterdam", RDM: "rotterdam", RTD: "rotterdam",
+  LEW: "lille", LIL: "lille", EBF: "ebbsfleet", EBD: "ebbsfleet",
+  FTN: "calais-frethun", MVC: "marne-la-vallee", LIE: "liege",
+}
+
+function planDate(planID: string): string {
+  const d = planID.slice(0, 8)
+  return d.length === 8 ? `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}` : ""
+}
+
+function bookingUrl(fromCode: string, toCode: string, date: string): string {
+  const from = STATION_SLUG[fromCode.toUpperCase()] ?? fromCode.toLowerCase()
+  const to   = STATION_SLUG[toCode.toUpperCase()]   ?? toCode.toLowerCase()
+  return `https://www.eurostar.com/rw-en/train-tickets/${from}-to-${to}/${date}`
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface MapStation {
   shortCode: string
@@ -508,6 +526,10 @@ function PlanCard({ plans }: { readonly plans: EuromapPlan[] }) {
 
   const plan      = plans[Math.min(sel, plans.length - 1)]
   const positions = plan.stations.map((s): [number, number] => [s.lat, s.lng])
+  const origin    = plan.stations.find(s => s.stopType === "origin")
+  const dest      = plan.stations.find(s => s.stopType === "destination")
+  const bDate     = plan.travelDate ?? planDate(plan.planID)
+  const bUrl      = origin && dest && bDate ? bookingUrl(origin.shortCode, dest.shortCode, bDate) : null
   const center: [number, number] = positions.length > 0
     ? [
         positions.reduce((a, p) => a + p[0], 0) / positions.length,
@@ -642,6 +664,33 @@ function PlanCard({ plans }: { readonly plans: EuromapPlan[] }) {
           </div>
         )}
       </div>
+
+      {/* Booking footer */}
+      {bUrl && (
+        <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between bg-[#f8faff]">
+          <div className="text-xs text-gray-500 min-w-0 mr-3 truncate">
+            <span className="font-semibold" style={{ color: ES_NAVY }}>
+              {origin?.name || origin?.shortCode}
+            </span>
+            <span className="mx-2 text-gray-300">→</span>
+            <span className="font-semibold" style={{ color: ES_NAVY }}>
+              {dest?.name || dest?.shortCode}
+            </span>
+            {plan.dep && <span className="ml-2 text-gray-400">· dep {plan.dep}</span>}
+          </div>
+          <motion.a
+            href={bUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-bold text-white shrink-0"
+            style={{ background: `linear-gradient(135deg, ${ES_NAVY} 0%, #0055cc 100%)` }}
+            whileHover={{ scale: 1.05, boxShadow: `0 4px 16px ${ES_NAVY}50` }}
+            whileTap={{ scale: 0.97 }}
+          >
+            Book on Eurostar ↗
+          </motion.a>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,0 +1,53 @@
+{
+  "_note": "Sample response from GET /coverage/sncf/vehicle_journeys?headsign=6201&since=20260502T000000&until=20260502T235959&count=3&depth=2",
+  "_train": "TGV 6201 — Paris Gare de Lyon → Lyon-Part-Dieu",
+  "_endpoint": "https://api.sncf.com/v1/coverage/sncf/vehicle_journeys",
+  "vehicle_journeys": [
+    {
+      "id": "vehicle_journey:SNCF:2026-05-02:6201:1187644:LyonPartDieu",
+      "name": "6201",
+      "headsign": "6201",
+      "journey_pattern": {
+        "id": "journey_pattern:SNCF:Paris-Lyon-Direct",
+        "route": {
+          "id": "route:SNCF:Paris-Lyon",
+          "direction": {
+            "id": "stop_area:SNCF:87723197",
+            "name": "Lyon-Part-Dieu",
+            "embedded_type": "stop_area"
+          }
+        }
+      },
+      "stop_times": [
+        {
+          "arrival_time": "080000",
+          "departure_time": "080000",
+          "stop_point": {
+            "id": "stop_point:SNCF:87686006:Train",
+            "name": "Paris Gare de Lyon"
+          }
+        },
+        {
+          "arrival_time": "094500",
+          "departure_time": "095000",
+          "stop_point": {
+            "id": "stop_point:SNCF:87726000:Train",
+            "name": "Mâcon-Loché TGV"
+          }
+        },
+        {
+          "arrival_time": "100500",
+          "departure_time": "100500",
+          "stop_point": {
+            "id": "stop_point:SNCF:87723197:Train",
+            "name": "Lyon-Part-Dieu"
+          }
+        }
+      ]
+    }
+  ],
+  "context": {
+    "timezone": "Europe/Paris",
+    "current_datetime": "20260502T075500"
+  }
+}

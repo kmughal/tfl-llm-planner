@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { motion, useInView } from "framer-motion"
 import { cn } from "../lib/utils"
 import type { ChatMessage, ToolEvent } from "../lib/types"
@@ -7,12 +7,18 @@ import { EuromapCard } from "./EuromapCard"
 import { EuromapDashboard } from "./EuromapDashboard"
 import { EuromapLiveMap } from "./EuromapLiveMap"
 import { SNCFDisruptions } from "./SNCFDisruptions"
+import { SNCFDepartures } from "./SNCFDepartures"
+import { SNCFArrivals } from "./SNCFArrivals"
+import { SNCFTrain } from "./SNCFTrain"
 import { Train, Bus, MapPin, Clock, ArrowRight, Volume2, VolumeX } from "lucide-react"
 
 const DASHBOARD_TOOL     = "get_eurostar_dashboard"
 const LIVEMAP_TOOL       = "get_eurostar_live_map"
 const DISRUPTIONS_TOOL   = "get_sncf_disruptions"
-const SNCF_RICH_TOOLS    = new Set([DISRUPTIONS_TOOL])
+const DEPARTURES_TOOL    = "get_sncf_departures"
+const ARRIVALS_TOOL      = "get_sncf_arrivals"
+const TRAIN_TOOL         = "get_sncf_train"
+const SNCF_RICH_TOOLS    = new Set([DISRUPTIONS_TOOL, DEPARTURES_TOOL, ARRIVALS_TOOL, TRAIN_TOOL])
 const EUROMAP_TOOLS = new Set([
   "get_euromap_plans",
   "get_euromap_technical_plans",
@@ -621,6 +627,226 @@ function RouteMap({ items }: { readonly items: string[] }) {
   )
 }
 
+// ── Last train detection & card ───────────────────────────────────────────────
+interface LastTrainInfo {
+  time: string
+  from: string
+  to: string
+  operator: string
+}
+
+const LAST_TRAIN_TIME_RE = /last\s+(?:departure|service|train|eurostar)[^.]*?(?:is\s+at\s+|at\s+)?(\d{1,2}:\d{2})/i
+
+const KNOWN_EUROSTAR_STATIONS = [
+  "Paris Gare du Nord", "London St Pancras", "Brussels Midi",
+  "Amsterdam Centraal", "Lille Europe", "Ebbsfleet", "Ashford",
+  "Calais Frethun", "Rotterdam Centraal",
+]
+
+function detectLastTrain(text: string): LastTrainInfo | null {
+  const timeM = LAST_TRAIN_TIME_RE.exec(text)
+  if (!timeM) return null
+
+  let from = ""
+  let to = ""
+  for (const station of KNOWN_EUROSTAR_STATIONS) {
+    if (new RegExp(`from\\s+${station}`, "i").test(text)) from = station
+    if (new RegExp(`to\\s+${station}`, "i").test(text)) to = station
+  }
+
+  return {
+    time: timeM[1],
+    from,
+    to,
+    operator: /eurostar/i.test(text) ? "Eurostar" : "Train",
+  }
+}
+
+const EUROSTAR_NAVY = "#003366"
+const LAST_TRAIN_AMBER = "#f59e0b"
+
+const STATION_BOOKING_SLUG: Record<string, string> = {
+  "London St Pancras":  "london",
+  "Paris Gare du Nord": "paris",
+  "Brussels Midi":      "brussels",
+  "Amsterdam Centraal": "amsterdam",
+  "Rotterdam Centraal": "rotterdam",
+  "Lille Europe":       "lille",
+  "Ebbsfleet":          "ebbsfleet",
+  "Ashford":            "ashford",
+}
+
+function buildLastTrainUrl(from: string, to: string): string {
+  const slug = (s: string) =>
+    STATION_BOOKING_SLUG[s] ?? s.toLowerCase().split(/\s+/).join("-")
+  const today = new Date().toISOString().slice(0, 10)
+  return `https://www.eurostar.com/rw-en/train-tickets/${slug(from)}-to-${slug(to)}/${today}`
+}
+
+function useCountdown(timeStr: string): string {
+  const [remaining, setRemaining] = useState("")
+  useEffect(() => {
+    const compute = () => {
+      const parts = timeStr.split(":")
+      const h = Number(parts[0])
+      const m = Number(parts[1])
+      if (Number.isNaN(h) || Number.isNaN(m)) { setRemaining(""); return }
+      const now = new Date()
+      const dep = new Date(now)
+      dep.setHours(h, m, 0, 0)
+      if (dep <= now) dep.setDate(dep.getDate() + 1)
+      const diff = dep.getTime() - now.getTime()
+      const hrs  = Math.floor(diff / 3_600_000)
+      const mins = Math.floor((diff % 3_600_000) / 60_000)
+      setRemaining(hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`)
+    }
+    compute()
+    const id = setInterval(compute, 30_000)
+    return () => clearInterval(id)
+  }, [timeStr])
+  return remaining
+}
+
+function isWithin2h(timeStr: string): boolean {
+  const parts = timeStr.split(":")
+  const h = Number(parts[0])
+  const m = Number(parts[1])
+  if (Number.isNaN(h) || Number.isNaN(m)) return false
+  const now = new Date()
+  const dep = new Date(now)
+  dep.setHours(h, m, 0, 0)
+  if (dep <= now) return false
+  return dep.getTime() - now.getTime() < 2 * 3_600_000
+}
+
+function LastTrainCard({ info }: { readonly info: LastTrainInfo }) {
+  const countdown = useCountdown(info.time)
+  const urgent    = isWithin2h(info.time)
+  const bookUrl   = info.from && info.to ? buildLastTrainUrl(info.from, info.to) : null
+
+  return (
+    <motion.div
+      className="rounded-2xl overflow-hidden shadow-md"
+      style={{ border: `1.5px solid ${EUROSTAR_NAVY}25` }}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+    >
+      {/* Header */}
+      <div className="px-4 py-2.5 flex items-center justify-between" style={{ backgroundColor: EUROSTAR_NAVY }}>
+        <div className="flex items-center gap-2 text-white">
+          <Train className="w-4 h-4 shrink-0" />
+          <span className="font-semibold text-sm tracking-tight">{info.operator}</span>
+        </div>
+        <div
+          className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold"
+          style={{ backgroundColor: LAST_TRAIN_AMBER, color: "#1a1a1a" }}
+        >
+          <Clock className="w-3 h-3" />
+          Last service
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="bg-white px-5 py-4">
+        <div className="flex items-center justify-center gap-4 py-1">
+          {/* Departure block */}
+          <div className="text-center min-w-0">
+            {info.from && <div className="text-[10px] text-gray-400 mb-1 font-semibold uppercase tracking-wider">From</div>}
+            <div
+              className="text-4xl font-bold tabular-nums leading-none"
+              style={{ color: EUROSTAR_NAVY, letterSpacing: "-0.02em" }}
+            >
+              {info.time}
+            </div>
+            {info.from && (
+              <div className="text-[11px] text-gray-500 mt-1.5 font-medium max-w-[130px] leading-tight">{info.from}</div>
+            )}
+          </div>
+
+          {/* Arrow */}
+          {info.to && (
+            <div className="flex flex-col items-center gap-0.5 shrink-0">
+              <div className="w-8 h-px" style={{ backgroundColor: `${EUROSTAR_NAVY}30` }} />
+              <ArrowRight className="w-4 h-4" style={{ color: `${EUROSTAR_NAVY}50` }} />
+              <div className="w-8 h-px" style={{ backgroundColor: `${EUROSTAR_NAVY}30` }} />
+            </div>
+          )}
+
+          {/* Destination block */}
+          {info.to && (
+            <div className="text-center min-w-0">
+              <div className="text-[10px] text-gray-400 mb-1 font-semibold uppercase tracking-wider">To</div>
+              <div className="text-[11px] text-gray-700 font-semibold max-w-[130px] leading-tight mt-6">
+                {info.to}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Countdown */}
+        {countdown && (
+          <motion.div
+            className="mt-3 flex items-center justify-center gap-2 rounded-xl py-2.5 px-4"
+            style={{
+              background: urgent
+                ? "linear-gradient(135deg, #fff7ed, #fef3c7)"
+                : "linear-gradient(135deg, #f0f9ff, #e0f2fe)",
+              border: `1px solid ${urgent ? "#fbbf24" : "#7dd3fc"}`,
+            }}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <motion.div
+              animate={urgent ? { scale: [1, 1.25, 1] } : {}}
+              transition={{ repeat: Infinity, duration: 1.4, ease: "easeInOut" }}
+            >
+              <Clock className="w-3.5 h-3.5" style={{ color: urgent ? "#d97706" : "#0284c7" }} />
+            </motion.div>
+            <span className="text-sm font-bold tabular-nums" style={{ color: urgent ? "#92400e" : "#075985" }}>
+              Departs in {countdown}
+            </span>
+            {urgent && (
+              <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">
+                Hurry
+              </span>
+            )}
+          </motion.div>
+        )}
+
+        {/* Book Now CTA */}
+        {bookUrl && (
+          <motion.a
+            href={bookUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 flex items-center justify-center gap-2 w-full rounded-xl py-3 text-sm font-bold text-white"
+            style={{ background: `linear-gradient(135deg, ${EUROSTAR_NAVY} 0%, #0055cc 100%)` }}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.32 }}
+            whileHover={{ scale: 1.02, boxShadow: `0 6px 20px ${EUROSTAR_NAVY}50` }}
+            whileTap={{ scale: 0.98 }}
+          >
+            Book on Eurostar.com ↗
+          </motion.a>
+        )}
+
+        {/* Warning footer */}
+        <div
+          className="mt-3 pt-3 border-t text-[11px] text-center font-medium leading-snug"
+          style={{ borderColor: `${LAST_TRAIN_AMBER}50`, color: LAST_TRAIN_AMBER }}
+        >
+          {urgent
+            ? "⚡ Seats may be limited — secure your spot now"
+            : "Last service of the day — book early to avoid missing it"}
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
 // ── Block renderers ───────────────────────────────────────────────────────────
 function StepList({ items }: { readonly items: string[] }) {
   return (
@@ -671,8 +897,10 @@ function BulletList({ items }: { readonly items: string[] }) {
 
 function RichMessage({ text }: { readonly text: string }) {
   const jColor = detectJourneyColor(text)
+  const lastTrain = detectLastTrain(text)
   return (
     <div className="flex flex-col gap-2.5">
+      {lastTrain && <LastTrainCard info={lastTrain} />}
       {parseBlocks(text).map((block) => {
         if (block.kind === "h3") {
           return <p key={`h3-${block.text.slice(0, 20)}`} className="text-xs font-semibold uppercase tracking-wide text-[#003688] mt-1">{block.text}</p>
@@ -786,6 +1014,9 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
             .map((ev) => {
               const r = ev.result ?? ""
               if (ev.name === DISRUPTIONS_TOOL) return <SNCFDisruptions key={`disruptions-${ev.name}`} result={r} />
+              if (ev.name === DEPARTURES_TOOL)  return <SNCFDepartures  key={`departures-${ev.name}`}  result={r} />
+              if (ev.name === ARRIVALS_TOOL)    return <SNCFArrivals    key={`arrivals-${ev.name}`}    result={r} />
+              if (ev.name === TRAIN_TOOL)       return <SNCFTrain       key={`train-${ev.name}`}       result={r} />
               return null
             })}
           {/* Euromap map cards / dashboard — rendered from raw tool result data */}

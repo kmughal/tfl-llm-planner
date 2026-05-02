@@ -1,0 +1,58 @@
+{
+  "_note": "Sample response from GET /coverage/sncf/places?q=Lyon&type[]=stop_area&count=5",
+  "_endpoint": "https://api.sncf.com/v1/coverage/sncf/places",
+  "places": [
+    {
+      "id": "stop_area:SNCF:87723197",
+      "name": "Lyon-Part-Dieu",
+      "quality": 90,
+      "embedded_type": "stop_area",
+      "stop_area": {
+        "id": "stop_area:SNCF:87723197",
+        "name": "Lyon-Part-Dieu",
+        "label": "Lyon-Part-Dieu (Lyon)",
+        "timezone": "Europe/Paris",
+        "coord": {
+          "lon": "4.859300",
+          "lat": "45.760590"
+        }
+      }
+    },
+    {
+      "id": "stop_area:SNCF:87722025",
+      "name": "Lyon-Perrache",
+      "quality": 85,
+      "embedded_type": "stop_area",
+      "stop_area": {
+        "id": "stop_area:SNCF:87722025",
+        "name": "Lyon-Perrache",
+        "label": "Lyon-Perrache (Lyon)",
+        "timezone": "Europe/Paris",
+        "coord": {
+          "lon": "4.826400",
+          "lat": "45.749300"
+        }
+      }
+    },
+    {
+      "id": "stop_area:SNCF:87271007",
+      "name": "Lyon Saint-Exupéry TGV",
+      "quality": 80,
+      "embedded_type": "stop_area",
+      "stop_area": {
+        "id": "stop_area:SNCF:87271007",
+        "name": "Lyon Saint-Exupéry TGV",
+        "label": "Lyon Saint-Exupéry TGV (Colombier-Saugnieu)",
+        "timezone": "Europe/Paris",
+        "coord": {
+          "lon": "5.081870",
+          "lat": "45.723890"
+        }
+      }
+    }
+  ],
+  "context": {
+    "timezone": "Europe/Paris",
+    "current_datetime": "20260502T120000"
+  }
+}

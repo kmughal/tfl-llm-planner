@@ -1,0 +1,48 @@
+{
+  "_note": "Sample response from GET /v1/plans/20260502-9005",
+  "_endpoint": "https://gateway.dm.eurostar.com/euromap-enabler/v1/plans/{planID}",
+  "_planID": "20260502-9005",
+  "range": "P1D",
+  "status": "CONFIRMED",
+  "planID": "20260502-9005",
+  "planType": "COMMERCIAL",
+  "serviceCode": "9005",
+  "departureDateTime": "2026-05-02T08:01:00",
+  "arrivalDateTime": "2026-05-02T11:17:00",
+  "stations": [
+    {
+      "sequenceNumber": 1,
+      "stopType": "ORIGIN",
+      "rameNumber": "4001",
+      "country": "GB",
+      "rrCode": "SPX",
+      "shortCode": "SPX",
+      "latitude": "51.5320",
+      "longitude": "-0.1233",
+      "departureDateTime": "2026-05-02T08:01:00"
+    },
+    {
+      "sequenceNumber": 2,
+      "stopType": "INTERMEDIATE",
+      "rameNumber": "4001",
+      "country": "GB",
+      "rrCode": "EBD",
+      "shortCode": "EBD",
+      "latitude": "51.4416",
+      "longitude": "0.3206",
+      "arrivalDateTime": "2026-05-02T08:30:00",
+      "departureDateTime": "2026-05-02T08:35:00"
+    },
+    {
+      "sequenceNumber": 3,
+      "stopType": "DESTINATION",
+      "rameNumber": "4001",
+      "country": "FR",
+      "rrCode": "PNO",
+      "shortCode": "PNO",
+      "latitude": "48.8809",
+      "longitude": "2.3553",
+      "arrivalDateTime": "2026-05-02T11:17:00"
+    }
+  ]
+}

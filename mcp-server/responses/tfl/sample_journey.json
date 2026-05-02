@@ -1,0 +1,128 @@
+{
+  "_note": "Sample response from GET /Journey/JourneyResults/Paddington/to/Canary%20Wharf",
+  "_endpoint": "https://api.tfl.gov.uk/Journey/JourneyResults/{from}/to/{to}",
+  "journeys": [
+    {
+      "startDateTime": "2026-05-02T09:00:00",
+      "arrivalDateTime": "2026-05-02T09:32:00",
+      "duration": 32,
+      "fare": {
+        "totalCost": 280
+      },
+      "legs": [
+        {
+          "departureTime": "2026-05-02T09:00:00",
+          "arrivalTime": "2026-05-02T09:32:00",
+          "duration": 32,
+          "mode": {
+            "id": "elizabeth-line",
+            "name": "Elizabeth line"
+          },
+          "instruction": {
+            "summary": "Elizabeth line to Canary Wharf",
+            "detailed": "Take the Elizabeth line (eastbound) from Paddington to Canary Wharf. Direct service, no changes required."
+          },
+          "departurePoint": {
+            "commonName": "Paddington",
+            "lat": 51.5154,
+            "lon": -0.1755
+          },
+          "arrivalPoint": {
+            "commonName": "Canary Wharf",
+            "lat": 51.5051,
+            "lon": -0.0172
+          },
+          "disruptions": [],
+          "path": {
+            "stopPoints": [
+              { "name": "Paddington" },
+              { "name": "Bond Street" },
+              { "name": "Tottenham Court Road" },
+              { "name": "Farringdon" },
+              { "name": "Liverpool Street" },
+              { "name": "Whitechapel" },
+              { "name": "Canary Wharf" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "startDateTime": "2026-05-02T09:05:00",
+      "arrivalDateTime": "2026-05-02T09:44:00",
+      "duration": 39,
+      "fare": {
+        "totalCost": 280
+      },
+      "legs": [
+        {
+          "departureTime": "2026-05-02T09:05:00",
+          "arrivalTime": "2026-05-02T09:19:00",
+          "duration": 14,
+          "mode": {
+            "id": "tube",
+            "name": "Underground"
+          },
+          "instruction": {
+            "summary": "Circle line to Notting Hill Gate",
+            "detailed": "Take the Circle line (eastbound) from Paddington to Notting Hill Gate."
+          },
+          "departurePoint": {
+            "commonName": "Paddington",
+            "lat": 51.5154,
+            "lon": -0.1755
+          },
+          "arrivalPoint": {
+            "commonName": "Notting Hill Gate",
+            "lat": 51.5095,
+            "lon": -0.1967
+          },
+          "disruptions": [],
+          "path": {
+            "stopPoints": [
+              { "name": "Paddington" },
+              { "name": "Bayswater" },
+              { "name": "Notting Hill Gate" }
+            ]
+          }
+        },
+        {
+          "departureTime": "2026-05-02T09:22:00",
+          "arrivalTime": "2026-05-02T09:44:00",
+          "duration": 22,
+          "mode": {
+            "id": "tube",
+            "name": "Underground"
+          },
+          "instruction": {
+            "summary": "Jubilee line to Canary Wharf",
+            "detailed": "Change to the Jubilee line (eastbound) at Green Park and travel to Canary Wharf."
+          },
+          "departurePoint": {
+            "commonName": "Green Park",
+            "lat": 51.5067,
+            "lon": -0.1428
+          },
+          "arrivalPoint": {
+            "commonName": "Canary Wharf",
+            "lat": 51.5051,
+            "lon": -0.0172
+          },
+          "disruptions": [],
+          "path": {
+            "stopPoints": [
+              { "name": "Green Park" },
+              { "name": "Westminster" },
+              { "name": "Waterloo" },
+              { "name": "Southwark" },
+              { "name": "London Bridge" },
+              { "name": "Bermondsey" },
+              { "name": "Canada Water" },
+              { "name": "Canary Wharf" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

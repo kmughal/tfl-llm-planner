@@ -1,0 +1,73 @@
+{
+  "_note": "Sample response from GET /v1/plans?fromDateTime=2026-05-02T00:00:00&range=P1D",
+  "_endpoint": "https://gateway.dm.eurostar.com/euromap-enabler/v1/plans",
+  "plans": [
+    {
+      "range": "P1D",
+      "status": "CONFIRMED",
+      "planID": "20260502-9001",
+      "planType": "COMMERCIAL",
+      "serviceCode": "9001",
+      "departureDateTime": "2026-05-02T06:13:00",
+      "arrivalDateTime": "2026-05-02T09:26:00",
+      "stations": [
+        { "sequenceNumber": 1, "stopType": "ORIGIN",      "country": "GB", "rrCode": "SPX", "shortCode": "SPX", "latitude": "51.5320", "longitude": "-0.1233", "departureDateTime": "2026-05-02T06:13:00" },
+        { "sequenceNumber": 2, "stopType": "DESTINATION", "country": "FR", "rrCode": "PNO", "shortCode": "PNO", "latitude": "48.8809", "longitude": "2.3553",  "arrivalDateTime": "2026-05-02T09:26:00" }
+      ]
+    },
+    {
+      "range": "P1D",
+      "status": "CONFIRMED",
+      "planID": "20260502-9005",
+      "planType": "COMMERCIAL",
+      "serviceCode": "9005",
+      "departureDateTime": "2026-05-02T08:01:00",
+      "arrivalDateTime": "2026-05-02T11:17:00",
+      "stations": [
+        { "sequenceNumber": 1, "stopType": "ORIGIN",        "country": "GB", "rrCode": "SPX", "shortCode": "SPX", "latitude": "51.5320", "longitude": "-0.1233", "departureDateTime": "2026-05-02T08:01:00" },
+        { "sequenceNumber": 2, "stopType": "INTERMEDIATE",  "country": "GB", "rrCode": "EBD", "shortCode": "EBD", "latitude": "51.4416", "longitude": "0.3206",  "departureDateTime": "2026-05-02T08:35:00", "arrivalDateTime": "2026-05-02T08:30:00" },
+        { "sequenceNumber": 3, "stopType": "DESTINATION",   "country": "FR", "rrCode": "PNO", "shortCode": "PNO", "latitude": "48.8809", "longitude": "2.3553",  "arrivalDateTime": "2026-05-02T11:17:00" }
+      ]
+    },
+    {
+      "range": "P1D",
+      "status": "CONFIRMED",
+      "planID": "20260502-9009",
+      "planType": "COMMERCIAL",
+      "serviceCode": "9009",
+      "departureDateTime": "2026-05-02T09:31:00",
+      "arrivalDateTime": "2026-05-02T12:47:00",
+      "stations": [
+        { "sequenceNumber": 1, "stopType": "ORIGIN",      "country": "GB", "rrCode": "SPX", "shortCode": "SPX", "latitude": "51.5320", "longitude": "-0.1233", "departureDateTime": "2026-05-02T09:31:00" },
+        { "sequenceNumber": 2, "stopType": "DESTINATION", "country": "FR", "rrCode": "PNO", "shortCode": "PNO", "latitude": "48.8809", "longitude": "2.3553",  "arrivalDateTime": "2026-05-02T12:47:00" }
+      ]
+    },
+    {
+      "range": "P1D",
+      "status": "CONFIRMED",
+      "planID": "20260502-9013",
+      "planType": "COMMERCIAL",
+      "serviceCode": "9013",
+      "departureDateTime": "2026-05-02T10:01:00",
+      "arrivalDateTime": "2026-05-02T14:17:00",
+      "stations": [
+        { "sequenceNumber": 1, "stopType": "ORIGIN",        "country": "GB", "rrCode": "SPX", "shortCode": "SPX", "latitude": "51.5320", "longitude": "-0.1233", "departureDateTime": "2026-05-02T10:01:00" },
+        { "sequenceNumber": 2, "stopType": "INTERMEDIATE",  "country": "BE", "rrCode": "LIL", "shortCode": "LIL", "latitude": "50.6375", "longitude": "3.0700",  "departureDateTime": "2026-05-02T12:22:00", "arrivalDateTime": "2026-05-02T12:17:00" },
+        { "sequenceNumber": 3, "stopType": "DESTINATION",   "country": "BE", "rrCode": "BXS", "shortCode": "BXS", "latitude": "50.8361", "longitude": "4.3360",  "arrivalDateTime": "2026-05-02T14:17:00" }
+      ]
+    },
+    {
+      "range": "P1D",
+      "status": "CONFIRMED",
+      "planID": "20260502-9415",
+      "planType": "COMMERCIAL",
+      "serviceCode": "9415",
+      "departureDateTime": "2026-05-02T18:01:00",
+      "arrivalDateTime": "2026-05-02T21:20:00",
+      "stations": [
+        { "sequenceNumber": 1, "stopType": "ORIGIN",      "country": "FR", "rrCode": "PNO", "shortCode": "PNO", "latitude": "48.8809", "longitude": "2.3553",  "departureDateTime": "2026-05-02T18:01:00" },
+        { "sequenceNumber": 2, "stopType": "DESTINATION", "country": "GB", "rrCode": "SPX", "shortCode": "SPX", "latitude": "51.5320", "longitude": "-0.1233", "arrivalDateTime": "2026-05-02T21:20:00" }
+      ]
+    }
+  ]
+}

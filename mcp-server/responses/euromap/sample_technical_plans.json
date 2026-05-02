@@ -1,0 +1,62 @@
+{
+  "_note": "Sample response from GET /v1/technical-plans?fromDateTime=2026-05-02T00:00:00&range=P1D",
+  "_endpoint": "https://gateway.dm.eurostar.com/euromap-enabler/v1/technical-plans",
+  "plans": [
+    {
+      "range": "P1D",
+      "status": "CONFIRMED",
+      "planID": "20260502-9001",
+      "planType": "TECHNICAL",
+      "serviceCode": "9001",
+      "travelDate": "2026-05-02",
+      "origin": {
+        "country": "GB",
+        "rrCode": "SPX",
+        "shortCode": "SPX"
+      },
+      "destination": {
+        "country": "FR",
+        "rrCode": "PNO",
+        "shortCode": "PNO"
+      },
+      "passagePoints": [
+        {
+          "id": "SPX",
+          "stopType": "ORIGIN",
+          "arrivalDateTime": null,
+          "departureDateTime": "2026-05-02T06:13:00",
+          "country": "GB",
+          "rrCode": "SPX",
+          "shortCode": "SPX",
+          "latitude": 51.5320,
+          "longitude": -0.1233,
+          "trackInformation": { "trackNumber": "10", "platform": "10" }
+        },
+        {
+          "id": "CBF",
+          "stopType": "INTERMEDIATE",
+          "arrivalDateTime": "2026-05-02T06:42:00",
+          "departureDateTime": "2026-05-02T06:44:00",
+          "country": "GB",
+          "rrCode": "CBF",
+          "shortCode": "CBF",
+          "latitude": 51.0937,
+          "longitude": 1.1692,
+          "trackInformation": { "trackNumber": "1", "platform": null }
+        },
+        {
+          "id": "PNO",
+          "stopType": "DESTINATION",
+          "arrivalDateTime": "2026-05-02T09:26:00",
+          "departureDateTime": null,
+          "country": "FR",
+          "rrCode": "PNO",
+          "shortCode": "PNO",
+          "latitude": 48.8809,
+          "longitude": 2.3553,
+          "trackInformation": { "trackNumber": "12", "platform": "12" }
+        }
+      ]
+    }
+  ]
+}

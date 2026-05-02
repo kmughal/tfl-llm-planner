@@ -32,6 +32,9 @@ func main() {
 	s.AddTool(tools.PlanSNCFJourneyTool(), tools.HandlePlanSNCFJourney(sncfClient))
 	s.AddTool(tools.SearchSNCFStationsTool(), tools.HandleSearchSNCFStations(sncfClient))
 	s.AddTool(tools.GetSNCFDisruptionsTool(), tools.HandleGetSNCFDisruptions(sncfClient))
+	s.AddTool(tools.GetSNCFDeparturesTool(), tools.HandleGetSNCFDepartures(sncfClient))
+	s.AddTool(tools.GetSNCFArrivalsTool(), tools.HandleGetSNCFArrivals(sncfClient))
+	s.AddTool(tools.GetSNCFTrainTool(), tools.HandleGetSNCFTrain(sncfClient))
 
 	// Euromap (Eurostar) tools
 	s.AddTool(tools.GetEuromapPlansTool(), tools.HandleGetEuromapPlans(euromapClient))
