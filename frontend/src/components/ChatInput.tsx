@@ -163,8 +163,34 @@ function VoicePanel({
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
+const BURST_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315]
+
+function SendBurst({ active }: { readonly active: boolean }) {
+  if (!active) return null
+  return (
+    <>
+      {BURST_ANGLES.map(angle => {
+        const rad = (angle * Math.PI) / 180
+        const tx  = Math.round(Math.cos(rad) * 22)
+        const ty  = Math.round(Math.sin(rad) * 22)
+        return (
+          <motion.span
+            key={angle}
+            className="absolute w-1.5 h-1.5 rounded-full pointer-events-none"
+            style={{ background: "#003688", top: "50%", left: "50%", marginTop: -3, marginLeft: -3 }}
+            initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
+            animate={{ x: tx, y: ty, opacity: 0, scale: 0 }}
+            transition={{ duration: 0.38, ease: "easeOut" }}
+          />
+        )
+      })}
+    </>
+  )
+}
+
 export function ChatInput({ onSend, disabled, prefill }: Props) {
   const [text, setText]   = useState("")
+  const [burst, setBurst] = useState(false)
   const textareaRef       = useRef<HTMLTextAreaElement>(null)
   const lastPrefillRef    = useRef("")
 
@@ -199,6 +225,8 @@ export function ChatInput({ onSend, disabled, prefill }: Props) {
     setText("")
     lastPrefillRef.current = ""
     if (textareaRef.current) textareaRef.current.style.height = "auto"
+    setBurst(true)
+    setTimeout(() => setBurst(false), 400)
   }
 
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -267,19 +295,22 @@ export function ChatInput({ onSend, disabled, prefill }: Props) {
             </button>
           )}
 
-          <button
-            onClick={submit}
-            disabled={disabled || !text.trim()}
-            className={cn(
-              "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all",
-              text.trim() && !disabled
-                ? "bg-claude-accent hover:bg-claude-accentHover text-white"
-                : "bg-sand-200 text-sand-400 cursor-not-allowed",
-            )}
-            aria-label="Send"
-          >
-            <ArrowUp className="w-4 h-4" />
-          </button>
+          <div className="relative flex-shrink-0">
+            <SendBurst active={burst} />
+            <button
+              onClick={submit}
+              disabled={disabled || !text.trim()}
+              className={cn(
+                "w-8 h-8 rounded-full flex items-center justify-center transition-all",
+                text.trim() && !disabled
+                  ? "bg-claude-accent hover:bg-claude-accentHover text-white"
+                  : "bg-sand-200 text-sand-400 cursor-not-allowed",
+              )}
+              aria-label="Send"
+            >
+              <ArrowUp className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 

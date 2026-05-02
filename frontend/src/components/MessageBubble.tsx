@@ -936,7 +936,19 @@ function MessageContent({ message, isUser }: { readonly message: ChatMessage; re
     return null
   }
   if (isUser) return <span>{message.content}</span>
-  return <RichMessage text={message.content} />
+  return (
+    <>
+      <RichMessage text={message.content} />
+      {message.streaming && (
+        <motion.span
+          className="inline-block w-0.5 h-3.5 rounded-sm ml-0.5 align-middle"
+          style={{ background: "#003688" }}
+          animate={{ opacity: [1, 0, 1] }}
+          transition={{ duration: 0.75, repeat: Infinity, ease: "easeInOut" }}
+        />
+      )}
+    </>
+  )
 }
 
 // ── Text-to-speech ────────────────────────────────────────────────────────────
@@ -999,7 +1011,12 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
   const toolEvents: ToolEvent[] = message.toolEvents ?? []
 
   return (
-    <div className={cn("flex flex-col gap-2 animate-fade-in", isUser ? "items-end" : "items-start")}>
+    <motion.div
+      className={cn("flex flex-col gap-2", isUser ? "items-end" : "items-start")}
+      initial={{ opacity: 0, x: isUser ? 40 : -40 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.32, ease: "easeOut" }}
+    >
       {!isUser && toolEvents.length > 0 && (
         <div className="flex flex-col gap-2 w-full max-w-[90%]">
           {/* Regular tool badges (and euromap tool_call pending badges) */}
@@ -1049,6 +1066,6 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
           <SpeakButton content={message.content} />
         )}
       </div>
-    </div>
+    </motion.div>
   )
 }

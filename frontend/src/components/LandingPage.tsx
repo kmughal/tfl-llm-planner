@@ -2,6 +2,49 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Train, MapPin, Zap, Pencil } from "lucide-react";
 
+// ── Floating background particles ────────────────────────────────────────────
+const PARTICLES = [
+  { id: "p0", x: "8%",  size: 3, color: "#e32017", dur: 14, delay: 0    },
+  { id: "p1", x: "18%", size: 2, color: "#003366", dur: 11, delay: 2    },
+  { id: "p2", x: "31%", size: 4, color: "#fbbf24", dur: 16, delay: 0.5  },
+  { id: "p3", x: "44%", size: 2, color: "#e32017", dur: 12, delay: 3.5  },
+  { id: "p4", x: "57%", size: 3, color: "#003366", dur: 15, delay: 1    },
+  { id: "p5", x: "68%", size: 2, color: "#6ee7b7", dur: 13, delay: 4    },
+  { id: "p6", x: "79%", size: 4, color: "#fbbf24", dur: 10, delay: 1.5  },
+  { id: "p7", x: "91%", size: 2, color: "#003366", dur: 17, delay: 0.8  },
+  { id: "p8", x: "24%", size: 2, color: "#6ee7b7", dur: 12, delay: 6    },
+  { id: "p9", x: "85%", size: 3, color: "#e32017", dur: 14, delay: 2.5  },
+]
+
+function FloatingParticles() {
+  return (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>
+      {PARTICLES.map((p) => (
+        <motion.span
+          key={p.id}
+          className="absolute rounded-full"
+          style={{
+            left:   p.x,
+            bottom: "-8px",
+            width:  p.size,
+            height: p.size,
+            background: p.color,
+            opacity: 0,
+          }}
+          animate={{ y: [0, -700], opacity: [0, 0.55, 0.55, 0] }}
+          transition={{
+            duration:  p.dur,
+            delay:     p.delay,
+            repeat:    Infinity,
+            ease:      "linear",
+            times:     [0, 0.1, 0.85, 1],
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
 // ── Full-page animated backgrounds ───────────────────────────────────────────
 const TFL_FULL_RIBBONS = [
   { color: "#E32017", top: "8%", w: 480, delay: 0, dur: 9 },
@@ -662,6 +705,7 @@ export function LandingPage({
       style={{ minHeight: "100%" }}
     >
       <AnimatedBg selected={selected} />
+      <FloatingParticles />
 
       <div className="relative z-10 flex flex-col items-center gap-8 px-6 py-12 w-full max-w-4xl mx-auto">
         {/* Wordmark + live badge row */}

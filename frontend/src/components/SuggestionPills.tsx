@@ -1,4 +1,5 @@
 import { Train, MapPin, Pencil, Zap } from "lucide-react"
+import { motion } from "framer-motion"
 
 interface Suggestion {
   text:      string
@@ -103,34 +104,32 @@ export function SuggestionPills({ onSelect, onTemplate }: Props) {
             {group.items.map(item => {
               const isTemplate = !!item.template
               return (
-                <button
+                <motion.button
                   key={item.text}
                   type="button"
                   onClick={() => isTemplate ? onTemplate(item.text) : onSelect(item.text)}
                   title={isTemplate ? "Click to pre-fill — replace {placeholders} before sending" : undefined}
-                  className="flex items-center gap-1.5 text-xs border rounded-full px-3.5 py-1.5 transition-all duration-150 active:scale-95 font-medium"
+                  className="flex items-center gap-1.5 text-xs border rounded-full px-3.5 py-1.5 font-medium"
                   style={{
                     color:           group.color,
                     borderColor:     isTemplate ? group.color : group.border,
                     backgroundColor: "#fff",
                     borderStyle:     isTemplate ? "dashed" : "solid",
                   }}
-                  onMouseEnter={e => {
-                    const el = e.currentTarget
-                    el.style.backgroundColor = group.bg
-                    el.style.borderColor     = group.color
+                  whileHover={{
+                    scale:           1.07,
+                    y:               -2,
+                    backgroundColor: group.bg,
+                    borderColor:     group.color,
                   }}
-                  onMouseLeave={e => {
-                    const el = e.currentTarget
-                    el.style.backgroundColor = "#fff"
-                    el.style.borderColor     = isTemplate ? group.color : group.border
-                  }}
+                  whileTap={{ scale: 0.92 }}
+                  transition={{ type: "spring", stiffness: 420, damping: 18 }}
                 >
                   {isTemplate
                     ? <Pencil className="w-2.5 h-2.5 shrink-0" />
                     : <Zap className="w-2.5 h-2.5 shrink-0 opacity-50" />}
                   {item.text}
-                </button>
+                </motion.button>
               )
             })}
           </div>
