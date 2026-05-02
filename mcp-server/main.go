@@ -9,12 +9,14 @@ import (
 	"tfl-mcp-server/sncf"
 	"tfl-mcp-server/tfl"
 	"tfl-mcp-server/tools"
+	"tfl-mcp-server/traveler"
 )
 
 func main() {
-	tflClient := tfl.NewClient(os.Getenv("TFL_APP_KEY"))
-	sncfClient := sncf.NewClient(os.Getenv("SNCF_API_KEY"))
-	euromapClient := euromap.NewClient(os.Getenv("EUROMAP_CLIENT_ID"), os.Getenv("EUROMAP_CLIENT_SECRET"))
+	tflClient      := tfl.NewClient(os.Getenv("TFL_APP_KEY"))
+	sncfClient     := sncf.NewClient(os.Getenv("SNCF_API_KEY"))
+	euromapClient  := euromap.NewClient(os.Getenv("EUROMAP_CLIENT_ID"), os.Getenv("EUROMAP_CLIENT_SECRET"))
+	travelerClient := traveler.NewClient(os.Getenv("TRAVELER_CLIENT_ID"), os.Getenv("TRAVELER_CONSUMER_ID"))
 
 	s := server.NewMCPServer(
 		"transport-journey-planner",
@@ -35,6 +37,9 @@ func main() {
 	s.AddTool(tools.GetSNCFDeparturesTool(), tools.HandleGetSNCFDepartures(sncfClient))
 	s.AddTool(tools.GetSNCFArrivalsTool(), tools.HandleGetSNCFArrivals(sncfClient))
 	s.AddTool(tools.GetSNCFTrainTool(), tools.HandleGetSNCFTrain(sncfClient))
+
+	// Traveler (Eurostar passenger load) tools
+	s.AddTool(tools.GetTravelerSummaryTool(), tools.HandleGetTravelerSummary(travelerClient))
 
 	// Euromap (Eurostar) tools
 	s.AddTool(tools.GetEuromapPlansTool(), tools.HandleGetEuromapPlans(euromapClient))

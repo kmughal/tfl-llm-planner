@@ -1,0 +1,212 @@
+[
+  {
+    "_note": "Sample from GET /v1/traveler-summary?travelDate=2026-05-02",
+    "_endpoint": "https://thapaas.thalys.com/traveler-sapi/v1/traveler-summary",
+    "serviceCode": "9005",
+    "travelerCount": 624,
+    "routes": [
+      {
+        "origin": "SPX",
+        "destination": "PNO",
+        "travelerCount": 624,
+        "coaches": [
+          {
+            "coachNumber": "13",
+            "travelerCount": 75,
+            "serviceClasses": [{ "serviceClass": "standard", "travelerCount": 75 }],
+            "details": [
+              { "_type": "normal",  "travelerCount": 61 },
+              { "_type": "kid",     "travelerCount": 0  },
+              { "_type": "vip",     "travelerCount": 0  },
+              { "_type": "group",   "count": 0, "travelerCount": 0 },
+              { "_type": "pmr",     "travelerCount": 0  },
+              { "_type": "senior",  "travelerCount": 7  },
+              { "_type": "youth",   "travelerCount": 7  }
+            ]
+          },
+          {
+            "coachNumber": "12",
+            "travelerCount": 70,
+            "serviceClasses": [{ "serviceClass": "standard", "travelerCount": 70 }],
+            "details": [
+              { "_type": "normal",  "travelerCount": 57 },
+              { "_type": "kid",     "travelerCount": 1  },
+              { "_type": "vip",     "travelerCount": 0  },
+              { "_type": "group",   "count": 0, "travelerCount": 0 },
+              { "_type": "pmr",     "travelerCount": 0  },
+              { "_type": "senior",  "travelerCount": 9  },
+              { "_type": "youth",   "travelerCount": 3  }
+            ]
+          },
+          {
+            "coachNumber": "10",
+            "travelerCount": 64,
+            "serviceClasses": [{ "serviceClass": "standard", "travelerCount": 64 }],
+            "details": [
+              { "_type": "normal",  "travelerCount": 57 },
+              { "_type": "kid",     "travelerCount": 0  },
+              { "_type": "vip",     "travelerCount": 0  },
+              { "_type": "group",   "count": 0, "travelerCount": 0 },
+              { "_type": "pmr",     "travelerCount": 0  },
+              { "_type": "senior",  "travelerCount": 3  },
+              { "_type": "youth",   "travelerCount": 4  }
+            ]
+          },
+          {
+            "coachNumber": "16",
+            "travelerCount": 29,
+            "serviceClasses": [{ "serviceClass": "premium", "travelerCount": 29 }],
+            "details": [
+              { "_type": "normal",  "travelerCount": 26 },
+              { "_type": "kid",     "travelerCount": 0  },
+              { "_type": "vip",     "travelerCount": 0  },
+              { "_type": "group",   "count": 0, "travelerCount": 0 },
+              { "_type": "pmr",     "travelerCount": 0  },
+              { "_type": "senior",  "travelerCount": 3  },
+              { "_type": "youth",   "travelerCount": 0  }
+            ]
+          },
+          {
+            "coachNumber": "15",
+            "travelerCount": 23,
+            "serviceClasses": [{ "serviceClass": "premium", "travelerCount": 23 }],
+            "details": [
+              { "_type": "normal",  "travelerCount": 21 },
+              { "_type": "kid",     "travelerCount": 0  },
+              { "_type": "vip",     "travelerCount": 0  },
+              { "_type": "group",   "count": 0, "travelerCount": 0 },
+              { "_type": "pmr",     "travelerCount": 0  },
+              { "_type": "senior",  "travelerCount": 1  },
+              { "_type": "youth",   "travelerCount": 1  }
+            ]
+          },
+          {
+            "coachNumber": "1",
+            "travelerCount": 37,
+            "serviceClasses": [{ "serviceClass": "comfort", "travelerCount": 37 }],
+            "details": [
+              { "_type": "normal",  "travelerCount": 36 },
+              { "_type": "kid",     "travelerCount": 0  },
+              { "_type": "vip",     "travelerCount": 0  },
+              { "_type": "group",   "count": 0, "travelerCount": 0 },
+              { "_type": "pmr",     "travelerCount": 0  },
+              { "_type": "senior",  "travelerCount": 1  },
+              { "_type": "youth",   "travelerCount": 0  }
+            ]
+          },
+          {
+            "coachNumber": "2",
+            "travelerCount": 29,
+            "serviceClasses": [{ "serviceClass": "comfort", "travelerCount": 29 }],
+            "details": [
+              { "_type": "normal",  "travelerCount": 27 },
+              { "_type": "kid",     "travelerCount": 0  },
+              { "_type": "vip",     "travelerCount": 0  },
+              { "_type": "group",   "count": 0, "travelerCount": 0 },
+              { "_type": "pmr",     "travelerCount": 0  },
+              { "_type": "senior",  "travelerCount": 3  },
+              { "_type": "youth",   "travelerCount": 0  }
+            ]
+          },
+          {
+            "coachNumber": "3",
+            "travelerCount": 23,
+            "serviceClasses": [{ "serviceClass": "comfort", "travelerCount": 23 }],
+            "details": [
+              { "_type": "normal",  "travelerCount": 21 },
+              { "_type": "kid",     "travelerCount": 0  },
+              { "_type": "vip",     "travelerCount": 0  },
+              { "_type": "group",   "count": 0, "travelerCount": 0 },
+              { "_type": "pmr",     "travelerCount": 0  },
+              { "_type": "senior",  "travelerCount": 1  },
+              { "_type": "youth",   "travelerCount": 1  }
+            ]
+          },
+          {
+            "coachNumber": "14",
+            "travelerCount": 26,
+            "serviceClasses": [{ "serviceClass": "comfort", "travelerCount": 26 }],
+            "details": [
+              { "_type": "normal",  "travelerCount": 26 },
+              { "_type": "kid",     "travelerCount": 0  },
+              { "_type": "vip",     "travelerCount": 0  },
+              { "_type": "group",   "count": 0, "travelerCount": 0 },
+              { "_type": "pmr",     "travelerCount": 0  },
+              { "_type": "senior",  "travelerCount": 0  },
+              { "_type": "youth",   "travelerCount": 0  }
+            ]
+          },
+          {
+            "coachNumber": "7",
+            "travelerCount": 46,
+            "serviceClasses": [{ "serviceClass": "standard", "travelerCount": 46 }],
+            "details": [
+              { "_type": "normal",  "travelerCount": 37 },
+              { "_type": "kid",     "travelerCount": 5  },
+              { "_type": "vip",     "travelerCount": 0  },
+              { "_type": "group",   "count": 0, "travelerCount": 0 },
+              { "_type": "pmr",     "travelerCount": 0  },
+              { "_type": "senior",  "travelerCount": 2  },
+              { "_type": "youth",   "travelerCount": 2  }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "serviceCode": "9017",
+    "travelerCount": 412,
+    "routes": [
+      {
+        "origin": "SPX",
+        "destination": "PNO",
+        "travelerCount": 412,
+        "coaches": [
+          {
+            "coachNumber": "13",
+            "travelerCount": 68,
+            "serviceClasses": [{ "serviceClass": "standard", "travelerCount": 68 }],
+            "details": [
+              { "_type": "normal",  "travelerCount": 55 },
+              { "_type": "kid",     "travelerCount": 3  },
+              { "_type": "vip",     "travelerCount": 0  },
+              { "_type": "group",   "count": 0, "travelerCount": 0 },
+              { "_type": "pmr",     "travelerCount": 1  },
+              { "_type": "senior",  "travelerCount": 6  },
+              { "_type": "youth",   "travelerCount": 3  }
+            ]
+          },
+          {
+            "coachNumber": "16",
+            "travelerCount": 22,
+            "serviceClasses": [{ "serviceClass": "premium", "travelerCount": 22 }],
+            "details": [
+              { "_type": "normal",  "travelerCount": 20 },
+              { "_type": "kid",     "travelerCount": 0  },
+              { "_type": "vip",     "travelerCount": 0  },
+              { "_type": "group",   "count": 0, "travelerCount": 0 },
+              { "_type": "pmr",     "travelerCount": 0  },
+              { "_type": "senior",  "travelerCount": 2  },
+              { "_type": "youth",   "travelerCount": 0  }
+            ]
+          },
+          {
+            "coachNumber": "1",
+            "travelerCount": 31,
+            "serviceClasses": [{ "serviceClass": "comfort", "travelerCount": 31 }],
+            "details": [
+              { "_type": "normal",  "travelerCount": 29 },
+              { "_type": "kid",     "travelerCount": 0  },
+              { "_type": "vip",     "travelerCount": 0  },
+              { "_type": "group",   "count": 0, "travelerCount": 0 },
+              { "_type": "pmr",     "travelerCount": 0  },
+              { "_type": "senior",  "travelerCount": 2  },
+              { "_type": "youth",   "travelerCount": 0  }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -10,6 +10,7 @@ import { SNCFDisruptions } from "./SNCFDisruptions"
 import { SNCFDepartures } from "./SNCFDepartures"
 import { SNCFArrivals } from "./SNCFArrivals"
 import { SNCFTrain } from "./SNCFTrain"
+import { TravelerSummaryCard } from "./TravelerSummaryCard"
 import { Train, Bus, MapPin, Clock, ArrowRight, Volume2, VolumeX } from "lucide-react"
 
 const DASHBOARD_TOOL     = "get_eurostar_dashboard"
@@ -18,6 +19,7 @@ const DISRUPTIONS_TOOL   = "get_sncf_disruptions"
 const DEPARTURES_TOOL    = "get_sncf_departures"
 const ARRIVALS_TOOL      = "get_sncf_arrivals"
 const TRAIN_TOOL         = "get_sncf_train"
+const TRAVELER_TOOL      = "get_traveler_summary"
 const SNCF_RICH_TOOLS    = new Set([DISRUPTIONS_TOOL, DEPARTURES_TOOL, ARRIVALS_TOOL, TRAIN_TOOL])
 const EUROMAP_TOOLS = new Set([
   "get_euromap_plans",
@@ -1003,7 +1005,7 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
           {/* Regular tool badges (and euromap tool_call pending badges) */}
           <div className="flex flex-wrap gap-1.5 px-1">
             {toolEvents
-              .filter(ev => (!EUROMAP_TOOLS.has(ev.name) && !SNCF_RICH_TOOLS.has(ev.name)) || ev.type === "tool_call")
+              .filter(ev => (!EUROMAP_TOOLS.has(ev.name) && !SNCF_RICH_TOOLS.has(ev.name) && ev.name !== TRAVELER_TOOL) || ev.type === "tool_call")
               .map((ev) => (
                 <ToolCallBadge key={`${ev.type}-${ev.name}`} event={ev} />
               ))}
@@ -1019,6 +1021,10 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
               if (ev.name === TRAIN_TOOL)       return <SNCFTrain       key={`train-${ev.name}`}       result={r} />
               return null
             })}
+          {/* Traveler summary cards */}
+          {toolEvents
+            .filter(ev => ev.name === TRAVELER_TOOL && ev.type === "tool_result" && !!ev.result)
+            .map(ev => <TravelerSummaryCard key={`traveler-${ev.name}`} result={ev.result ?? ""} />)}
           {/* Euromap map cards / dashboard — rendered from raw tool result data */}
           {toolEvents
             .filter(ev => EUROMAP_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)

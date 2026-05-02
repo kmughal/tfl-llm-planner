@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"tfl-backend/llm"
+	"tfl-backend/logger"
 	"tfl-backend/mcpclient"
 )
 
@@ -272,13 +273,17 @@ func (h *Handler) Chat(c *gin.Context) {
 		return
 	}
 
+	logger.Info(logger.TagHTTP, "POST /api/chat", fmt.Sprintf("msg=%.120s history_len=%d", req.Message, len(req.History)))
+
 	ctx := c.Request.Context()
 
 	tools, err := h.mcp.ListAsLLMTools(ctx)
 	if err != nil {
+		logger.Error(logger.TagMCP, "ListAsLLMTools failed", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load tools: " + err.Error()})
 		return
 	}
+	logger.Debug(logger.TagMCP, fmt.Sprintf("tools loaded: %d available", len(tools)), "")
 
 	// Build message history
 	messages := make([]llm.Message, 0, len(req.History)+2)
@@ -375,13 +380,16 @@ func (h *Handler) runAgentLoop(
 	for range maxToolRounds {
 		msg, err := h.llm.StreamChat(ctx, messages, tools, onToken)
 		if err != nil {
+			logger.Error(logger.TagLLM, "StreamChat error", err.Error())
 			return "", nil, fmt.Errorf("LLM error: %w", err)
 		}
 		messages = append(messages, *msg)
 
 		if len(msg.ToolCalls) == 0 {
+			logger.Info(logger.TagLLM, fmt.Sprintf("final reply %.120s", msg.Content), fmt.Sprintf("len=%d", len(msg.Content)))
 			return h.resolveFinalReply(msg.Content, journeyResult), messages, nil
 		}
+		logger.Debug(logger.TagLLM, fmt.Sprintf("tool calls requested: %d", len(msg.ToolCalls)), "")
 
 		var updated []llm.Message
 		updated, journeyResult = h.executeToolCalls(ctx, msg.ToolCalls, journeyResult, sendEvent)
@@ -395,6 +403,7 @@ func (h *Handler) runAgentLoop(
 func (h *Handler) resolveFinalReply(llmContent, journeyResult string) string {
 	if journeyResult != "" && !containsJourneyFormat(llmContent) {
 		log.Printf("[journey] LLM produced prose — overriding with structured tool result")
+		logger.Warn(logger.TagLLM, "LLM produced prose — overriding with structured journey result", "")
 		return journeyResult
 	}
 	return llmContent
@@ -413,11 +422,13 @@ func (h *Handler) executeToolCalls(
 
 	for _, tc := range calls {
 		log.Printf("[tool] call  name=%s args=%s", tc.Function.Name, tc.Function.Arguments)
+		logger.Info(logger.TagTool, fmt.Sprintf("call  %s", tc.Function.Name), tc.Function.Arguments)
 		sendEvent("tool_call", fmt.Sprintf(`{"name":%q}`, tc.Function.Name))
 
 		result, err := h.mcp.CallTool(ctx, tc.Function.Name, tc.Function.Arguments)
 		if err != nil {
 			result = fmt.Sprintf("Tool error: %v", err)
+			logger.Error(logger.TagTool, fmt.Sprintf("error %s", tc.Function.Name), err.Error())
 		}
 
 		if journeyTools[tc.Function.Name] && containsJourneyFormat(result) {
@@ -426,6 +437,7 @@ func (h *Handler) executeToolCalls(
 		}
 
 		log.Printf("[tool] result name=%s result=%.200s", tc.Function.Name, result)
+		logger.Info(logger.TagTool, fmt.Sprintf("result %s", tc.Function.Name), fmt.Sprintf("%.300s", result))
 		sendEvent("tool_result", fmt.Sprintf(`{"name":%q,"result":%q}`, tc.Function.Name, result))
 
 		msgs = append(msgs, llm.Message{

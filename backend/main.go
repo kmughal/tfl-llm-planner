@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"tfl-backend/handlers"
 	"tfl-backend/llm"
+	"tfl-backend/logger"
 	"tfl-backend/mcpclient"
 )
 
@@ -25,15 +27,24 @@ func main() {
 
 	h := handlers.NewHandler(llmClient, mcpClient)
 
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Recovery())
 	r.Use(corsMiddleware())
+	r.Use(httpLogMiddleware())
+
+	envFile := envOr("ENV_FILE", "../.env")
 
 	api := r.Group("/api")
 	{
 		api.GET("/health", handlers.Health)
 		api.POST("/chat", h.Chat)
+		api.GET("/logs/stream", handlers.LogStream)
+		api.GET("/config", handlers.GetConfig(envFile))
+		api.POST("/config", handlers.UpdateConfig(envFile))
 	}
 
+	logger.Info(logger.TagSystem, fmt.Sprintf("backend starting on :%s", port),
+		fmt.Sprintf("ollama=%s model=%s", ollamaURL, ollamaModel))
 	log.Printf("Backend starting on :%s (Ollama: %s, model: %s)", port, ollamaURL, ollamaModel)
 	if err := r.Run(":" + port); err != nil {
 		log.Fatal(err)
@@ -56,6 +67,18 @@ func connectMCP(url string) *mcpclient.MCPClient {
 			log.Fatalf("Could not connect to MCP server at %s: %v", url, ctx.Err())
 		case <-time.After(2 * time.Second):
 		}
+	}
+}
+
+func httpLogMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+		elapsed := float64(time.Since(start).Microseconds()) / 1000
+		logger.Info(logger.TagHTTP,
+			fmt.Sprintf("%s %s → %d", c.Request.Method, c.Request.URL.Path, c.Writer.Status()),
+			fmt.Sprintf("%.2fms", elapsed),
+		)
 	}
 }
 
