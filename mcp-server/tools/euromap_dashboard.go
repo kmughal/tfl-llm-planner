@@ -14,16 +14,28 @@ import (
 func GetEuromapDashboardTool() mcp.Tool {
 	return mcp.NewTool(
 		"get_eurostar_dashboard",
-		mcp.WithDescription(`Build a live Eurostar departure board for a given date, showing all services with stop times.
+		mcp.WithDescription(`Build a Eurostar departure board for a given date showing all services with stop times.
 
-Use ONLY when the user explicitly asks for a "dashboard", "departure board", or "build dashboard for eurostar".
-Returns structured DASHBOARD_START/DASHBOARD_SERVICE/DASHBOARD_END blocks that the frontend renders as an interactive board.
+Use when the user asks for a departure board, dashboard, or full list of services — even without those exact words.
+Do NOT use for map/live-map requests.
+
+Trigger phrases (any of these → use this tool):
+  - "departure board", "full departure board", "departures today"
+  - "dashboard", "build dashboard", "eurostar dashboard"
+  - "all departures", "all services today", "full schedule"
+  - "show me all trains today", "list all trains", "what trains are running"
+  - "cancelled trains on Eurostar", "which trains are cancelled", "cancelled services"
+  - "disruptions on Eurostar", "delayed Eurostar trains", "affected services"
 
 Examples:
-  - "build dashboard for eurostar"
-  - "show me the eurostar departure board"
-  - "eurostar dashboard today"
-  - "show eurostar departure board for tomorrow"`),
+  - "Full departure board for today"
+  - "Show me the Eurostar departure board"
+  - "Eurostar dashboard for tomorrow"
+  - "What are all the trains running today?"
+  - "Give me the full schedule for today"
+  - "All Eurostar services on Friday"
+
+Returns DASHBOARD_START/DASHBOARD_SERVICE/DASHBOARD_END blocks the frontend renders as an interactive board.`),
 		mcp.WithString("fromDateTime",
 			mcp.Description("Start date/time in ISO8601 format, e.g. '2025-05-12T00:00:00Z'. Omit to use today."),
 		),

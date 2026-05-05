@@ -12,28 +12,26 @@ import (
 func GetSNCFDisruptionsTool() mcp.Tool {
 	return mcp.NewTool(
 		"get_sncf_disruptions",
-		mcp.WithDescription(`Get real-time disruptions and service alerts currently active on the SNCF French rail network.
+		mcp.WithDescription(`Get real-time disruptions and service alerts on the SNCF French national rail network.
 
-Returns up to 15 active incidents including:
+⚠️  SNCF ONLY. Do NOT use for Eurostar, TFL, or any UK/cross-channel query.
+   - Eurostar cancellations/disruptions → use get_eurostar_dashboard
+   - TFL delays/disruptions → use get_line_status or get_status_by_mode
+
+Returns up to 15 active incidents:
   - Cancelled trains (NO_SERVICE)
   - Significant delays (SIGNIFICANT_DELAYS)
   - Reduced service / partial cancellations
   - Infrastructure issues (track works, signal failures, strikes)
 
-Each disruption shows the severity, affected train or line, cause message (in French), and the active time window.
-
-Use this tool when the user asks any of:
+Use ONLY when the user explicitly mentions SNCF, French trains, TGV, or France:
   - "Are there disruptions on SNCF today?"
   - "Is the TGV running normally?"
   - "Any delays on French trains?"
   - "Is there a strike on SNCF?"
   - "Are French trains on time?"
 
-Hints:
-  - This covers the entire national SNCF network: TGV, Intercités, TER, Ouigo, and substitute coaches.
-  - Cause messages are in French (e.g. "Défaillance de matériel" = equipment failure, "Grève" = strike, "Travaux" = track works).
-  - If no disruptions are returned, the network is running normally at this moment.
-  - This tool does NOT cover Eurostar or cross-channel services — use get_euromap_plans for those.`),
+Cause messages are in French (e.g. "Grève" = strike, "Travaux" = track works).`),
 	)
 }
 

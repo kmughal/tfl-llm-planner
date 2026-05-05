@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Train, History, BookOpen, Terminal, Settings } from "lucide-react"
+import { Train, History, BookOpen, Terminal, Settings, House } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useChat } from "./hooks/useChat"
 import { useConversations } from "./hooks/useConversations"
@@ -185,6 +185,19 @@ export default function App() {
               </span>
               <span className="text-[11px] font-medium text-emerald-600 hidden sm:inline">Live</span>
             </div>
+
+            {/* Home — shown when in chat with messages, or on logs/config pages */}
+            {!isEmpty && (
+              <button
+                onClick={() => { globalThis.location.hash = ""; setPage("chat"); handleNewConversation() }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors hover:bg-gray-100"
+                style={{ color: "#6b7280", border: "1px solid transparent" }}
+                aria-label="Go to home"
+              >
+                <House style={{ width: 13, height: 13 }} />
+                <span className="hidden sm:inline">Home</span>
+              </button>
+            )}
 
             {/* Examples panel toggle — only shown when chat is active */}
             {!isEmpty && (

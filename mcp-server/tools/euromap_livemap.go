@@ -14,17 +14,19 @@ import (
 func GetEuromapLiveMapTool() mcp.Tool {
 	return mcp.NewTool(
 		"get_eurostar_live_map",
-		mcp.WithDescription(`Fetch all Eurostar trains for a date and return structured data for an interactive animated live map.
+		mcp.WithDescription(`Fetch Eurostar trains and return data for an interactive animated map with real-time train positions.
 
-Use ONLY when the user asks for a map, live map, or to plot trains:
+Use ONLY when the user explicitly asks for a MAP or visual plot — not for departure boards or schedules.
+If the user says "departure board", "dashboard", "full schedule", or "all departures" → use get_eurostar_dashboard instead.
+
+Trigger phrases (map intent required):
   - "show me a map of trains"
-  - "show live map of eurostar"
+  - "live map of eurostar"
   - "map of all trains running today"
-  - "where are the trains"
+  - "where are the trains" / "where is train X"
   - "plot trains on a map"
-  - "give me a map of all trains running today"
 
-Returns LIVEMAP_START/LIVEMAP_SERVICE/LIVEMAP_END blocks that the frontend renders as an interactive animated map with real-time train positions.`),
+Returns LIVEMAP_START/LIVEMAP_SERVICE/LIVEMAP_END blocks the frontend renders as an animated map.`),
 		mcp.WithString("fromDateTime",
 			mcp.Description("Start date/time in ISO8601 format, e.g. '2025-05-12T00:00:00Z'. Omit to use today."),
 		),
