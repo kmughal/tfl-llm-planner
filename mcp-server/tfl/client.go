@@ -307,6 +307,118 @@ func (c *Client) GetRoadDisruptions(roadID string) ([]RoadDisruption, error) {
 	return result, nil
 }
 
+// ── Bus arrivals (Countdown URA API) ─────────────────────────────────────────
+
+const countdownBaseURL = "https://countdown.api.tfl.gov.uk/interfaces/ura/instant_V1"
+
+type BusArrival struct {
+	LineName string
+	StopName string // populated for line queries; empty for single-stop queries
+	EtaMs    int64
+}
+
+type BusStopArrivals struct {
+	StopCode     string
+	StopName     string // set for stop queries; empty for line queries
+	LineID       string // set for line queries; empty for stop queries
+	ServerTimeMs int64
+	Arrivals     []BusArrival
+}
+
+// GetBusArrivals fetches live bus arrivals via the TfL Countdown URA API.
+// At least one of stopCode or lineID must be non-empty.
+// URA type-1 records: [1, StopPointName, LineName, EstimatedTimeMs]
+func (c *Client) GetBusArrivals(stopCode, lineID string) (*BusStopArrivals, error) {
+	params := url.Values{}
+	if stopCode != "" {
+		params.Set("StopCode1", stopCode)
+	}
+	if lineID != "" {
+		// LineName filters by human-readable route number ("169", "W3").
+		// LineID is an internal numeric ID unrelated to the route number.
+		params.Set("LineName", lineID)
+	}
+	// ReturnList commas must not be percent-encoded — append as a literal suffix.
+	u := fmt.Sprintf("%s?%s&ReturnList=StopPointName,LineName,EstimatedTime", countdownBaseURL, params.Encode())
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; tfl-llm-sample/1.0)")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("countdown request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read countdown body: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("countdown returned %d", resp.StatusCode)
+	}
+
+	saveKey := stopCode
+	if saveKey == "" {
+		saveKey = "line_" + lineID
+	}
+	c.saveJSON("bus_arrivals_"+saveKey, body)
+
+	result, err := parseCountdownResponse(stopCode != "")
+	if err != nil {
+		return nil, err
+	}
+	result.StopCode = stopCode
+	result.LineID = lineID
+
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var record []json.RawMessage
+		if err2 := json.Unmarshal([]byte(line), &record); err2 != nil || len(record) < 1 {
+			continue
+		}
+		var recType int
+		if err2 := json.Unmarshal(record[0], &recType); err2 != nil {
+			continue
+		}
+		switch recType {
+		case 0:
+			// [0, "2.0", serverTimeMs]
+			if len(record) >= 3 {
+				json.Unmarshal(record[2], &result.ServerTimeMs) //nolint:errcheck
+			}
+		case 1:
+			// [1, StopPointName, LineName, EstimatedTimeMs]
+			if len(record) >= 4 {
+				var stopN, lineN string
+				var etaMs int64
+				json.Unmarshal(record[1], &stopN)  //nolint:errcheck
+				json.Unmarshal(record[2], &lineN)  //nolint:errcheck
+				json.Unmarshal(record[3], &etaMs)  //nolint:errcheck
+				if result.StopName == "" && stopN != "" {
+					result.StopName = stopN
+				}
+				result.Arrivals = append(result.Arrivals, BusArrival{
+					LineName: lineN,
+					StopName: stopN,
+					EtaMs:    etaMs,
+				})
+			}
+		}
+	}
+	return result, nil
+}
+
+func parseCountdownResponse(isStopQuery bool) (*BusStopArrivals, error) {
+	_ = isStopQuery // reserved for future use
+	return &BusStopArrivals{}, nil
+}
+
 // SearchStops searches for stop points by name or naptan ID.
 func (c *Client) SearchStops(query string) (*StopSearchResult, error) {
 	params := url.Values{}

@@ -12,6 +12,7 @@ import { SNCFArrivals } from "./SNCFArrivals"
 import { SNCFTrain } from "./SNCFTrain"
 import { TravelerSummaryCard } from "./TravelerSummaryCard"
 import { RoadsCard, RoadDisruptionsCard } from "./RoadsCard"
+import { BusArrivalsCard } from "./BusArrivalsCard"
 import { Train, Bus, MapPin, Clock, ArrowRight, Volume2, VolumeX } from "lucide-react"
 
 const DASHBOARD_TOOL      = "get_eurostar_dashboard"
@@ -21,8 +22,9 @@ const DEPARTURES_TOOL     = "get_sncf_departures"
 const ARRIVALS_TOOL       = "get_sncf_arrivals"
 const TRAIN_TOOL          = "get_sncf_train"
 const TRAVELER_TOOL       = "get_traveler_summary"
-const ROADS_TOOL          = "get_tfl_roads"
+const ROADS_TOOL            = "get_tfl_roads"
 const ROAD_DISRUPTIONS_TOOL = "get_road_disruptions"
+const BUS_ARRIVALS_TOOL     = "get_bus_arrivals"
 const SNCF_RICH_TOOLS     = new Set([DISRUPTIONS_TOOL, DEPARTURES_TOOL, ARRIVALS_TOOL, TRAIN_TOOL])
 const TFL_ROAD_TOOLS      = new Set([ROADS_TOOL, ROAD_DISRUPTIONS_TOOL])
 const EUROMAP_TOOLS = new Set([
@@ -1026,7 +1028,7 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
           {/* Regular tool badges (and euromap tool_call pending badges) */}
           <div className="flex flex-wrap gap-1.5 px-1">
             {toolEvents
-              .filter(ev => (!EUROMAP_TOOLS.has(ev.name) && !SNCF_RICH_TOOLS.has(ev.name) && !TFL_ROAD_TOOLS.has(ev.name) && ev.name !== TRAVELER_TOOL) || ev.type === "tool_call")
+              .filter(ev => (!EUROMAP_TOOLS.has(ev.name) && !SNCF_RICH_TOOLS.has(ev.name) && !TFL_ROAD_TOOLS.has(ev.name) && ev.name !== TRAVELER_TOOL && ev.name !== BUS_ARRIVALS_TOOL) || ev.type === "tool_call")
               .map((ev) => (
                 <ToolCallBadge key={`${ev.type}-${ev.name}`} event={ev} />
               ))}
@@ -1049,6 +1051,10 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
               ? <RoadsCard key={`roads-${ev.name}`} result={ev.result ?? ""} />
               : <RoadDisruptionsCard key={`road-dis-${ev.name}`} result={ev.result ?? ""} />
             )}
+          {/* Bus arrivals card */}
+          {toolEvents
+            .filter(ev => ev.name === BUS_ARRIVALS_TOOL && ev.type === "tool_result" && !!ev.result)
+            .map(ev => <BusArrivalsCard key={`bus-${ev.name}`} result={ev.result ?? ""} />)}
           {/* Traveler summary cards */}
           {toolEvents
             .filter(ev => ev.name === TRAVELER_TOOL && ev.type === "tool_result" && !!ev.result)
