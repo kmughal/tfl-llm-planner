@@ -185,6 +185,31 @@ type StopMatch struct {
 	Modes []string `json:"modes"`
 }
 
+// ── Road types ───────────────────────────────────────────────────────────────
+
+type Road struct {
+	ID                        string `json:"id"`
+	DisplayName               string `json:"displayName"`
+	StatusSeverity            string `json:"statusSeverity"`
+	StatusSeverityDescription string `json:"statusSeverityDescription"`
+	Bounds                    string `json:"bounds"`
+}
+
+type RoadDisruption struct {
+	ID            string `json:"id"`
+	Comment       string `json:"comment"`
+	CurrentUpdate string `json:"currentUpdate,omitempty"`
+	Category      string `json:"category"`
+	SubCategory   string `json:"subCategory,omitempty"`
+	Severity      string `json:"severity"`
+	HasClosures   bool   `json:"hasClosures"`
+	Street        string `json:"street,omitempty"`
+	StartDateTime string `json:"startDateTime,omitempty"`
+	EndDateTime   string `json:"endDateTime,omitempty"`
+	Location      string `json:"location,omitempty"`
+	Status        string `json:"status,omitempty"`
+}
+
 // ── API methods ──────────────────────────────────────────────────────────────
 
 // PlanJourney queries /Journey/JourneyResults/{from}/to/{to}.
@@ -249,6 +274,35 @@ func (c *Client) GetLineStatusByMode(modes string) ([]LineStatus, error) {
 	var result []LineStatus
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("decode mode status: %w", err)
+	}
+	return result, nil
+}
+
+// GetRoads returns all roads managed by TFL with their current status.
+func (c *Client) GetRoads() ([]Road, error) {
+	body, err := c.get("/Road", url.Values{})
+	if err != nil {
+		return nil, requestErr(err)
+	}
+	c.saveJSON("roads", body)
+	var result []Road
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("decode roads: %w", err)
+	}
+	return result, nil
+}
+
+// GetRoadDisruptions returns active disruptions for a specific TFL road (e.g. "a1").
+func (c *Client) GetRoadDisruptions(roadID string) ([]RoadDisruption, error) {
+	path := fmt.Sprintf("/Road/%s/Disruption", url.PathEscape(strings.ToLower(roadID)))
+	body, err := c.get(path, url.Values{})
+	if err != nil {
+		return nil, requestErr(err)
+	}
+	c.saveJSON("road_disruptions", body)
+	var result []RoadDisruption
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("decode road disruptions: %w", err)
 	}
 	return result, nil
 }

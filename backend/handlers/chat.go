@@ -168,6 +168,8 @@ If the user names a network, that name takes absolute precedence over all keywor
 | Status of a specific TFL line (e.g. "Central line") | get_line_status |
 | Status overview of all lines of a mode (e.g. "all tube lines") | get_status_by_mode |
 | Find a London station or stop by name | search_stops |
+| User asks about TFL road network status, all TFL roads, or road conditions overview | get_tfl_roads |
+| User asks about disruptions, closures, or works on a SPECIFIC road (e.g. "A1", "A40") | get_road_disruptions |
 | **Cancelled, delayed, disrupted, or affected Eurostar trains** | **get_eurostar_dashboard** |
 | **User says "departure board", "full departure board", "dashboard", "full schedule", "all departures", "all services today", "all trains today", or "list all trains" for Eurostar** | **get_eurostar_dashboard** |
 | **User explicitly asks for a MAP, live map, or to plot/visualise train positions** | **get_eurostar_live_map** |
