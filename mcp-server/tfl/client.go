@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -417,6 +419,51 @@ func (c *Client) GetBusArrivals(stopCode, lineID string) (*BusStopArrivals, erro
 func parseCountdownResponse(isStopQuery bool) (*BusStopArrivals, error) {
 	_ = isStopQuery // reserved for future use
 	return &BusStopArrivals{}, nil
+}
+
+// ── Bus lines ────────────────────────────────────────────────────────────────
+
+type BusLineInfo struct {
+	ID   string
+	Name string
+}
+
+// GetAllBusLines returns all London bus routes sorted numerically then alphabetically.
+func (c *Client) GetAllBusLines() ([]BusLineInfo, error) {
+	body, err := c.get("/Line/Mode/bus", url.Values{})
+	if err != nil {
+		return nil, requestErr(err)
+	}
+	c.saveJSON("bus_lines", body)
+
+	var raw []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("decode bus lines: %w", err)
+	}
+
+	lines := make([]BusLineInfo, 0, len(raw))
+	for _, l := range raw {
+		lines = append(lines, BusLineInfo{ID: l.ID, Name: l.Name})
+	}
+
+	sort.Slice(lines, func(i, j int) bool {
+		ni, errI := strconv.Atoi(lines[i].ID)
+		nj, errJ := strconv.Atoi(lines[j].ID)
+		if errI == nil && errJ == nil {
+			return ni < nj
+		}
+		if errI == nil {
+			return true
+		}
+		if errJ == nil {
+			return false
+		}
+		return lines[i].ID < lines[j].ID
+	})
+	return lines, nil
 }
 
 // SearchStops searches for stop points by name or naptan ID.

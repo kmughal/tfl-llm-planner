@@ -41,6 +41,8 @@ func main() {
 		api.GET("/logs/stream", handlers.LogStream)
 		api.GET("/config", handlers.GetConfig(envFile))
 		api.POST("/config", handlers.UpdateConfig(envFile))
+		api.GET("/buses", handlers.GetBusLines)
+		api.GET("/buses/:lineID/arrivals", handlers.GetBusLineArrivals)
 	}
 
 	logger.Info(logger.TagSystem, fmt.Sprintf("backend starting on :%s", port),

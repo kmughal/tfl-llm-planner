@@ -32,6 +32,7 @@ func main() {
 	s.AddTool(tools.GetTFLRoadsTool(), tools.HandleGetTFLRoads(tflClient))
 	s.AddTool(tools.GetRoadDisruptionsTool(), tools.HandleGetRoadDisruptions(tflClient))
 	s.AddTool(tools.GetBusArrivalsTool(), tools.HandleGetBusArrivals(tflClient))
+	s.AddTool(tools.GetAllBusLinesTool(), tools.HandleGetAllBusLines(tflClient))
 
 	// SNCF (France) tools
 	s.AddTool(tools.PlanSNCFJourneyTool(), tools.HandlePlanSNCFJourney(sncfClient))

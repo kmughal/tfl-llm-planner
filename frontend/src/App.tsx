@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Train, History, BookOpen, Terminal, Settings, House } from "lucide-react"
+import { Train, History, BookOpen, Terminal, Settings, House, Bus } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useChat } from "./hooks/useChat"
 import { useConversations } from "./hooks/useConversations"
@@ -12,6 +12,7 @@ import { LogsPage } from "./components/LogsPage"
 import { ConfigPage } from "./components/ConfigPage"
 import { NetworkBackground, type NetworkTheme } from "./components/NetworkBackground"
 import { LoadingCounter } from "./components/LoadingCounter"
+import { BusLinesExplorer } from "./components/BusLinesExplorer"
 import type { ChatMessage, LLMMessage } from "./lib/types"
 import "./index.css"
 
@@ -37,8 +38,9 @@ export default function App() {
     if (h === "#config") return "config"
     return "chat"
   })
-  const [sidebarOpen, setSidebarOpen]     = useState(false)
-  const [examplesOpen, setExamplesOpen]   = useState(true)
+  const [sidebarOpen, setSidebarOpen]       = useState(false)
+  const [examplesOpen, setExamplesOpen]     = useState(true)
+  const [busExplorerOpen, setBusExplorerOpen] = useState(false)
   const activeConvIdRef                   = useRef<string>(crypto.randomUUID())
   const [activeConvId, setActiveConvId] = useState(activeConvIdRef.current)
   const [prefill, setPrefill]           = useState("")
@@ -216,6 +218,21 @@ export default function App() {
               </button>
             )}
 
+            {/* Bus explorer */}
+            <button
+              onClick={() => setBusExplorerOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
+              style={{
+                backgroundColor: busExplorerOpen ? "#fee2e2" : "transparent",
+                color:           busExplorerOpen ? "#e1251b" : "#9ca3af",
+                border:          busExplorerOpen ? "1px solid #fca5a5" : "1px solid transparent",
+              }}
+              aria-label="Browse London bus lines"
+            >
+              <Bus style={{ width: 13, height: 13 }} />
+              <span className="hidden sm:inline">Buses</span>
+            </button>
+
             {/* Dev Logs */}
             <button
               onClick={() => { globalThis.location.hash = "#logs"; setPage("logs") }}
@@ -278,6 +295,13 @@ export default function App() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Bus lines explorer modal */}
+      <AnimatePresence>
+        {busExplorerOpen && (
+          <BusLinesExplorer onClose={() => setBusExplorerOpen(false)} />
+        )}
+      </AnimatePresence>
 
       {/* Input */}
       <footer className="px-4 py-3.5 border-t border-claude-border bg-white/80 backdrop-blur-sm relative z-10">
