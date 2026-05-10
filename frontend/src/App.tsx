@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Train, History, BookOpen, Terminal, Settings, House, Bus } from "lucide-react"
+import { Train, History, BookOpen, Terminal, Settings, House, Bus, Trash2 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useChat } from "./hooks/useChat"
+import { useMemoryTimer } from "./hooks/useMemoryTimer"
 import { useConversations } from "./hooks/useConversations"
 import { LandingPage } from "./components/LandingPage"
 import { MessageBubble } from "./components/MessageBubble"
@@ -13,6 +14,7 @@ import { ConfigPage } from "./components/ConfigPage"
 import { NetworkBackground, type NetworkTheme } from "./components/NetworkBackground"
 import { LoadingCounter } from "./components/LoadingCounter"
 import { BusLinesExplorer } from "./components/BusLinesExplorer"
+import { getSessionId, resetSessionId } from "./lib/session"
 import type { ChatMessage, LLMMessage } from "./lib/types"
 import "./index.css"
 
@@ -31,6 +33,66 @@ function NetworkPill({ color, label }: { readonly color: string; readonly label:
   )
 }
 
+function memoryClearColor(cleared: boolean, expiring: boolean): string {
+  if (cleared)  return "#16a34a"
+  if (expiring) return "#ea580c"
+  return "#9ca3af"
+}
+
+function detectNetwork(
+  messages: ChatMessage[],
+  tfl:      ReadonlySet<string>,
+  sncf:     ReadonlySet<string>,
+  eurostar: ReadonlySet<string>,
+): NetworkTheme {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.role !== "assistant") continue
+    for (const ev of msg.toolEvents ?? []) {
+      if (tfl.has(ev.name))     return "tfl"
+      if (sncf.has(ev.name))    return "sncf"
+      if (eurostar.has(ev.name)) return "eurostar"
+    }
+  }
+  return null
+}
+
+function timerColors(s: number) {
+  if (s <= 20) return { bg: "#fef2f2", border: "#fecaca", text: "#dc2626", dot: "#ef4444" }
+  if (s <= 60) return { bg: "#fff7ed", border: "#fed7aa", text: "#ea580c", dot: "#f97316" }
+  return       { bg: "#f0fdf4", border: "#bbf7d0", text: "#16a34a", dot: "#22c55e" }
+}
+
+function MemoryTimerBadge({ secondsLeft }: { readonly secondsLeft: number }) {
+  const isUrgent   = secondsLeft <= 20
+  const isExpiring = secondsLeft <= 60
+  const c          = timerColors(secondsLeft)
+  const mins = Math.floor(secondsLeft / 60)
+  const secs = secondsLeft % 60
+  const label = `${mins}:${String(secs).padStart(2, "0")}`
+
+  return (
+    <motion.div
+      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold select-none"
+      style={{ backgroundColor: c.bg, border: `1px solid ${c.border}`, color: c.text }}
+      animate={isUrgent ? { x: [-1.5, 1.5, -1.5, 1.5, 0] } : {}}
+      transition={isUrgent ? { duration: 0.3, repeat: Infinity, repeatDelay: 1 } : {}}
+      title={`Memory auto-clears in ${label}`}
+    >
+      <span className="relative flex h-1.5 w-1.5 shrink-0">
+        <motion.span
+          className="absolute inline-flex h-full w-full rounded-full"
+          style={{ backgroundColor: c.dot, opacity: 0.7 }}
+          animate={{ scale: [1, isExpiring ? 2.2 : 1.8, 1] }}
+          transition={{ duration: isExpiring ? 0.7 : 2, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <span className="relative inline-flex rounded-full h-1.5 w-1.5" style={{ backgroundColor: c.dot }} />
+      </span>
+      <span>{label}</span>
+    </motion.div>
+  )
+}
+
 export default function App() {
   const [page, setPage] = useState<"chat" | "logs" | "config">(() => {
     const h = globalThis.location.hash
@@ -38,20 +100,43 @@ export default function App() {
     if (h === "#config") return "config"
     return "chat"
   })
-  const [sidebarOpen, setSidebarOpen]       = useState(false)
-  const [examplesOpen, setExamplesOpen]     = useState(true)
+  const [sidebarOpen, setSidebarOpen]         = useState(false)
+  const [examplesOpen, setExamplesOpen]       = useState(true)
   const [busExplorerOpen, setBusExplorerOpen] = useState(false)
+  const [memoryCleared, setMemoryCleared]     = useState(false)
   const activeConvIdRef                   = useRef<string>(crypto.randomUUID())
   const [activeConvId, setActiveConvId] = useState(activeConvIdRef.current)
   const [prefill, setPrefill]           = useState("")
 
   const { conversations, upsert, remove } = useConversations()
 
+  // Shared flush: wipes server-side memory, regenerates the session ID, and
+  // briefly shows a "Cleared" confirmation. Called both by the button and on
+  // timer expiry — so it must not depend on timer state to avoid a cycle.
+  const onMemoryExpire = useCallback(() => {
+    const sid = getSessionId()
+    void fetch(`${import.meta.env.VITE_API_URL ?? "http://localhost:8080"}/api/memory/${sid}`, { method: "DELETE" })
+    resetSessionId()
+    setMemoryCleared(true)
+    setTimeout(() => setMemoryCleared(false), 2000)
+  }, [])
+
+  const {
+    secondsLeft,
+    isActive:   timerActive,
+    isExpiring: timerExpiring,
+    start:      timerStart,
+    clear:      timerClear,
+  } = useMemoryTimer(onMemoryExpire)
+
+  // Fires after every completed turn — saves the conversation and resets the
+  // 10-minute auto-flush countdown.
   const handleSaved = useCallback((msgs: ChatMessage[], llmHist: LLMMessage[]) => {
     upsert(activeConvIdRef.current, msgs, llmHist)
-  }, [upsert])
+    timerStart()
+  }, [upsert, timerStart])
 
-  const { messages, loading, sendMessage, resetTo } = useChat(handleSaved)
+  const { messages, loading, sendMessage, resetTo } = useChat(handleSaved, activeConvIdRef)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -74,18 +159,10 @@ export default function App() {
   const lastMsg = messages.at(-1)
   const isWaiting = loading && lastMsg?.role === "assistant" && !lastMsg.content
 
-  const activeNetwork = useMemo((): NetworkTheme => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i]
-      if (msg.role !== "assistant") continue
-      for (const ev of msg.toolEvents ?? []) {
-        if (TFL_TOOLS.has(ev.name))      return "tfl"
-        if (SNCF_TOOLS.has(ev.name))     return "sncf"
-        if (EUROSTAR_TOOLS.has(ev.name)) return "eurostar"
-      }
-    }
-    return null
-  }, [messages])
+  const activeNetwork = useMemo(
+    () => detectNetwork(messages, TFL_TOOLS, SNCF_TOOLS, EUROSTAR_TOOLS),
+    [messages],
+  )
 
   function handleNewConversation() {
     const id = crypto.randomUUID()
@@ -102,6 +179,11 @@ export default function App() {
     setActiveConvId(id)
     resetTo(conv.messages, conv.llmHistory)
     setSidebarOpen(false)
+  }
+
+  function handleClearMemory() {
+    timerClear()
+    onMemoryExpire()
   }
 
   if (page === "logs") {
@@ -231,6 +313,37 @@ export default function App() {
             >
               <Bus style={{ width: 13, height: 13 }} />
               <span className="hidden sm:inline">Buses</span>
+            </button>
+
+            {/* Memory timer badge — visible only while memory is accumulating */}
+            <AnimatePresence>
+              {timerActive && secondsLeft !== null && (
+                <motion.div
+                  key="memory-timer"
+                  initial={{ opacity: 0, scale: 0.85 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.85 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <MemoryTimerBadge secondsLeft={secondsLeft} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Clear Memory */}
+            <button
+              onClick={handleClearMemory}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
+              style={{
+                backgroundColor: memoryCleared ? "#f0fdf4" : "transparent",
+                color:           memoryClearColor(memoryCleared, timerExpiring),
+                border:          memoryCleared ? "1px solid #bbf7d0" : "1px solid transparent",
+              }}
+              aria-label="Clear conversation memory"
+              title="Clear all memory for this session"
+            >
+              <Trash2 style={{ width: 13, height: 13 }} />
+              <span className="hidden sm:inline">{memoryCleared ? "Cleared" : "Memory"}</span>
             </button>
 
             {/* Dev Logs */}

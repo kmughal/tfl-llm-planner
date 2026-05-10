@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react"
+import type { RefObject } from "react"
 import type { ChatMessage, LLMMessage, ToolEvent } from "../lib/types"
+import { getSessionId } from "../lib/session"
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080"
 
@@ -12,7 +14,10 @@ function patchMessage(
   return prev.map(m => (m.id === id ? fn(m) : m))
 }
 
-export function useChat(onSaved?: (messages: ChatMessage[], llmHistory: LLMMessage[]) => void) {
+export function useChat(
+  onSaved?: (messages: ChatMessage[], llmHistory: LLMMessage[]) => void,
+  convIdRef?: RefObject<string>,
+) {
   const [messages, setMessages]      = useState<ChatMessage[]>([])
   const [loading, setLoading]        = useState(false)
   const llmHistoryRef                = useRef<LLMMessage[]>([])
@@ -57,7 +62,12 @@ export function useChat(onSaved?: (messages: ChatMessage[], llmHistory: LLMMessa
       const resp = await fetch(`${API_BASE}/api/chat`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ message: text, history: llmHistoryRef.current }),
+        body:    JSON.stringify({
+          message:   text,
+          history:   llmHistoryRef.current,
+          sessionId: getSessionId(),
+          convId:    convIdRef?.current ?? "",
+        }),
         signal:  abortRef.current.signal,
       })
 

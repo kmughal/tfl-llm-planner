@@ -12,6 +12,7 @@ import (
 	"tfl-backend/llm"
 	"tfl-backend/logger"
 	"tfl-backend/mcpclient"
+	"tfl-backend/memory"
 )
 
 func main() {
@@ -19,13 +20,21 @@ func main() {
 	ollamaModel := envOr("OLLAMA_MODEL", "llama3.2")
 	mcpURL := envOr("MCP_URL", "http://localhost:8081/sse")
 	port := envOr("PORT", "8080")
+	memPath := envOr("MEMORY_FILE", "./memory.json")
 
 	llmClient := llm.NewClient(ollamaURL, ollamaModel)
+
+	memStore, err := memory.NewFileStore(memPath)
+	if err != nil {
+		log.Fatalf("Failed to open memory store at %s: %v", memPath, err)
+	}
+	defer memStore.Close()
 
 	// Connect to MCP server with retry (it may take a moment to start)
 	mcpClient := connectMCP(mcpURL)
 
-	h := handlers.NewHandler(llmClient, mcpClient)
+	h := handlers.NewHandler(llmClient, mcpClient, memStore)
+	mh := handlers.NewMemoryHandler(memStore)
 
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -43,6 +52,7 @@ func main() {
 		api.POST("/config", handlers.UpdateConfig(envFile))
 		api.GET("/buses", handlers.GetBusLines)
 		api.GET("/buses/:lineID/arrivals", handlers.GetBusLineArrivals)
+		api.DELETE("/memory/:sessionId", mh.FlushMemory)
 	}
 
 	logger.Info(logger.TagSystem, fmt.Sprintf("backend starting on :%s", port),
@@ -87,7 +97,7 @@ func httpLogMiddleware() gin.HandlerFunc {
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)

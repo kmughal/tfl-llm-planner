@@ -13,6 +13,7 @@ import (
 	"tfl-backend/llm"
 	"tfl-backend/logger"
 	"tfl-backend/mcpclient"
+	"tfl-backend/memory"
 )
 
 const maxToolRounds = 5 // prevent runaway agentic loops
@@ -284,8 +285,10 @@ Never repeat what the tool already said in paragraph form.`,
 }
 
 type ChatRequest struct {
-	Message string        `json:"message" binding:"required"`
-	History []llm.Message `json:"history"` // full LLM message sequence from previous turns
+	Message   string        `json:"message" binding:"required"`
+	History   []llm.Message `json:"history"`   // full LLM message sequence from previous turns
+	SessionID string        `json:"sessionId"` // stable per-user identifier (from localStorage)
+	ConvID    string        `json:"convId"`    // current conversation ID (for memory upsert key)
 }
 
 type ChatResponse struct {
@@ -296,10 +299,42 @@ type ChatResponse struct {
 type Handler struct {
 	llm *llm.Client
 	mcp *mcpclient.MCPClient
+	mem memory.Store
 }
 
-func NewHandler(llmClient *llm.Client, mcpClient *mcpclient.MCPClient) *Handler {
-	return &Handler{llm: llmClient, mcp: mcpClient}
+func NewHandler(llmClient *llm.Client, mcpClient *mcpclient.MCPClient, memStore memory.Store) *Handler {
+	return &Handler{llm: llmClient, mcp: mcpClient, mem: memStore}
+}
+
+// memorySummary extracts a short human-readable digest from the final message
+// sequence. Only plain user/assistant text is included — no tool call payloads.
+func memorySummary(messages []llm.Message, date string) string {
+	var text []llm.Message
+	for _, m := range messages {
+		if (m.Role == "user" || m.Role == "assistant") && m.Content != "" && len(m.ToolCalls) == 0 {
+			text = append(text, m)
+		}
+	}
+	if len(text) > 6 {
+		text = text[len(text)-6:]
+	}
+	if len(text) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "[%s]\n", date)
+	for _, m := range text {
+		role := "User"
+		if m.Role == "assistant" {
+			role = "Assistant"
+		}
+		content := m.Content
+		if len(content) > 250 {
+			content = content[:250] + "…"
+		}
+		fmt.Fprintf(&sb, "%s: %s\n", role, content)
+	}
+	return strings.TrimSpace(sb.String())
 }
 
 // Chat handles POST /api/chat with SSE streaming back to the client.
@@ -310,7 +345,7 @@ func (h *Handler) Chat(c *gin.Context) {
 		return
 	}
 
-	logger.Info(logger.TagHTTP, "POST /api/chat", fmt.Sprintf("msg=%.120s history_len=%d", req.Message, len(req.History)))
+	logger.Info(logger.TagHTTP, "POST /api/chat", fmt.Sprintf("msg=%.120s history_len=%d session=%s", req.Message, len(req.History), req.SessionID))
 
 	ctx := c.Request.Context()
 
@@ -322,9 +357,11 @@ func (h *Handler) Chat(c *gin.Context) {
 	}
 	logger.Debug(logger.TagMCP, fmt.Sprintf("tools loaded: %d available", len(tools)), "")
 
+	systemPrompt := h.systemPromptWithMemory(ctx, req.SessionID)
+
 	// Build message history
 	messages := make([]llm.Message, 0, len(req.History)+2)
-	messages = append(messages, llm.Message{Role: "system", Content: buildSystemPrompt()})
+	messages = append(messages, llm.Message{Role: "system", Content: systemPrompt})
 	messages = append(messages, req.History...)
 	messages = append(messages, llm.Message{Role: "user", Content: req.Message})
 
@@ -353,11 +390,43 @@ func (h *Handler) Chat(c *gin.Context) {
 		return
 	}
 
+	h.saveMemory(ctx, req.SessionID, req.ConvID, finalMessages)
+
 	// Return the full message sequence minus system messages so the client can
 	// replay it verbatim as history on the next turn — this preserves tool
 	// call/result pairs that would otherwise be lost.
 	b, _ := json.Marshal(ChatResponse{Reply: reply, Messages: clientHistory(finalMessages)})
 	sendEvent("done", string(b))
+}
+
+// systemPromptWithMemory builds the system prompt and appends any stored
+// memories for the session so the LLM has cross-session context.
+func (h *Handler) systemPromptWithMemory(ctx context.Context, sessionID string) string {
+	prompt := buildSystemPrompt()
+	if sessionID == "" {
+		return prompt
+	}
+	mems, err := h.mem.Retrieve(ctx, sessionID, 5)
+	if err != nil || len(mems) == 0 {
+		return prompt
+	}
+	return prompt + "\n\n## Memory from previous conversations\n" + strings.Join(mems, "\n---\n")
+}
+
+// saveMemory extracts a plain-text summary from the final message sequence and
+// upserts it into the memory store so future sessions can recall this conversation.
+func (h *Handler) saveMemory(ctx context.Context, sessionID, convID string, messages []llm.Message) {
+	if sessionID == "" || convID == "" {
+		return
+	}
+	today := time.Now().UTC().Format(dateFmt)
+	summary := memorySummary(messages, today)
+	if summary == "" {
+		return
+	}
+	if err := h.mem.Upsert(ctx, sessionID, convID, summary); err != nil {
+		logger.Warn(logger.TagSystem, "memory upsert failed", err.Error())
+	}
 }
 
 // clientHistory strips system messages from the full message sequence.
