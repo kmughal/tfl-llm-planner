@@ -6,17 +6,23 @@ import (
 
 	"github.com/mark3labs/mcp-go/server"
 	"tfl-mcp-server/euromap"
+	"tfl-mcp-server/nationalrail"
+	"tfl-mcp-server/ratp"
 	"tfl-mcp-server/sncf"
 	"tfl-mcp-server/tfl"
 	"tfl-mcp-server/tools"
 	"tfl-mcp-server/traveler"
+	"tfl-mcp-server/weather"
 )
 
 func main() {
-	tflClient      := tfl.NewClient(os.Getenv("TFL_APP_KEY"))
-	sncfClient     := sncf.NewClient(os.Getenv("SNCF_API_KEY"))
-	euromapClient  := euromap.NewClient(os.Getenv("EUROMAP_CLIENT_ID"), os.Getenv("EUROMAP_CLIENT_SECRET"))
-	travelerClient := traveler.NewClient(os.Getenv("TRAVELER_CLIENT_ID"), os.Getenv("TRAVELER_CONSUMER_ID"))
+	tflClient       := tfl.NewClient(os.Getenv("TFL_APP_KEY"))
+	sncfClient      := sncf.NewClient(os.Getenv("SNCF_API_KEY"))
+	euromapClient   := euromap.NewClient(os.Getenv("EUROMAP_CLIENT_ID"), os.Getenv("EUROMAP_CLIENT_SECRET"))
+	travelerClient  := traveler.NewClient(os.Getenv("TRAVELER_CLIENT_ID"), os.Getenv("TRAVELER_CONSUMER_ID"))
+	weatherClient   := weather.NewClient()
+	nrailClient     := nationalrail.NewClient(os.Getenv("DARWIN_TOKEN"))
+	ratpClient      := ratp.NewClient(os.Getenv("SNCF_API_KEY"))
 
 	s := server.NewMCPServer(
 		"transport-journey-planner",
@@ -52,6 +58,11 @@ func main() {
 	s.AddTool(tools.GetEuromapTechnicalPlanByIDTool(), tools.HandleGetEuromapTechnicalPlanByID(euromapClient))
 	s.AddTool(tools.GetEuromapDashboardTool(), tools.HandleGetEuromapDashboard(euromapClient))
 	s.AddTool(tools.GetEuromapLiveMapTool(), tools.HandleGetEuromapLiveMap(euromapClient))
+
+	// Weather, National Rail, Paris Metro tools
+	s.AddTool(tools.GetWeatherTool(), tools.HandleGetWeather(weatherClient))
+	s.AddTool(tools.GetNationalRailDeparturesTool(), tools.HandleGetNationalRailDepartures(nrailClient))
+	s.AddTool(tools.GetRATPhDeparturesTool(), tools.HandleGetRATPhDepartures(ratpClient))
 
 	transport := os.Getenv("MCP_TRANSPORT") // "stdio" (default) or "sse"
 

@@ -53,6 +53,8 @@ func main() {
 		api.GET("/buses", handlers.GetBusLines)
 		api.GET("/buses/:lineID/arrivals", handlers.GetBusLineArrivals)
 		api.DELETE("/memory/:sessionId", mh.FlushMemory)
+		api.GET("/eurostar/trains", handlers.GetEurostarTrains)
+		api.GET("/eurostar/trains/:planID", handlers.GetEurostarTrainByID)
 	}
 
 	logger.Info(logger.TagSystem, fmt.Sprintf("backend starting on :%s", port),

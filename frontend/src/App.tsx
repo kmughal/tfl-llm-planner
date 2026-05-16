@@ -12,8 +12,11 @@ import { ExamplesPanel } from "./components/ExamplesPanel"
 import { LogsPage } from "./components/LogsPage"
 import { ConfigPage } from "./components/ConfigPage"
 import { NetworkBackground, type NetworkTheme } from "./components/NetworkBackground"
+import { ChatMeshGradient } from "./components/ChatMeshGradient"
 import { LoadingCounter } from "./components/LoadingCounter"
 import { BusLinesExplorer } from "./components/BusLinesExplorer"
+import { EurostarHub } from "./components/EurostarHub"
+import { EurostarSchedule } from "./components/EurostarSchedule"
 import { getSessionId, resetSessionId } from "./lib/session"
 import type { ChatMessage, LLMMessage } from "./lib/types"
 import "./index.css"
@@ -34,9 +37,9 @@ function NetworkPill({ color, label }: { readonly color: string; readonly label:
 }
 
 function memoryClearColor(cleared: boolean, expiring: boolean): string {
-  if (cleared)  return "#16a34a"
-  if (expiring) return "#ea580c"
-  return "#9ca3af"
+  if (cleared)  return "#6ee7b7"
+  if (expiring) return "#fb923c"
+  return "rgba(255,255,255,0.45)"
 }
 
 function detectNetwork(
@@ -55,6 +58,12 @@ function detectNetwork(
     }
   }
   return null
+}
+
+function eurostarBtnStyle(open: boolean) {
+  return open
+    ? { backgroundColor: "rgba(0,51,102,0.28)", color: "#7eaaff", border: "1px solid rgba(0,51,102,0.5)" }
+    : { backgroundColor: "transparent",          color: "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.1)" }
 }
 
 function timerColors(s: number) {
@@ -100,10 +109,12 @@ export default function App() {
     if (h === "#config") return "config"
     return "chat"
   })
-  const [sidebarOpen, setSidebarOpen]         = useState(false)
-  const [examplesOpen, setExamplesOpen]       = useState(true)
-  const [busExplorerOpen, setBusExplorerOpen] = useState(false)
-  const [memoryCleared, setMemoryCleared]     = useState(false)
+  const [sidebarOpen, setSidebarOpen]           = useState(false)
+  const [examplesOpen, setExamplesOpen]         = useState(true)
+  const [busExplorerOpen, setBusExplorerOpen]   = useState(false)
+  const [eurostarHubOpen, setEurostarHubOpen]         = useState(false)
+  const [eurostarScheduleOpen, setEurostarScheduleOpen] = useState(false)
+  const [memoryCleared, setMemoryCleared]       = useState(false)
   const activeConvIdRef                   = useRef<string>(crypto.randomUUID())
   const [activeConvId, setActiveConvId] = useState(activeConvIdRef.current)
   const [prefill, setPrefill]           = useState("")
@@ -222,6 +233,7 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen relative" style={{ background: "transparent" }}>
+      <ChatMeshGradient theme={activeNetwork} />
       <NetworkBackground theme={activeNetwork} />
       <LoadingCounter visible={isWaiting} theme={activeNetwork} />
 
@@ -236,15 +248,26 @@ export default function App() {
       />
 
       {/* Header */}
-      <header className="bg-white border-b border-gray-100 relative z-10">
+      <header
+        className="relative z-10 border-b"
+        style={{
+          background: "rgba(3,7,18,0.82)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          borderColor: "rgba(255,255,255,0.08)",
+        }}
+      >
         <div className="flex items-center gap-3 px-5 py-3">
           {/* History toggle */}
           <button
             onClick={() => setSidebarOpen(true)}
-            className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:bg-gray-100"
+            className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors"
+            style={{ color: "rgba(255,255,255,0.55)" }}
+            onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
             aria-label="Open conversation history"
           >
-            <History className="text-gray-500" style={{ width: 16, height: 16 }} />
+            <History style={{ width: 16, height: 16 }} />
           </button>
 
           {/* Logo */}
@@ -253,11 +276,11 @@ export default function App() {
           </div>
 
           {/* Title + pills */}
-          <span className="font-bold text-gray-800 text-sm">Rail Live</span>
+          <span className="font-bold text-sm" style={{ color: "rgba(255,255,255,0.92)" }}>Rail Live</span>
           <div className="flex items-center gap-1.5 ml-1">
-            <NetworkPill color="#003366" label="Eurostar" />
-            <NetworkPill color="#c00014" label="SNCF" />
-            <NetworkPill color="#e32017" label="TFL" />
+            <NetworkPill color="#7eaaff" label="Eurostar" />
+            <NetworkPill color="#ff7676" label="SNCF" />
+            <NetworkPill color="#ff6b5e" label="TFL" />
           </div>
 
           {/* Live */}
@@ -265,17 +288,19 @@ export default function App() {
             <div className="flex items-center gap-1.5">
               <span className="relative flex h-1.5 w-1.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
               </span>
-              <span className="text-[11px] font-medium text-emerald-600 hidden sm:inline">Live</span>
+              <span className="text-[11px] font-medium hidden sm:inline" style={{ color: "#34d399" }}>Live</span>
             </div>
 
-            {/* Home — shown when in chat with messages, or on logs/config pages */}
+            {/* Home */}
             {!isEmpty && (
               <button
                 onClick={() => { globalThis.location.hash = ""; setPage("chat"); handleNewConversation() }}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors hover:bg-gray-100"
-                style={{ color: "#6b7280", border: "1px solid transparent" }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
+                style={{ color: "rgba(255,255,255,0.45)", border: "1px solid transparent" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                 aria-label="Go to home"
               >
                 <House style={{ width: 13, height: 13 }} />
@@ -283,15 +308,15 @@ export default function App() {
               </button>
             )}
 
-            {/* Examples panel toggle — only shown when chat is active */}
+            {/* Examples panel toggle */}
             {!isEmpty && (
               <button
                 onClick={() => setExamplesOpen(v => !v)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
                 style={{
-                  backgroundColor: examplesOpen ? "#eef2ff" : "transparent",
-                  color:           examplesOpen ? "#3730a3" : "#9ca3af",
-                  border:          examplesOpen ? "1px solid #c7d2fe" : "1px solid transparent",
+                  backgroundColor: examplesOpen ? "rgba(100,120,255,0.18)" : "transparent",
+                  color:           examplesOpen ? "#a5b4fc" : "rgba(255,255,255,0.45)",
+                  border:          examplesOpen ? "1px solid rgba(100,120,255,0.3)" : "1px solid transparent",
                 }}
                 aria-label="Toggle examples panel"
               >
@@ -300,14 +325,25 @@ export default function App() {
               </button>
             )}
 
+            {/* Eurostar Hub */}
+            <button
+              onClick={() => setEurostarHubOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
+              style={eurostarBtnStyle(eurostarHubOpen)}
+              aria-label="Open Eurostar hub"
+            >
+              <Train style={{ width: 13, height: 13 }} />
+              <span className="hidden sm:inline">Eurostar</span>
+            </button>
+
             {/* Bus explorer */}
             <button
               onClick={() => setBusExplorerOpen(true)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
               style={{
-                backgroundColor: busExplorerOpen ? "#fee2e2" : "transparent",
-                color:           busExplorerOpen ? "#e1251b" : "#9ca3af",
-                border:          busExplorerOpen ? "1px solid #fca5a5" : "1px solid transparent",
+                backgroundColor: busExplorerOpen ? "rgba(225,37,27,0.18)" : "transparent",
+                color:           busExplorerOpen ? "#fca5a5" : "rgba(255,255,255,0.45)",
+                border:          busExplorerOpen ? "1px solid rgba(225,37,27,0.35)" : "1px solid transparent",
               }}
               aria-label="Browse London bus lines"
             >
@@ -315,7 +351,7 @@ export default function App() {
               <span className="hidden sm:inline">Buses</span>
             </button>
 
-            {/* Memory timer badge — visible only while memory is accumulating */}
+            {/* Memory timer badge */}
             <AnimatePresence>
               {timerActive && secondsLeft !== null && (
                 <motion.div
@@ -335,9 +371,9 @@ export default function App() {
               onClick={handleClearMemory}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
               style={{
-                backgroundColor: memoryCleared ? "#f0fdf4" : "transparent",
+                backgroundColor: memoryCleared ? "rgba(16,185,129,0.15)" : "transparent",
                 color:           memoryClearColor(memoryCleared, timerExpiring),
-                border:          memoryCleared ? "1px solid #bbf7d0" : "1px solid transparent",
+                border:          memoryCleared ? "1px solid rgba(16,185,129,0.3)" : "1px solid transparent",
               }}
               aria-label="Clear conversation memory"
               title="Clear all memory for this session"
@@ -349,8 +385,10 @@ export default function App() {
             {/* Dev Logs */}
             <button
               onClick={() => { globalThis.location.hash = "#logs"; setPage("logs") }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors hover:bg-gray-100"
-              style={{ color: "#6b7280", border: "1px solid transparent" }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
+              style={{ color: "rgba(255,255,255,0.45)", border: "1px solid transparent" }}
+              onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
               aria-label="Open dev logs"
             >
               <Terminal style={{ width: 13, height: 13 }} />
@@ -360,8 +398,10 @@ export default function App() {
             {/* Config */}
             <button
               onClick={() => { globalThis.location.hash = "#config"; setPage("config") }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors hover:bg-gray-100"
-              style={{ color: "#6b7280", border: "1px solid transparent" }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
+              style={{ color: "rgba(255,255,255,0.45)", border: "1px solid transparent" }}
+              onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
               aria-label="Open config"
             >
               <Settings style={{ width: 13, height: 13 }} />
@@ -409,6 +449,20 @@ export default function App() {
         </AnimatePresence>
       </div>
 
+      {/* Eurostar hub modal */}
+      {eurostarHubOpen && (
+        <EurostarHub
+          onClose={() => setEurostarHubOpen(false)}
+          onSend={sendMessage}
+          onSchedule={() => { setEurostarHubOpen(false); setEurostarScheduleOpen(true) }}
+        />
+      )}
+
+      {/* Eurostar schedule modal */}
+      {eurostarScheduleOpen && (
+        <EurostarSchedule onClose={() => setEurostarScheduleOpen(false)} />
+      )}
+
       {/* Bus lines explorer modal */}
       <AnimatePresence>
         {busExplorerOpen && (
@@ -417,11 +471,19 @@ export default function App() {
       </AnimatePresence>
 
       {/* Input */}
-      <footer className="px-4 py-3.5 border-t border-claude-border bg-white/80 backdrop-blur-sm relative z-10">
+      <footer
+        className="px-4 py-3.5 relative z-10 border-t"
+        style={{
+          background: "rgba(3,7,18,0.82)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          borderColor: "rgba(255,255,255,0.08)",
+        }}
+      >
         <div className="max-w-[920px] mx-auto">
           <ChatInput onSend={sendMessage} disabled={loading} prefill={prefill} />
-          <p className="text-center text-[11px] text-claude-muted mt-2">
-            Powered by Ollama + MCP · Real-time data · Press <kbd className="px-1 py-0.5 text-[10px] bg-sand-100 border border-claude-border rounded">↵</kbd> to send
+          <p className="text-center text-[11px] mt-2" style={{ color: "rgba(255,255,255,0.28)" }}>
+            Powered by Ollama + MCP · Real-time data · Press <kbd className="px-1 py-0.5 text-[10px] rounded" style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.5)" }}>↵</kbd> to send
           </p>
         </div>
       </footer>

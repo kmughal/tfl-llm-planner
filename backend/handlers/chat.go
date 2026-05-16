@@ -111,7 +111,7 @@ func buildDateAnchors(now time.Time) string {
 func buildSystemPrompt() string {
 	now := time.Now().UTC()
 	today := now.Format(dateFmt)
-	return fmt.Sprintf(`You are a helpful transport assistant for three networks: TFL (London), SNCF (France), and Eurostar (cross-channel).
+	return fmt.Sprintf(`You are a helpful transport assistant covering: TFL (London local), National Rail (UK mainline), SNCF (French rail), Eurostar (cross-channel), Paris RER/Metro, and Weather.
 
 ## Current date & time anchors
 Current UTC time: %s %s
@@ -152,12 +152,18 @@ Read the user message and identify which network they are asking about. The name
 | User mentions… | Network | Allowed tool family |
 |---|---|---|
 | "Eurostar", "Channel Tunnel", "cross-channel", London↔Paris/Brussels/Amsterdam/Rotterdam | **EUROSTAR** | get_euromap_*, get_eurostar_* ONLY |
-| "TFL", "tube", "Underground", "London bus", "Elizabeth line", "Overground", London local journey | **TFL** | plan_journey, get_line_status, get_status_by_mode, search_stops, get_bus_arrivals ONLY |
+| "TFL", "tube", "Underground", "London bus", "Elizabeth line", "Overground", London local journey (A→B both in London) | **TFL** | plan_journey, get_line_status, get_status_by_mode, search_stops, get_bus_arrivals, get_bus_lines, get_tfl_roads, get_road_disruptions ONLY |
 | "SNCF", "French trains", "TGV", "Ouigo", "France" (no cross-channel), "French strike" | **SNCF** | plan_sncf_journey, get_sncf_*, search_sncf_* ONLY |
+| "National Rail", "trains from [UK station]", "departures from [mainline station]", "connecting trains", "what trains", "next train to [UK city]" | **NRAIL** | get_national_rail_departures ONLY |
+| "weather", "rain", "temperature", "forecast", "will it rain", "cold", "hot", "umbrella", "pack" | **WEATHER** | get_weather ONLY |
+| "Paris metro", "RER", "Gare du Nord", "Paris transit", "metro from", "how to get into Paris", "from Gare de Lyon/Montparnasse/Saint-Lazare/Chatelet/Gare de l'Est" | **PARIS** | get_paris_metro_departures ONLY |
 
+**CRITICAL — King's Cross, St Pancras, Ashford, Ebbsfleet are National Rail mainline stations — use get_national_rail_departures, NEVER plan_journey (TFL).**
+**CRITICAL — "Departures from [station]" without a destination = departure board → use get_national_rail_departures for mainline UK stations.**
+**CRITICAL — plan_journey is ONLY for journeys with both origin AND destination inside London's TFL network (tube, bus, DLR, Overground, Elizabeth line).**
 **CRITICAL — never call get_sncf_disruptions for Eurostar or TFL queries.**
-**CRITICAL — never call TFL tools for Eurostar or SNCF queries.**
-**CRITICAL — never call Eurostar tools for TFL or SNCF queries.**
+**CRITICAL — never call TFL tools for National Rail, Eurostar, or SNCF queries.**
+**CRITICAL — never invent a tool name that does not exist. Only use the exact tool names listed here.**
 
 If the user names a network, that name takes absolute precedence over all keyword matching below.
 
@@ -187,6 +193,11 @@ If the user names a network, that name takes absolute precedence over all keywor
 | Train journey where BOTH ends are in France | plan_sncf_journey |
 | French rail disruptions, cancellations, or service alerts (SNCF only — NOT Eurostar, NOT TFL) | get_sncf_disruptions |
 | Find a French station by name | search_sncf_stations |
+| **User asks for train departures FROM a UK mainline station** (King's Cross, St Pancras, Ebbsfleet, Ashford, Waterloo, Paddington, Victoria, Euston) | **get_national_rail_departures** — pass station name exactly as stated |
+| "Connecting trains after Eurostar", "onward trains from Ebbsfleet/Ashford/St Pancras" | get_national_rail_departures |
+| "Trains from [UK station]", "departures from [UK station]", "what's running from [UK station]", "[UK station] to [UK city] by National Rail/train" | get_national_rail_departures — always use the FROM station; there is no NR journey planner tool |
+| Weather query — "weather in X", "will it rain", "temperature", "forecast", "umbrella", "conditions" | get_weather — pass city name |
+| Paris transit — departures from a Paris station (Gare du Nord, Gare de Lyon, Montparnasse, Saint-Lazare, Gare de l'Est, Chatelet), or "how to get into Paris from Gare du Nord" | get_paris_metro_departures — pass station name exactly |
 
 ## Disambiguation rules
 - Paris → London or London → Paris: always use get_euromap_plans, NOT plan_sncf_journey
@@ -196,6 +207,13 @@ If the user names a network, that name takes absolute precedence over all keywor
 - "Cancelled trains on Eurostar" or "which Eurostar trains are cancelled" → get_eurostar_dashboard (shows cancelled status per service)
 - Disruptions/cancellations + Eurostar → get_eurostar_dashboard, NEVER get_sncf_disruptions
 - Disruptions/cancellations + TFL → get_line_status or get_status_by_mode, NEVER get_sncf_disruptions
+- "Departures from King's Cross" / "Departures from St Pancras" / "Trains from Ebbsfleet" → get_national_rail_departures, NEVER plan_journey
+- plan_journey is ONLY for local London trips (A→B both within London TFL network). A single station name with no destination = departure board = get_national_rail_departures.
+- "King's Cross" as a standalone query or "departures from King's Cross" = National Rail mainline (KGX), not TFL tube station.
+- "[UK city/station] to [UK city]" using National Rail → call get_national_rail_departures with the FROM station. There is NO national rail journey planner — show all departures from the origin station and the user can see services to their destination. NEVER invent a tool called "plan_national_rail" — it does not exist.
+- "Live arrivals from X to Y" or "trains from X to Y" (National Rail) → get_national_rail_departures with station=X. The word "to Y" is just a filter hint — still call the departures tool with the FROM station.
+- Weather for any city → get_weather. Never answer weather from training data.
+- "How to get from Gare du Nord into Paris" → get_paris_metro_departures with station="Gare du Nord". This is Paris RER/Metro, not SNCF intercity.
 
 ## MANDATORY TOOL USE — Eurostar queries
 If the user asks ANYTHING about Eurostar trains, services, schedules, train numbers, or routes:
@@ -260,6 +278,24 @@ When get_bus_arrivals is called, the tool emits a BUS_ARRIVALS_START/BUS/BUS_ARR
 Respond with 1–2 plain-text sentences only: stop name, total buses due, and the soonest arrival.
 Do NOT list individual bus lines or times — the UI board already shows all of that.
 Example: "Here are live arrivals at Oxford Circus (Stop W) — 8 buses due, next is the 73 in under 1 minute."
+
+## National Rail response
+When get_national_rail_departures is called, the tool emits a NRAIL_START/DEP/NRAIL_END block that the UI renders as an animated departure board.
+Respond with 1–2 plain-text sentences only: station name, number of departures, next departure.
+Do NOT list individual trains, times, or platforms — the UI board already shows all of that.
+Example: "Here are live departures from London St Pancras — 10 trains shown, next is the 15:02 to Sheffield on platform 4."
+If the result starts with [SAMPLE DATA], tell the user the live feed is temporarily unavailable and the board shows demo data.
+
+## Weather response
+When get_weather is called, the tool emits a WEATHER_START/CURRENT/FORECAST/WEATHER_END block that the UI renders as an animated weather card.
+Respond with 1–2 plain-text sentences answering the user's specific question (e.g. "Yes, rain is expected in Paris this afternoon").
+Do NOT repeat all the raw numbers — the UI card shows the full forecast.
+
+## Paris Metro/RER response
+When get_paris_metro_departures is called, the tool emits a RATP_START/DEP/RATP_END block that the UI renders as a metro-style departure board.
+Respond with 1–2 plain-text sentences only: station name, number of departures, and which lines are shown.
+Do NOT list individual trains or times — the UI board already shows all of that.
+Example: "Here are live departures from Gare du Nord — RER B, RER D, and Transilien H services shown."
 
 ## Data integrity — STRICT RULE
 Never invent, fabricate, or guess transport data. Use ONLY what the tools return.
@@ -471,6 +507,24 @@ func cleanJourneyResult(s string) string {
 	return strings.TrimSpace(s)
 }
 
+// validToolNames builds a set of available tool names from the tools slice.
+func validToolNames(tools []llm.Tool) map[string]bool {
+	names := make(map[string]bool, len(tools))
+	for _, t := range tools {
+		names[t.Function.Name] = true
+	}
+	return names
+}
+
+// toolNames returns a comma-separated list of available tool names.
+func toolNames(tools []llm.Tool) string {
+	names := make([]string, len(tools))
+	for i, t := range tools {
+		names[i] = t.Function.Name
+	}
+	return strings.Join(names, ", ")
+}
+
 // runAgentLoop runs the LLM → tool-call → LLM loop until the model stops calling tools.
 // Returns the final reply, the complete message sequence (for the client to replay as
 // history on the next turn), and any error.
@@ -482,6 +536,7 @@ func (h *Handler) runAgentLoop(
 	sendEvent func(string, string),
 ) (string, []llm.Message, error) {
 	var journeyResult string // last structured journey tool result
+	valid := validToolNames(tools)
 
 	for range maxToolRounds {
 		msg, err := h.llm.StreamChat(ctx, messages, tools, onToken)
@@ -498,7 +553,7 @@ func (h *Handler) runAgentLoop(
 		logger.Debug(logger.TagLLM, fmt.Sprintf("tool calls requested: %d", len(msg.ToolCalls)), "")
 
 		var updated []llm.Message
-		updated, journeyResult = h.executeToolCalls(ctx, msg.ToolCalls, journeyResult, sendEvent)
+		updated, journeyResult = h.executeToolCalls(ctx, msg.ToolCalls, journeyResult, valid, tools, sendEvent)
 		messages = append(messages, updated...)
 	}
 	return "", nil, fmt.Errorf("exceeded %d tool rounds without a final answer", maxToolRounds)
@@ -521,6 +576,8 @@ func (h *Handler) executeToolCalls(
 	ctx context.Context,
 	calls []llm.ToolCall,
 	journeyResult string,
+	valid map[string]bool,
+	tools []llm.Tool,
 	sendEvent func(string, string),
 ) ([]llm.Message, string) {
 	msgs := make([]llm.Message, 0, len(calls)+1)
@@ -531,10 +588,23 @@ func (h *Handler) executeToolCalls(
 		logger.Info(logger.TagTool, fmt.Sprintf("call  %s", tc.Function.Name), tc.Function.Arguments)
 		sendEvent("tool_call", fmt.Sprintf(`{"name":%q}`, tc.Function.Name))
 
-		result, err := h.mcp.CallTool(ctx, tc.Function.Name, tc.Function.Arguments)
-		if err != nil {
-			result = fmt.Sprintf("Tool error: %v", err)
-			logger.Error(logger.TagTool, fmt.Sprintf("error %s", tc.Function.Name), err.Error())
+		// Guard: reject hallucinated tool names before hitting the MCP server.
+		var result string
+		if !valid[tc.Function.Name] {
+			result = fmt.Sprintf(
+				"ERROR: tool %q does not exist. You MUST only call tools from this list: %s. "+
+					"For National Rail departures use get_national_rail_departures with station=<name>. "+
+					"Call the correct tool now.",
+				tc.Function.Name, toolNames(tools),
+			)
+			logger.Warn(logger.TagTool, fmt.Sprintf("hallucinated tool %q rejected", tc.Function.Name), "")
+		} else {
+			var err error
+			result, err = h.mcp.CallTool(ctx, tc.Function.Name, tc.Function.Arguments)
+			if err != nil {
+				result = fmt.Sprintf("Tool error: %v", err)
+				logger.Error(logger.TagTool, fmt.Sprintf("error %s", tc.Function.Name), err.Error())
+			}
 		}
 
 		if journeyTools[tc.Function.Name] && containsJourneyFormat(result) {

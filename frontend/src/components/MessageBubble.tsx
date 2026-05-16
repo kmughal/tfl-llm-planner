@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 import { motion, useInView } from "framer-motion"
 import { cn } from "../lib/utils"
 import type { ChatMessage, ToolEvent } from "../lib/types"
@@ -14,6 +14,9 @@ import { TravelerSummaryCard } from "./TravelerSummaryCard"
 import { RoadsCard, RoadDisruptionsCard } from "./RoadsCard"
 import { BusArrivalsCard } from "./BusArrivalsCard"
 import { BusLinesCard } from "./BusLinesCard"
+import { WeatherCard } from "./WeatherCard"
+import { NationalRailCard } from "./NationalRailCard"
+import { ParisMetroCard } from "./ParisMetroCard"
 import { Train, Bus, MapPin, Clock, ArrowRight, Volume2, VolumeX } from "lucide-react"
 
 const DASHBOARD_TOOL      = "get_eurostar_dashboard"
@@ -27,6 +30,9 @@ const ROADS_TOOL            = "get_tfl_roads"
 const ROAD_DISRUPTIONS_TOOL = "get_road_disruptions"
 const BUS_ARRIVALS_TOOL     = "get_bus_arrivals"
 const BUS_LINES_TOOL        = "get_all_bus_lines"
+const WEATHER_TOOL          = "get_weather"
+const NRAIL_TOOL            = "get_national_rail_departures"
+const PARIS_METRO_TOOL      = "get_paris_metro_departures"
 const SNCF_RICH_TOOLS     = new Set([DISRUPTIONS_TOOL, DEPARTURES_TOOL, ARRIVALS_TOOL, TRAIN_TOOL])
 const TFL_ROAD_TOOLS      = new Set([ROADS_TOOL, ROAD_DISRUPTIONS_TOOL])
 const EUROMAP_TOOLS = new Set([
@@ -37,6 +43,35 @@ const EUROMAP_TOOLS = new Set([
   DASHBOARD_TOOL,
   LIVEMAP_TOOL,
 ])
+
+// ── Debug tool tag — shown above every rich card ─────────────────────────────
+function ToolTag({ name }: { readonly name: string }) {
+  return (
+    <motion.div
+      className="flex items-center gap-1 w-fit"
+      initial={{ opacity: 0, x: -4 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.2 }}
+    >
+      <span className="text-[8px] font-mono text-gray-400 select-none">fn:</span>
+      <span
+        className="text-[9px] font-mono font-semibold text-gray-500 px-1.5 py-0.5 rounded border select-all cursor-text"
+        style={{ backgroundColor: "#f8fafc", borderColor: "#e2e8f0" }}
+      >
+        {name}
+      </span>
+    </motion.div>
+  )
+}
+
+function withTag(name: string, card: React.ReactNode) {
+  return (
+    <div className="flex flex-col gap-1">
+      <ToolTag name={name} />
+      {card}
+    </div>
+  )
+}
 
 // ── TFL line colours ──────────────────────────────────────────────────────────
 const LINE_COLOURS: Record<string, { bg: string; fg: string }> = {
@@ -191,7 +226,7 @@ function flushAccumulator(acc: Accumulator, blocks: Block[]): void {
 
 // Returns (and creates if needed) a list accumulator of the correct kind.
 function ensureAccumulator(kind: ListAcc["kind"], acc: Accumulator | null, blocks: Block[]): ListAcc {
-  if (acc?.kind === kind) return acc as ListAcc
+  if (acc?.kind === kind) return acc
   if (acc) flushAccumulator(acc, blocks)
   return { kind, lines: [] }
 }
@@ -660,8 +695,8 @@ function detectLastTrain(text: string): LastTrainInfo | null {
   let from = ""
   let to = ""
   for (const station of KNOWN_EUROSTAR_STATIONS) {
-    if (new RegExp(`from\\s+${station}`, "i").test(text)) from = station
-    if (new RegExp(`to\\s+${station}`, "i").test(text)) to = station
+    if (new RegExp(String.raw`from\s+${station}`, "i").test(text)) from = station
+    if (new RegExp(String.raw`to\s+${station}`, "i").test(text)) to = station
   }
 
   return {
@@ -928,7 +963,7 @@ function RichMessage({ text }: { readonly text: string }) {
           return <BulletList key={`bullets-${block.items[0]?.slice(0, 15)}`} items={block.items} />
         }
         return (
-          <p key={`para-${block.lines[0]?.slice(0, 15)}`} className="text-sm text-claude-text leading-relaxed">
+          <p key={`para-${block.lines[0]?.slice(0, 15)}`} className="text-sm leading-relaxed" style={{ color: "inherit" }}>
             <Inline text={block.lines.join(" ")} />
           </p>
         )
@@ -997,12 +1032,8 @@ function SpeakButton({ content }: { readonly content: string }) {
     <button
       type="button"
       onClick={toggle}
-      className={cn(
-        "mt-1.5 flex items-center gap-1 text-[11px] transition-colors",
-        speaking
-          ? "text-claude-accent"
-          : "text-claude-muted hover:text-claude-text",
-      )}
+      className="mt-1.5 flex items-center gap-1 text-[11px] transition-colors"
+      style={{ color: speaking ? "rgba(160,180,255,0.9)" : "rgba(255,255,255,0.35)" }}
       aria-label={speaking ? "Stop speaking" : "Read aloud"}
     >
       {speaking
@@ -1030,7 +1061,7 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
           {/* Regular tool badges (and euromap tool_call pending badges) */}
           <div className="flex flex-wrap gap-1.5 px-1">
             {toolEvents
-              .filter(ev => (!EUROMAP_TOOLS.has(ev.name) && !SNCF_RICH_TOOLS.has(ev.name) && !TFL_ROAD_TOOLS.has(ev.name) && ev.name !== TRAVELER_TOOL && ev.name !== BUS_ARRIVALS_TOOL && ev.name !== BUS_LINES_TOOL) || ev.type === "tool_call")
+              .filter(ev => (!EUROMAP_TOOLS.has(ev.name) && !SNCF_RICH_TOOLS.has(ev.name) && !TFL_ROAD_TOOLS.has(ev.name) && ev.name !== TRAVELER_TOOL && ev.name !== BUS_ARRIVALS_TOOL && ev.name !== BUS_LINES_TOOL && ev.name !== WEATHER_TOOL && ev.name !== NRAIL_TOOL && ev.name !== PARIS_METRO_TOOL) || ev.type === "tool_call")
               .map((ev) => (
                 <ToolCallBadge key={`${ev.type}-${ev.name}`} event={ev} />
               ))}
@@ -1040,49 +1071,75 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
             .filter(ev => SNCF_RICH_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)
             .map((ev) => {
               const r = ev.result ?? ""
-              if (ev.name === DISRUPTIONS_TOOL) return <SNCFDisruptions key={`disruptions-${ev.name}`} result={r} />
-              if (ev.name === DEPARTURES_TOOL)  return <SNCFDepartures  key={`departures-${ev.name}`}  result={r} />
-              if (ev.name === ARRIVALS_TOOL)    return <SNCFArrivals    key={`arrivals-${ev.name}`}    result={r} />
-              if (ev.name === TRAIN_TOOL)       return <SNCFTrain       key={`train-${ev.name}`}       result={r} />
+              if (ev.name === DISRUPTIONS_TOOL) return withTag(ev.name, <SNCFDisruptions key={`disruptions-${ev.name}`} result={r} />)
+              if (ev.name === DEPARTURES_TOOL)  return withTag(ev.name, <SNCFDepartures  key={`departures-${ev.name}`}  result={r} />)
+              if (ev.name === ARRIVALS_TOOL)    return withTag(ev.name, <SNCFArrivals    key={`arrivals-${ev.name}`}    result={r} />)
+              if (ev.name === TRAIN_TOOL)       return withTag(ev.name, <SNCFTrain       key={`train-${ev.name}`}       result={r} />)
               return null
             })}
           {/* TFL road cards */}
           {toolEvents
             .filter(ev => TFL_ROAD_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)
             .map(ev => ev.name === ROADS_TOOL
-              ? <RoadsCard key={`roads-${ev.name}`} result={ev.result ?? ""} />
-              : <RoadDisruptionsCard key={`road-dis-${ev.name}`} result={ev.result ?? ""} />
+              ? withTag(ev.name, <RoadsCard           key={`roads-${ev.name}`}   result={ev.result ?? ""} />)
+              : withTag(ev.name, <RoadDisruptionsCard key={`road-dis-${ev.name}`} result={ev.result ?? ""} />)
             )}
           {/* Bus arrivals card */}
           {toolEvents
             .filter(ev => ev.name === BUS_ARRIVALS_TOOL && ev.type === "tool_result" && !!ev.result)
-            .map(ev => <BusArrivalsCard key={`bus-${ev.name}`} result={ev.result ?? ""} />)}
+            .map(ev => withTag(ev.name, <BusArrivalsCard key={`bus-${ev.name}`} result={ev.result ?? ""} />))}
           {/* Bus lines browser card */}
           {toolEvents
             .filter(ev => ev.name === BUS_LINES_TOOL && ev.type === "tool_result" && !!ev.result)
-            .map(ev => <BusLinesCard key={`bus-lines-${ev.name}`} result={ev.result ?? ""} />)}
+            .map(ev => withTag(ev.name, <BusLinesCard key={`bus-lines-${ev.name}`} result={ev.result ?? ""} />))}
           {/* Traveler summary cards */}
           {toolEvents
             .filter(ev => ev.name === TRAVELER_TOOL && ev.type === "tool_result" && !!ev.result)
-            .map(ev => <TravelerSummaryCard key={`traveler-${ev.name}`} result={ev.result ?? ""} />)}
+            .map(ev => withTag(ev.name, <TravelerSummaryCard key={`traveler-${ev.name}`} result={ev.result ?? ""} />))}
+          {/* Weather cards */}
+          {toolEvents
+            .filter(ev => ev.name === WEATHER_TOOL && ev.type === "tool_result" && !!ev.result)
+            .map(ev => withTag(ev.name, <WeatherCard key={`weather-${ev.name}`} result={ev.result ?? ""} />))}
+          {/* National Rail departure cards */}
+          {toolEvents
+            .filter(ev => ev.name === NRAIL_TOOL && ev.type === "tool_result" && !!ev.result)
+            .map(ev => withTag(ev.name, <NationalRailCard key={`nrail-${ev.name}`} result={ev.result ?? ""} />))}
+          {/* Paris Metro / RATP cards */}
+          {toolEvents
+            .filter(ev => ev.name === PARIS_METRO_TOOL && ev.type === "tool_result" && !!ev.result)
+            .map(ev => withTag(ev.name, <ParisMetroCard key={`ratp-${ev.name}`} result={ev.result ?? ""} />))}
           {/* Euromap map cards / dashboard — rendered from raw tool result data */}
           {toolEvents
             .filter(ev => EUROMAP_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)
             .map((ev) => {
               const r = ev.result ?? ""
-              if (ev.name === DASHBOARD_TOOL) return <EuromapDashboard key={`dashboard-${ev.name}`} result={r} />
-              if (ev.name === LIVEMAP_TOOL)   return <EuromapLiveMap   key={`livemap-${ev.name}`}   result={r} />
-              return <EuromapCard key={`euromap-${ev.name}`} result={r} />
+              if (ev.name === DASHBOARD_TOOL) return withTag(ev.name, <EuromapDashboard key={`dashboard-${ev.name}`} result={r} />)
+              if (ev.name === LIVEMAP_TOOL)   return withTag(ev.name, <EuromapLiveMap   key={`livemap-${ev.name}`}   result={r} />)
+              return withTag(ev.name, <EuromapCard key={`euromap-${ev.name}`} result={r} />)
             })}
         </div>
       )}
       <div
-        className={cn(
-          "px-4 py-3 text-sm leading-relaxed",
+        className={cn("px-4 py-3 text-sm leading-relaxed", isUser ? "rounded-3xl rounded-br-md max-w-[75%]" : "rounded-3xl rounded-bl-md max-w-[90%]")}
+        style={
           isUser
-            ? "bg-claude-accent text-white rounded-3xl rounded-br-md max-w-[75%]"
-            : "bg-white border border-claude-border rounded-3xl rounded-bl-md max-w-[90%] shadow-sm text-claude-text",
-        )}
+            ? {
+                background: "linear-gradient(135deg, rgba(59,100,246,0.85) 0%, rgba(99,60,220,0.85) 100%)",
+                backdropFilter: "blur(16px)",
+                WebkitBackdropFilter: "blur(16px)",
+                border: "1px solid rgba(130,160,255,0.25)",
+                boxShadow: "0 4px 24px rgba(60,80,220,0.25)",
+                color: "#fff",
+              }
+            : {
+                background: "rgba(255,255,255,0.10)",
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+                border: "1px solid rgba(255,255,255,0.14)",
+                boxShadow: "0 4px 32px rgba(0,0,0,0.35)",
+                color: "rgba(255,255,255,0.92)",
+              }
+        }
       >
         <MessageContent message={message} isUser={isUser} />
         {!isUser && message.content && !message.streaming && (

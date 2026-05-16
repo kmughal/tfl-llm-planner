@@ -16,3 +16,88 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #d4cdc0; border-radius: 3px; }
 }
+
+/* ── Apple Card liquid mesh gradient ─────────────────────────────────────── */
+@keyframes meshOrb1 {
+  0%, 100% { transform: translate(5vw,  8vh);  }
+  33%       { transform: translate(55vw, 50vh); }
+  66%       { transform: translate(18vw, 76vh); }
+}
+@keyframes meshOrb2 {
+  0%, 100% { transform: translate(68vw, 5vh);  }
+  33%       { transform: translate(8vw,  40vh); }
+  66%       { transform: translate(70vw, 68vh); }
+}
+@keyframes meshOrb3 {
+  0%, 100% { transform: translate(72vw, 44vh); }
+  33%       { transform: translate(14vw, 14vh); }
+  66%       { transform: translate(50vw, 82vh); }
+}
+@keyframes meshOrb4 {
+  0%, 100% { transform: translate(24vw, 70vh); }
+  33%       { transform: translate(76vw, 18vh); }
+  66%       { transform: translate(4vw,  52vh); }
+}
+@keyframes meshOrb5 {
+  0%, 100% { transform: translate(44vw, 34vh); }
+  33%       { transform: translate(86vw, 62vh); }
+  66%       { transform: translate(2vw,  82vh); }
+}
+
+.mesh-orb {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 50%;
+  filter: blur(80px);
+  will-change: transform;
+}
+.mesh-orb-1 {
+  width: 680px; height: 680px;
+  background: radial-gradient(circle, rgba(108, 32, 210, 0.50) 0%, transparent 70%);
+  animation: meshOrb1 26s ease-in-out infinite;
+}
+.mesh-orb-2 {
+  width: 540px; height: 540px;
+  background: radial-gradient(circle, rgba(210, 100, 8, 0.40) 0%, transparent 70%);
+  animation: meshOrb2 32s ease-in-out infinite;
+  animation-delay: -8s;
+}
+.mesh-orb-3 {
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(0, 148, 200, 0.42) 0%, transparent 70%);
+  animation: meshOrb3 20s ease-in-out infinite;
+  animation-delay: -14s;
+}
+.mesh-orb-4 {
+  width: 480px; height: 480px;
+  background: radial-gradient(circle, rgba(200, 18, 90, 0.36) 0%, transparent 70%);
+  animation: meshOrb4 28s ease-in-out infinite;
+  animation-delay: -5s;
+}
+.mesh-orb-5 {
+  width: 420px; height: 420px;
+  background: radial-gradient(circle, rgba(64, 88, 240, 0.32) 0%, transparent 70%);
+  animation: meshOrb5 36s ease-in-out infinite;
+  animation-delay: -20s;
+}
+
+/* Iridescent shimmer layer — thin rotated gradient that drifts slowly */
+@keyframes shimmerDrift {
+  0%, 100% { background-position: 0% 50%; }
+  50%       { background-position: 100% 50%; }
+}
+.mesh-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    130deg,
+    rgba(255,255,255,0) 0%,
+    rgba(160,120,255,0.04) 25%,
+    rgba(255,210,100,0.04) 50%,
+    rgba(80,200,255,0.04) 75%,
+    rgba(255,255,255,0) 100%
+  );
+  background-size: 300% 300%;
+  animation: shimmerDrift 18s ease-in-out infinite;
+}
