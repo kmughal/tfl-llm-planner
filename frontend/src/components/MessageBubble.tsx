@@ -17,6 +17,7 @@ import { BusLinesCard } from "./BusLinesCard"
 import { WeatherCard } from "./WeatherCard"
 import { NationalRailCard } from "./NationalRailCard"
 import { ParisMetroCard } from "./ParisMetroCard"
+import { CrewCard } from "./CrewCard"
 import { Train, Bus, MapPin, Clock, ArrowRight, Volume2, VolumeX } from "lucide-react"
 
 const DASHBOARD_TOOL      = "get_eurostar_dashboard"
@@ -33,6 +34,9 @@ const BUS_LINES_TOOL        = "get_all_bus_lines"
 const WEATHER_TOOL          = "get_weather"
 const NRAIL_TOOL            = "get_national_rail_departures"
 const PARIS_METRO_TOOL      = "get_paris_metro_departures"
+const CREW_ACTIVITIES_TOOL  = "get_crew_activities"
+const CREW_MONTHLY_TOOL     = "get_crew_monthly_schedule"
+const CREW_TOOLS = new Set([CREW_ACTIVITIES_TOOL, CREW_MONTHLY_TOOL])
 const SNCF_RICH_TOOLS     = new Set([DISRUPTIONS_TOOL, DEPARTURES_TOOL, ARRIVALS_TOOL, TRAIN_TOOL])
 const TFL_ROAD_TOOLS      = new Set([ROADS_TOOL, ROAD_DISRUPTIONS_TOOL])
 const EUROMAP_TOOLS = new Set([
@@ -1061,7 +1065,7 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
           {/* Regular tool badges (and euromap tool_call pending badges) */}
           <div className="flex flex-wrap gap-1.5 px-1">
             {toolEvents
-              .filter(ev => (!EUROMAP_TOOLS.has(ev.name) && !SNCF_RICH_TOOLS.has(ev.name) && !TFL_ROAD_TOOLS.has(ev.name) && ev.name !== TRAVELER_TOOL && ev.name !== BUS_ARRIVALS_TOOL && ev.name !== BUS_LINES_TOOL && ev.name !== WEATHER_TOOL && ev.name !== NRAIL_TOOL && ev.name !== PARIS_METRO_TOOL) || ev.type === "tool_call")
+              .filter(ev => (!EUROMAP_TOOLS.has(ev.name) && !SNCF_RICH_TOOLS.has(ev.name) && !TFL_ROAD_TOOLS.has(ev.name) && !CREW_TOOLS.has(ev.name) && ev.name !== TRAVELER_TOOL && ev.name !== BUS_ARRIVALS_TOOL && ev.name !== BUS_LINES_TOOL && ev.name !== WEATHER_TOOL && ev.name !== NRAIL_TOOL && ev.name !== PARIS_METRO_TOOL) || ev.type === "tool_call")
               .map((ev) => (
                 <ToolCallBadge key={`${ev.type}-${ev.name}`} event={ev} />
               ))}
@@ -1108,6 +1112,10 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
           {toolEvents
             .filter(ev => ev.name === PARIS_METRO_TOOL && ev.type === "tool_result" && !!ev.result)
             .map(ev => withTag(ev.name, <ParisMetroCard key={`ratp-${ev.name}`} result={ev.result ?? ""} />))}
+          {/* Crew / driver cards (SOT Enabler) */}
+          {toolEvents
+            .filter(ev => CREW_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)
+            .map(ev => withTag(ev.name, <CrewCard key={`crew-${ev.name}-${ev.result?.slice(0, 20)}`} result={ev.result ?? ""} />))}
           {/* Euromap map cards / dashboard — rendered from raw tool result data */}
           {toolEvents
             .filter(ev => EUROMAP_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)

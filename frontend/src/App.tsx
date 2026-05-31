@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Train, History, BookOpen, Terminal, Settings, House, Bus, Trash2 } from "lucide-react"
+import { Train, History, BookOpen, Terminal, Settings, House, Bus, Trash2, Zap } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useChat } from "./hooks/useChat"
 import { useMemoryTimer } from "./hooks/useMemoryTimer"
@@ -11,6 +11,7 @@ import { ConversationSidebar } from "./components/ConversationSidebar"
 import { ExamplesPanel } from "./components/ExamplesPanel"
 import { LogsPage } from "./components/LogsPage"
 import { ConfigPage } from "./components/ConfigPage"
+import { ToolsPage } from "./components/ToolsPage"
 import { NetworkBackground, type NetworkTheme } from "./components/NetworkBackground"
 import { ChatMeshGradient } from "./components/ChatMeshGradient"
 import { LoadingCounter } from "./components/LoadingCounter"
@@ -24,6 +25,85 @@ import "./index.css"
 const TFL_TOOLS      = new Set(["plan_journey", "get_line_status", "get_status_by_mode", "search_stops"])
 const SNCF_TOOLS     = new Set(["plan_sncf_journey", "search_sncf_stations", "get_sncf_disruptions"])
 const EUROSTAR_TOOLS = new Set(["get_euromap_plans", "get_euromap_technical_plans", "get_euromap_plan_by_id", "get_euromap_technical_plan_by_id", "get_eurostar_dashboard", "get_eurostar_live_map"])
+
+// ── Nav tab button with animated active indicator ─────────────────────────────
+const NAV_TAB_COLORS: Record<string, { text: string; bg: string; border: string; glow: string }> = {
+  tools:  { text: "#fbbf24", bg: "rgba(251,191,36,0.12)",  border: "rgba(251,191,36,0.35)",  glow: "rgba(251,191,36,0.25)" },
+  logs:   { text: "#60a5fa", bg: "rgba(96,165,250,0.12)",  border: "rgba(96,165,250,0.35)",  glow: "rgba(96,165,250,0.25)" },
+  config: { text: "#a78bfa", bg: "rgba(167,139,250,0.12)", border: "rgba(167,139,250,0.35)", glow: "rgba(167,139,250,0.25)" },
+}
+
+function NavTab({
+  id, label, icon, active, onClick,
+}: {
+  readonly id:      string
+  readonly label:   string
+  readonly icon:    React.ReactNode
+  readonly active:  boolean
+  readonly onClick: () => void
+}) {
+  const c = NAV_TAB_COLORS[id] ?? NAV_TAB_COLORS.logs
+
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      className="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold overflow-hidden"
+      style={{
+        color:           active ? c.text : "rgba(255,255,255,0.45)",
+        backgroundColor: active ? c.bg   : "transparent",
+        border:          active ? `1px solid ${c.border}` : "1px solid transparent",
+        boxShadow:       active ? `0 0 12px ${c.glow}, inset 0 0 8px ${c.glow}` : "none",
+      }}
+      animate={{
+        color:           active ? c.text : "rgba(255,255,255,0.45)",
+        backgroundColor: active ? c.bg   : "rgba(255,255,255,0)",
+      }}
+      transition={{ duration: 0.2 }}
+      whileHover={active ? {} : { backgroundColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.75)" }}
+      whileTap={{ scale: 0.95 }}
+    >
+      {/* Active glow sweep */}
+      {active && (
+        <motion.div
+          className="absolute inset-0 pointer-events-none rounded-lg"
+          style={{ background: `linear-gradient(105deg, transparent 30%, ${c.glow} 50%, transparent 70%)` }}
+          animate={{ x: ["-100%", "200%"] }}
+          transition={{ repeat: Infinity, duration: 2.4, ease: "easeInOut", repeatDelay: 1.8 }}
+        />
+      )}
+
+      {/* Active underline with layoutId — slides between tabs */}
+      {active && (
+        <motion.div
+          layoutId="nav-tab-underline"
+          className="absolute bottom-0 left-1/2 h-[2px] rounded-full"
+          style={{ backgroundColor: c.text, width: "60%", x: "-50%" }}
+          transition={{ type: "spring", stiffness: 380, damping: 30 }}
+        />
+      )}
+
+      {/* Pulsing dot when active */}
+      {active && (
+        <motion.span
+          className="absolute top-1 right-1 w-1 h-1 rounded-full"
+          style={{ backgroundColor: c.text }}
+          animate={{ opacity: [1, 0.3, 1], scale: [1, 1.5, 1] }}
+          transition={{ repeat: Infinity, duration: 1.8, ease: "easeInOut" }}
+        />
+      )}
+
+      <motion.span
+        animate={active ? { scale: [1, 1.2, 1] } : { scale: 1 }}
+        transition={{ duration: 0.35, ease: "backOut" }}
+        className="shrink-0"
+      >
+        {icon}
+      </motion.span>
+      <span className="hidden sm:inline">{label}</span>
+    </motion.button>
+  )
+}
 
 function NetworkPill({ color, label }: { readonly color: string; readonly label: string }) {
   return (
@@ -103,10 +183,11 @@ function MemoryTimerBadge({ secondsLeft }: { readonly secondsLeft: number }) {
 }
 
 export default function App() {
-  const [page, setPage] = useState<"chat" | "logs" | "config">(() => {
+  const [page, setPage] = useState<"chat" | "logs" | "config" | "tools">(() => {
     const h = globalThis.location.hash
     if (h === "#logs")   return "logs"
     if (h === "#config") return "config"
+    if (h === "#tools")  return "tools"
     return "chat"
   })
   const [sidebarOpen, setSidebarOpen]           = useState(false)
@@ -157,8 +238,9 @@ export default function App() {
   useEffect(() => {
     const onHash = () => {
       const h = globalThis.location.hash
-      if (h === "#logs")   setPage("logs")
+      if (h === "#logs")        setPage("logs")
       else if (h === "#config") setPage("config")
+      else if (h === "#tools")  setPage("tools")
       else setPage("chat")
     }
     globalThis.addEventListener("hashchange", onHash)
@@ -226,6 +308,23 @@ export default function App() {
           className="h-screen w-full"
         >
           <ConfigPage onClose={() => { globalThis.location.hash = ""; setPage("chat") }} />
+        </motion.div>
+      </AnimatePresence>
+    )
+  }
+
+  if (page === "tools") {
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key="tools"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -16 }}
+          transition={{ duration: 0.22, ease: "easeInOut" }}
+          className="h-screen w-full"
+        >
+          <ToolsPage onClose={() => { globalThis.location.hash = ""; setPage("chat") }} />
         </motion.div>
       </AnimatePresence>
     )
@@ -382,31 +481,28 @@ export default function App() {
               <span className="hidden sm:inline">{memoryCleared ? "Cleared" : "Memory"}</span>
             </button>
 
-            {/* Dev Logs */}
-            <button
+            {/* Page tabs — Tools / Logs / Config */}
+            <NavTab
+              id="tools"
+              label="Tools"
+              icon={<Zap style={{ width: 13, height: 13 }} />}
+              active={page === "tools"}
+              onClick={() => { globalThis.location.hash = "#tools"; setPage("tools") }}
+            />
+            <NavTab
+              id="logs"
+              label="Logs"
+              icon={<Terminal style={{ width: 13, height: 13 }} />}
+              active={page === "logs"}
               onClick={() => { globalThis.location.hash = "#logs"; setPage("logs") }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
-              style={{ color: "rgba(255,255,255,0.45)", border: "1px solid transparent" }}
-              onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-              aria-label="Open dev logs"
-            >
-              <Terminal style={{ width: 13, height: 13 }} />
-              <span className="hidden sm:inline">Logs</span>
-            </button>
-
-            {/* Config */}
-            <button
+            />
+            <NavTab
+              id="config"
+              label="Config"
+              icon={<Settings style={{ width: 13, height: 13 }} />}
+              active={page === "config"}
               onClick={() => { globalThis.location.hash = "#config"; setPage("config") }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
-              style={{ color: "rgba(255,255,255,0.45)", border: "1px solid transparent" }}
-              onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-              aria-label="Open config"
-            >
-              <Settings style={{ width: 13, height: 13 }} />
-              <span className="hidden sm:inline">Config</span>
-            </button>
+            />
           </div>
         </div>
       </header>

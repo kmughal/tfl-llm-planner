@@ -9,6 +9,7 @@ import (
 	"tfl-mcp-server/nationalrail"
 	"tfl-mcp-server/ratp"
 	"tfl-mcp-server/sncf"
+	"tfl-mcp-server/sotenabler"
 	"tfl-mcp-server/tfl"
 	"tfl-mcp-server/tools"
 	"tfl-mcp-server/traveler"
@@ -23,6 +24,7 @@ func main() {
 	weatherClient   := weather.NewClient()
 	nrailClient     := nationalrail.NewClient(os.Getenv("DARWIN_TOKEN"))
 	ratpClient      := ratp.NewClient(os.Getenv("SNCF_API_KEY"))
+	sotClient       := sotenabler.NewClient(os.Getenv("SOT_CLIENT_ID"), os.Getenv("SOT_CLIENT_SECRET"))
 
 	s := server.NewMCPServer(
 		"transport-journey-planner",
@@ -63,6 +65,10 @@ func main() {
 	s.AddTool(tools.GetWeatherTool(), tools.HandleGetWeather(weatherClient))
 	s.AddTool(tools.GetNationalRailDeparturesTool(), tools.HandleGetNationalRailDepartures(nrailClient))
 	s.AddTool(tools.GetRATPhDeparturesTool(), tools.HandleGetRATPhDepartures(ratpClient))
+
+	// SOT Enabler (Eurostar crew / driver) tools
+	s.AddTool(tools.GetCrewActivitiesTool(), tools.HandleGetCrewActivities(sotClient))
+	s.AddTool(tools.GetCrewMonthlyScheduleTool(), tools.HandleGetCrewMonthlySchedule(sotClient))
 
 	transport := os.Getenv("MCP_TRANSPORT") // "stdio" (default) or "sse"
 

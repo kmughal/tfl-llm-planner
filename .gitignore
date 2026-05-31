@@ -4,3 +4,4 @@ frontend/dist/
 backend/tfl-backend
 mcp-server/tfl-mcp-server
 .claude
+backend/memory.json
