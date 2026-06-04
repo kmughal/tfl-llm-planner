@@ -7,6 +7,7 @@ interface Example {
   text:      string
   tool:      string
   template?: boolean
+  divider?:  string
 }
 
 interface Section {
@@ -44,6 +45,13 @@ const SECTIONS: Section[] = [
       { text: "Passenger load for all services today",        tool: "get_traveler_summary" },
       { text: "Passenger load for service {number}",          tool: "get_traveler_summary",              template: true },
       { text: "Class breakdown for train {number}",           tool: "get_traveler_summary",              template: true },
+      { text: "", tool: "", divider: "Crew & Drivers" },
+      { text: "Who is driving Eurostar trains today?",        tool: "get_crew_activities" },
+      { text: "Crew for service 9113 today",                  tool: "get_crew_activities" },
+      { text: "Show crew for service {number} today",         tool: "get_crew_activities",       template: true },
+      { text: "Show crew for service {number} on {date}",     tool: "get_crew_activities",       template: true },
+      { text: "Monthly schedule for crew {crewId}",           tool: "get_crew_monthly_schedule", template: true },
+      { text: "Driver schedule for {crewId} in {month}",      tool: "get_crew_monthly_schedule", template: true },
     ],
   },
   {
@@ -216,7 +224,20 @@ export function ExamplesPanel({ onSend, onTemplate, onClose }: Props) {
                     className="overflow-hidden"
                   >
                     <div className="px-2.5 pb-3 flex flex-col gap-0.5">
-                      {section.examples.map((ex, i) => (
+                      {section.examples.map((ex, i) => ex.divider ? (
+                        <div
+                          key={`${section.key}-div-${i}`}
+                          className="flex items-center gap-2 mt-2.5 mb-1 px-1"
+                        >
+                          <span
+                            className="text-[9px] font-black uppercase tracking-[0.16em]"
+                            style={{ color: section.color, opacity: 0.6 }}
+                          >
+                            {ex.divider}
+                          </span>
+                          <div className="flex-1 h-px" style={{ background: `${section.color}20` }} />
+                        </div>
+                      ) : (
                         <button
                           key={`${section.key}-${i}`}
                           type="button"
@@ -260,6 +281,7 @@ export function ExamplesPanel({ onSend, onTemplate, onClose }: Props) {
                         </button>
                       ))}
                     </div>
+
                   </motion.div>
                 )}
               </AnimatePresence>

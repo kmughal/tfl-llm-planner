@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Train, ChevronDown, ChevronUp, Search, X } from "lucide-react"
+import { Train, ChevronDown, ChevronUp, Search, X, Users, Phone } from "lucide-react"
 import { cn } from "../lib/utils"
+
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080"
 
 const STATION_NAMES: Record<string, string> = {
   SPX: "St Pancras",
@@ -322,6 +324,94 @@ function TrainTrackRoute({ isNow, isOutbound, isCancelled }: {
   )
 }
 
+// ── Crew types + strip ───────────────────────────────────────────────────────
+
+interface EnrichedCrew {
+  crewType:    string
+  crewId:      string
+  firstName:   string
+  lastName:    string
+  phone:       string
+  homeDepot:   string
+  serviceCode: string
+  departure:   string
+  arrival:     string
+}
+
+function CrewStrip({ crew, loading }: { readonly crew: EnrichedCrew[]; readonly loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="px-2 pb-3 pt-1 border-t border-amber-100">
+        <p className="text-[9px] font-bold uppercase tracking-widest text-amber-500 mb-1.5">Crew on duty</p>
+        <div className="flex gap-1.5">
+          {[1, 2].map(i => (
+            <div key={i} className="h-9 w-28 rounded-lg animate-pulse" style={{ background: "#fef3c7" }} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (crew.length === 0) return null
+
+  return (
+    <div className="px-2 pb-3 pt-2 border-t border-amber-100">
+      <div className="flex items-center gap-1 mb-1.5">
+        <Users className="w-2.5 h-2.5 text-amber-500" />
+        <span className="text-[9px] font-black uppercase tracking-widest text-amber-600">Crew on duty</span>
+        <span className="text-[8px] font-bold px-1 py-0.5 rounded-full bg-amber-100 text-amber-600 tabular-nums">{crew.length}</span>
+      </div>
+      <div className="flex gap-1.5 overflow-x-auto scrollbar-none">
+        {crew.map((m, i) => {
+          const isDriver = m.crewType === "TRAIN_DRIVER"
+          const name = [m.firstName, m.lastName].filter(Boolean).join(" ") || m.crewId
+          const initials = ((m.firstName[0] ?? "") + (m.lastName[0] ?? "")).toUpperCase() || "?"
+          return (
+            <motion.div
+              key={`${m.crewId}-${m.serviceCode}`}
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 shrink-0"
+              style={{
+                background: isDriver ? "#fffbeb" : "#f9fafb",
+                border: isDriver ? "1px solid #fcd34d" : "1px solid #e5e7eb",
+              }}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.06, type: "spring", stiffness: 400, damping: 24 }}
+            >
+              <motion.div
+                className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black shrink-0"
+                style={{ background: isDriver ? "#003366" : "#e5e7eb", color: isDriver ? "#fbbf24" : "#6b7280" }}
+                animate={isDriver ? { boxShadow: ["0 0 0 0 rgba(251,191,36,0.4)", "0 0 0 4px rgba(251,191,36,0)"] } : {}}
+                transition={{ repeat: Infinity, duration: 2, ease: "easeOut" }}
+              >
+                {initials}
+              </motion.div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold truncate max-w-[80px]" style={{ color: isDriver ? "#92400e" : "#374151" }}>
+                  {name}
+                </p>
+                <p className="text-[8px]" style={{ color: isDriver ? "#b45309" : "#9ca3af" }}>
+                  {isDriver ? "Driver" : m.crewType.replace(/_/g, " ").toLowerCase()}
+                </p>
+              </div>
+              {m.phone && (
+                <a
+                  href={`tel:${m.phone.replaceAll(" ", "")}`}
+                  onClick={e => e.stopPropagation()}
+                  className="shrink-0 ml-0.5 flex items-center justify-center w-5 h-5 rounded"
+                  style={{ background: isDriver ? "#fef3c7" : "#f3f4f6" }}
+                >
+                  <Phone className="w-2.5 h-2.5" style={{ color: isDriver ? "#d97706" : "#9ca3af" }} />
+                </a>
+              )}
+            </motion.div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── Individual service row ────────────────────────────────────────────────────
 const UK_CODES = new Set(["SPX", "EBF", "ASI"])
 
@@ -329,12 +419,28 @@ function ServiceRow({
   svc,
   nowTime,
   highlightActive,
+  date,
 }: {
   readonly svc: DashboardService
   readonly nowTime: string
   readonly highlightActive: boolean
+  readonly date: string
 }) {
   const [expanded, setExpanded] = useState(false)
+  const [crew, setCrew] = useState<EnrichedCrew[]>([])
+  const [crewLoading, setCrewLoading] = useState(false)
+  const crewFetched = useRef(false)
+
+  useEffect(() => {
+    if (!expanded || crewFetched.current) return
+    crewFetched.current = true
+    setCrewLoading(true)
+    fetch(`${API_BASE}/api/crew/activities?date=${date}&serviceCode=${svc.serviceCode}`)
+      .then(r => r.json())
+      .then((data: unknown) => { if (Array.isArray(data)) setCrew(data as EnrichedCrew[]) })
+      .catch(() => {})
+      .finally(() => setCrewLoading(false))
+  }, [expanded, date, svc.serviceCode])
   const isCancelled = svc.status === "cancelled"
   const isOutbound = UK_CODES.has(svc.origin.toUpperCase())
   const isNow = highlightActive && !isCancelled && isRunningNow(svc.dep, svc.arr, nowTime)
@@ -450,6 +556,7 @@ function ServiceRow({
           >
             <div className="border-t border-gray-100 px-2">
               <StopTimeline stops={svc.stops} />
+              <CrewStrip crew={crew} loading={crewLoading} />
             </div>
           </motion.div>
         )}
@@ -648,6 +755,7 @@ export function EuromapDashboard({ result }: { readonly result: string }) {
               svc={svc}
               nowTime={nowTime}
               highlightActive={highlightActive}
+              date={summary.date}
             />
           ))
         )}

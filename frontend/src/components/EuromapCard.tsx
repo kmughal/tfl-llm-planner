@@ -64,7 +64,38 @@ interface StatusSummary {
   cancelledCodes: string[]
 }
 
+// ── Crew types ────────────────────────────────────────────────────────────────
+interface CrewMember {
+  crewType:    string
+  crewId:      string
+  firstName:   string
+  lastName:    string
+  origin:      string
+  destination: string
+  dep:         string
+  arr:         string
+}
+
 // ── Parsers ───────────────────────────────────────────────────────────────────
+function parseDayCrew(raw: string): CrewMember[] {
+  const crew: CrewMember[] = []
+  const seen = new Set<string>()
+  for (const line of raw.split("\n")) {
+    const t = line.trim()
+    if (!t.startsWith("CREW_ROW:")) continue
+    const p = t.slice("CREW_ROW:".length).split("|")
+    if (p.length < 11) continue
+    const key = `${p[1]}-${p[7]}-${p[8]}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    crew.push({
+      crewType: p[0], crewId: p[1], firstName: p[2], lastName: p[3],
+      origin: p[7], destination: p[8], dep: p[9], arr: p[10].trim(),
+    })
+  }
+  return crew
+}
+
 function parseResult(raw: string): EuromapPlan[] {
   const plans: EuromapPlan[] = []
   let cur: EuromapPlan | null = null
@@ -143,14 +174,57 @@ function StationDotIcon({ isTerminal }: { readonly isTerminal: boolean }) {
   return <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ES_NAVY }} />
 }
 
+// ── Inline crew chip shown at each stop ───────────────────────────────────────
+function CrewChip({ m, index }: { readonly m: CrewMember; readonly index: number }) {
+  const isDriver = m.crewType === "TRAIN_DRIVER"
+  const bg       = isDriver ? ES_NAVY : "#1d4ed8"
+  const fg       = isDriver ? ES_GOLD : "#fff"
+  const name     = [m.firstName, m.lastName].filter(Boolean).join(" ") || m.crewId
+  const ini      = ((m.firstName[0] ?? "") + (m.lastName[0] ?? "")).toUpperCase() || "?"
+
+  return (
+    <motion.div
+      className="flex items-center gap-1 pl-0.5 pr-2 py-0.5 rounded-full"
+      style={{ backgroundColor: `${bg}12`, border: `1px solid ${bg}28` }}
+      initial={{ opacity: 0, x: -8, scale: 0.88 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      transition={{ delay: index * 0.07, type: "spring", stiffness: 420, damping: 22 }}
+      title={`${name} · ${m.dep}–${m.arr} · ${m.origin}→${m.destination}`}
+    >
+      <div
+        className="w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-black shrink-0 relative"
+        style={{ backgroundColor: bg, color: fg }}
+      >
+        {ini}
+        {isDriver && (
+          <motion.div
+            className="absolute inset-0 rounded-full"
+            style={{ border: `1.5px solid ${ES_GOLD}` }}
+            animate={{ scale: [1, 1.5, 1], opacity: [0.7, 0, 0.7] }}
+            transition={{ repeat: Infinity, duration: 2.4, ease: "easeInOut", delay: index * 0.4 }}
+          />
+        )}
+      </div>
+      <span className="text-[10px] font-semibold leading-none" style={{ color: bg }}>{name}</span>
+      <span
+        className="text-[8px] font-black px-1 py-px rounded-full leading-none shrink-0"
+        style={{ backgroundColor: bg, color: fg }}
+      >
+        {isDriver ? "DRV" : "TM"}
+      </span>
+    </motion.div>
+  )
+}
+
 // ── Animated station stop ─────────────────────────────────────────────────────
 function StationStop({
-  station, index, total, inView,
+  station, index, total, inView, crewAtStop = [],
 }: {
-  readonly station: MapStation
-  readonly index:   number
-  readonly total:   number
-  readonly inView:  boolean
+  readonly station:      MapStation
+  readonly index:        number
+  readonly total:        number
+  readonly inView:       boolean
+  readonly crewAtStop?:  CrewMember[]
 }) {
   const isFirst    = index === 0
   const isLast     = index === total - 1
@@ -247,6 +321,13 @@ function StationStop({
                 arr <span className="font-semibold text-gray-700">{station.arr}</span>
               </span>
             )}
+          </div>
+        )}
+        {crewAtStop.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {crewAtStop.map((m, ci) => (
+              <CrewChip key={`${m.crewId}-${m.origin}`} m={m} index={ci} />
+            ))}
           </div>
         )}
       </motion.div>
@@ -519,10 +600,11 @@ function StatusSummaryCard({ summary }: { readonly summary: StatusSummary }) {
 }
 
 // ── Plan card (all hooks unconditional) ──────────────────────────────────────
-function PlanCard({ plans }: { readonly plans: EuromapPlan[] }) {
+function PlanCard({ plans, crewResult }: { readonly plans: EuromapPlan[]; readonly crewResult?: string }) {
   const [sel, setSel] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
   const inView  = useInView(listRef, { once: true, margin: "-40px" })
+  const allCrew = crewResult ? parseDayCrew(crewResult) : []
 
   const plan      = plans[Math.min(sel, plans.length - 1)]
   const positions = plan.stations.map((s): [number, number] => [s.lat, s.lng])
@@ -614,6 +696,7 @@ function PlanCard({ plans }: { readonly plans: EuromapPlan[] }) {
               index={i}
               total={plan.stations.length}
               inView={inView}
+              crewAtStop={allCrew.filter(m => m.origin === s.shortCode)}
             />
           ))}
         </div>
@@ -696,11 +779,11 @@ function PlanCard({ plans }: { readonly plans: EuromapPlan[] }) {
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export function EuromapCard({ result }: { readonly result: string }) {
+export function EuromapCard({ result, crewResult }: { readonly result: string; readonly crewResult?: string }) {
   const summary = parseStatusSummary(result)
   if (summary) return <StatusSummaryCard summary={summary} />
 
   const plans = parseResult(result)
   if (plans.length === 0) return null
-  return <PlanCard plans={plans} />
+  return <PlanCard plans={plans} crewResult={crewResult} />
 }

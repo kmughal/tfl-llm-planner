@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, Train, ArrowRight, Clock, AlertCircle, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react"
+import { X, Train, ArrowRight, Clock, AlertCircle, RefreshCw, ChevronLeft, ChevronRight, Users, Phone, MapPin } from "lucide-react"
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080"
 const NAVY = "#003366"
@@ -55,6 +55,20 @@ type TrainPlan = {
 }
 
 type Filter = "all" | "outbound" | "inbound"
+
+type EnrichedCrew = {
+  crewType:    string
+  crewId:      string
+  firstName:   string
+  lastName:    string
+  phone:       string
+  homeDepot:   string
+  serviceCode: string
+  origin:      string
+  destination: string
+  departure:   string
+  arrival:     string
+}
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -333,22 +347,26 @@ function TrainCard({
 // ── Detail panel ──────────────────────────────────────────────────────────────
 
 function StopRow({
-  station, isFirst, isLast, idx,
+  station, isFirst, isLast, idx, onHoverEnter, onHoverLeave,
 }: {
   readonly station: EStation
   readonly isFirst: boolean
   readonly isLast: boolean
   readonly idx: number
+  readonly onHoverEnter?: () => void
+  readonly onHoverLeave?: () => void
 }) {
   const dep = fmtHHMM(station.departureDateTime)
   const arr = fmtHHMM(station.arrivalDatetime)
 
   return (
     <motion.div
-      className="flex gap-3 items-stretch"
+      className="flex gap-3 items-stretch cursor-pointer"
       initial={{ opacity: 0, x: -12 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: idx * 0.06, duration: 0.24, ease: "easeOut" }}
+      onMouseEnter={onHoverEnter}
+      onMouseLeave={onHoverLeave}
     >
       {/* Timeline column */}
       <div className="flex flex-col items-center shrink-0" style={{ width: 18 }}>
@@ -402,12 +420,208 @@ function StopRow({
   )
 }
 
-function DetailPanel({ train, onClose }: { readonly train: TrainPlan; readonly onClose: () => void }) {
+// ── Crew section ──────────────────────────────────────────────────────────────
+
+function crewTypeLabel(t: string): string {
+  if (t === "TRAIN_DRIVER") return "Driver"
+  return t.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function initials(first: string, last: string): string {
+  return ((first[0] ?? "") + (last[0] ?? "")).toUpperCase() || "?"
+}
+
+function CrewOverlay({
+  crew, loading, onClose,
+}: {
+  readonly crew:    EnrichedCrew[]
+  readonly loading: boolean
+  readonly onClose: () => void
+}) {
+  return (
+    <motion.div
+      className="absolute inset-0 flex flex-col z-20 overflow-hidden"
+      style={{ background: "rgba(2,6,20,0.96)", backdropFilter: "blur(20px)" }}
+      initial={{ opacity: 0, scale: 0.97 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.97 }}
+      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+    >
+      {/* ambient gold sweep */}
+      <motion.div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: "linear-gradient(135deg, transparent 0%, rgba(251,191,36,0.05) 50%, transparent 100%)" }}
+        animate={{ x: ["-100%", "150%"] }}
+        transition={{ repeat: Infinity, duration: 4, ease: "easeInOut", repeatDelay: 3 }}
+      />
+
+      {/* Header */}
+      <div className="px-4 pt-3 pb-2 flex items-center justify-between shrink-0 relative z-10">
+        <div className="flex items-center gap-2.5">
+          <motion.div
+            className="w-8 h-8 rounded-xl flex items-center justify-center"
+            style={{ background: "linear-gradient(135deg, rgba(251,191,36,0.22) 0%, rgba(251,191,36,0.06) 100%)", border: "1px solid rgba(251,191,36,0.35)" }}
+            animate={{ boxShadow: ["0 0 0 0 rgba(251,191,36,0.45)", "0 0 16px 6px rgba(251,191,36,0)"] }}
+            transition={{ repeat: Infinity, duration: 2.2, ease: "easeOut" }}
+          >
+            <Users style={{ width: 14, height: 14, color: "#fbbf24" }} />
+          </motion.div>
+          <div>
+            <p className="text-[9px] font-bold uppercase tracking-widest" style={{ color: "rgba(251,191,36,0.55)" }}>Crew on duty</p>
+            <p className="text-sm font-black leading-none" style={{ color: "#fbbf24" }}>
+              {loading ? "Loading…" : `${crew.length} assigned`}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-7 h-7 flex items-center justify-center rounded-lg"
+          style={{ color: "rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.06)" }}
+        >
+          <X style={{ width: 12, height: 12 }} />
+        </button>
+      </div>
+
+      {/* Divider */}
+      <motion.div
+        className="mx-4 mb-3 h-px relative z-10"
+        style={{ background: "linear-gradient(90deg, transparent, rgba(251,191,36,0.3), transparent)" }}
+        initial={{ scaleX: 0 }}
+        animate={{ scaleX: 1 }}
+        transition={{ duration: 0.35, delay: 0.08 }}
+      />
+
+      {/* Cards */}
+      <div className="flex-1 overflow-y-auto px-3 pb-3 flex flex-col gap-2 relative z-10">
+        {loading && [1, 2].map(i => (
+          <div key={i} className="h-16 rounded-xl animate-pulse" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }} />
+        ))}
+
+        {!loading && crew.length === 0 && (
+          <div className="flex flex-col items-center justify-center flex-1 gap-2 py-10">
+            <Users style={{ width: 24, height: 24, color: "rgba(255,255,255,0.1)" }} />
+            <p className="text-xs" style={{ color: "rgba(255,255,255,0.22)" }}>No crew assigned</p>
+          </div>
+        )}
+
+        {!loading && crew.map((m, i) => {
+          const isDriver = m.crewType === "TRAIN_DRIVER"
+          const name = [m.firstName, m.lastName].filter(Boolean).join(" ") || m.crewId
+          return (
+            <motion.div
+              key={`${m.crewId}-${m.serviceCode}`}
+              className="relative rounded-xl p-3 overflow-hidden"
+              style={{
+                background: isDriver
+                  ? "linear-gradient(135deg, rgba(251,191,36,0.1) 0%, rgba(251,191,36,0.03) 100%)"
+                  : "rgba(255,255,255,0.04)",
+                border: isDriver ? "1px solid rgba(251,191,36,0.28)" : "1px solid rgba(255,255,255,0.07)",
+              }}
+              initial={{ opacity: 0, y: 14, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ delay: i * 0.07, type: "spring", stiffness: 380, damping: 22 }}
+            >
+              {isDriver && (
+                <motion.div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{ background: "linear-gradient(105deg, transparent 20%, rgba(251,191,36,0.08) 50%, transparent 80%)" }}
+                  animate={{ x: ["-100%", "200%"] }}
+                  transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut", repeatDelay: 3.5 }}
+                />
+              )}
+              <div className="flex items-center gap-2.5 relative z-10">
+                <motion.div
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-black shrink-0 select-none"
+                  style={{
+                    background: isDriver ? "linear-gradient(135deg, #003366 0%, #0055cc 100%)" : "rgba(255,255,255,0.08)",
+                    color: isDriver ? "#fbbf24" : "rgba(255,255,255,0.5)",
+                    border: isDriver ? "2px solid rgba(251,191,36,0.5)" : "1px solid rgba(255,255,255,0.1)",
+                  }}
+                  animate={isDriver ? { boxShadow: ["0 0 0 0 rgba(251,191,36,0.5)", "0 0 0 7px rgba(251,191,36,0)"] } : {}}
+                  transition={{ repeat: Infinity, duration: 2, ease: "easeOut" }}
+                >
+                  {initials(m.firstName, m.lastName)}
+                </motion.div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="text-xs font-bold truncate" style={{ color: "rgba(255,255,255,0.92)" }}>{name}</span>
+                    <motion.span
+                      className="text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wide shrink-0"
+                      style={{ background: isDriver ? "rgba(251,191,36,0.2)" : "rgba(255,255,255,0.07)", color: isDriver ? "#fbbf24" : "rgba(255,255,255,0.38)" }}
+                      animate={isDriver ? { opacity: [1, 0.6, 1] } : {}}
+                      transition={{ repeat: Infinity, duration: 1.8 }}
+                    >
+                      {crewTypeLabel(m.crewType)}
+                    </motion.span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.22)" }}>{m.crewId}</span>
+                    {m.homeDepot && (
+                      <>
+                        <MapPin style={{ width: 7, height: 7, color: "rgba(255,255,255,0.18)" }} />
+                        <span className="text-[9px] truncate" style={{ color: "rgba(255,255,255,0.22)" }}>{m.homeDepot}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {m.phone && (
+                  <a
+                    href={`tel:${m.phone.replaceAll(" ", "")}`}
+                    className="shrink-0 flex items-center justify-center rounded-lg w-8 h-8"
+                    style={{
+                      background: isDriver ? "rgba(251,191,36,0.12)" : "rgba(255,255,255,0.06)",
+                      border: isDriver ? "1px solid rgba(251,191,36,0.22)" : "1px solid rgba(255,255,255,0.08)",
+                      color: isDriver ? "#fbbf24" : "#7eaaff",
+                    }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <Phone style={{ width: 10, height: 10 }} />
+                  </a>
+                )}
+              </div>
+              <div className="mt-2 pt-2 flex items-center gap-1.5 relative z-10" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                <Clock style={{ width: 8, height: 8, color: "rgba(255,255,255,0.2)" }} />
+                <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.2)" }}>{m.departure} → {m.arrival}</span>
+              </div>
+            </motion.div>
+          )
+        })}
+      </div>
+    </motion.div>
+  )
+}
+
+function DetailPanel({
+  train, onClose, crew, crewLoading,
+}: {
+  readonly train:        TrainPlan
+  readonly onClose:      () => void
+  readonly crew:         EnrichedCrew[]
+  readonly crewLoading:  boolean
+}) {
   const origin    = originSt(train)
   const dest      = destSt(train)
   const dur       = fmtDuration(train.departureDateTime, train.arrivalDateTime)
   const cancelled = train.status === "cancelled" || train.status === "suspended"
   const stops     = [...train.stations].sort((a, b) => a.sequenceNumber - b.sequenceNumber)
+
+  const [crewVisible, setCrewVisible] = useState(false)
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function handleStopEnter() {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    if (crew.length > 0 || crewLoading) setCrewVisible(true)
+  }
+
+  function handleStopLeave() {
+    hoverTimer.current = setTimeout(() => setCrewVisible(false), 350)
+  }
+
+  function handleOverlayClose() {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    setCrewVisible(false)
+  }
 
   return (
     <motion.div
@@ -512,20 +726,36 @@ function DetailPanel({ train, onClose }: { readonly train: TrainPlan; readonly o
         </div>
       </div>
 
-      {/* Stops */}
-      <div className="flex-1 overflow-y-auto px-4 py-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wider mb-3" style={{ color: "rgba(255,255,255,0.3)" }}>
-          All stops · {stops.length}
-        </p>
-        {stops.map((s, i) => (
-          <StopRow
-            key={`${s.shortCode}-${s.sequenceNumber}`}
-            station={s}
-            isFirst={i === 0}
-            isLast={i === stops.length - 1}
-            idx={i}
-          />
-        ))}
+      {/* Stops + crew overlay on hover */}
+      <div className="flex-1 relative min-h-0">
+        <div className="h-full overflow-y-auto px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wider mb-3" style={{ color: "rgba(255,255,255,0.3)" }}>
+            All stops · {stops.length}
+            {(crew.length > 0 || crewLoading) && (
+              <span style={{ color: "rgba(251,191,36,0.45)" }}> · hover to see crew</span>
+            )}
+          </p>
+          {stops.map((s, i) => (
+            <StopRow
+              key={`${s.shortCode}-${s.sequenceNumber}`}
+              station={s}
+              isFirst={i === 0}
+              isLast={i === stops.length - 1}
+              idx={i}
+              onHoverEnter={handleStopEnter}
+              onHoverLeave={handleStopLeave}
+            />
+          ))}
+        </div>
+        <AnimatePresence>
+          {crewVisible && (
+            <CrewOverlay
+              crew={crew}
+              loading={crewLoading}
+              onClose={handleOverlayClose}
+            />
+          )}
+        </AnimatePresence>
       </div>
 
       {/* PlanID footer */}
@@ -553,6 +783,8 @@ export function EurostarSchedule({ onClose }: { readonly onClose: () => void }) 
   const [loading, setLoading]           = useState(false)
   const [error, setError]               = useState<string | null>(null)
   const [selectedTrain, setSelectedTrain] = useState<TrainPlan | null>(null)
+  const [crew, setCrew]                 = useState<EnrichedCrew[]>([])
+  const [crewLoading, setCrewLoading]   = useState(false)
 
   const load = useCallback((date: Date) => {
     setLoading(true)
@@ -570,6 +802,18 @@ export function EurostarSchedule({ onClose }: { readonly onClose: () => void }) 
   }, [])
 
   useEffect(() => { load(selectedDate) }, [selectedDate, load])
+
+  useEffect(() => {
+    if (!selectedTrain) { setCrew([]); return }
+    setCrewLoading(true)
+    setCrew([])
+    fetch(`${API_BASE}/api/crew/activities?date=${toISO(selectedDate)}&serviceCode=${selectedTrain.serviceCode}`)
+      .then(r => r.json())
+      .then((data: unknown) => { if (Array.isArray(data)) setCrew(data as EnrichedCrew[]) })
+      .catch(() => {})
+      .finally(() => setCrewLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTrain?.planID, toISO(selectedDate)])
 
   function handleDateSelect(d: Date) {
     setSelectedDate(d)
@@ -767,6 +1011,8 @@ export function EurostarSchedule({ onClose }: { readonly onClose: () => void }) 
                 <DetailPanel
                   train={selectedTrain}
                   onClose={() => setSelectedTrain(null)}
+                  crew={crew}
+                  crewLoading={crewLoading}
                 />
               </motion.div>
             )}

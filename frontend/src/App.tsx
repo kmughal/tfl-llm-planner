@@ -105,14 +105,51 @@ function NavTab({
   )
 }
 
-function NetworkPill({ color, label }: { readonly color: string; readonly label: string }) {
+const ALL_SERVICES = [
+  { label: "Eurostar",      color: "#7eaaff" },
+  { label: "SNCF",          color: "#ff7676" },
+  { label: "TFL",           color: "#ff6b5e" },
+  { label: "National Rail", color: "#93c5fd" },
+  { label: "Paris Métro",   color: "#6ee7b7" },
+  { label: "Crew · SOT",    color: "#fbbf24" },
+  { label: "London Buses",  color: "#fca5a5" },
+  { label: "Weather",       color: "#7dd3fc" },
+]
+
+function ServiceTicker() {
+  const items = [...ALL_SERVICES, ...ALL_SERVICES]
   return (
-    <span
-      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
-      style={{ backgroundColor: `${color}10`, color, border: `1px solid ${color}22` }}
+    <div
+      className="flex items-center overflow-hidden ml-1.5"
+      style={{
+        maxWidth: 200,
+        maskImage: "linear-gradient(to right, transparent, black 12%, black 88%, transparent)",
+        WebkitMaskImage: "linear-gradient(to right, transparent, black 12%, black 88%, transparent)",
+      }}
     >
-      {label}
-    </span>
+      <motion.div
+        className="flex items-center gap-1.5"
+        style={{ width: "max-content" }}
+        animate={{ x: ["0%", "-50%"] }}
+        transition={{ duration: 22, repeat: Infinity, ease: "linear" }}
+      >
+        {items.map((s, i) => (
+          <span
+            key={`${s.label}-${i}`}
+            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0"
+            style={{ backgroundColor: `${s.color}12`, color: s.color, border: `1px solid ${s.color}28` }}
+          >
+            <motion.span
+              className="w-1 h-1 rounded-full shrink-0"
+              style={{ background: s.color }}
+              animate={{ opacity: [1, 0.4, 1] }}
+              transition={{ duration: 2, repeat: Infinity, delay: i * 0.3 % 2 }}
+            />
+            {s.label}
+          </span>
+        ))}
+      </motion.div>
+    </div>
   )
 }
 
@@ -191,7 +228,7 @@ export default function App() {
     return "chat"
   })
   const [sidebarOpen, setSidebarOpen]           = useState(false)
-  const [examplesOpen, setExamplesOpen]         = useState(true)
+  const [examplesOpen, setExamplesOpen]         = useState(false)
   const [busExplorerOpen, setBusExplorerOpen]   = useState(false)
   const [eurostarHubOpen, setEurostarHubOpen]         = useState(false)
   const [eurostarScheduleOpen, setEurostarScheduleOpen] = useState(false)
@@ -360,13 +397,40 @@ export default function App() {
           {/* History toggle */}
           <button
             onClick={() => setSidebarOpen(true)}
-            className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors"
+            className="relative flex items-center justify-center w-7 h-7 rounded-lg transition-colors"
             style={{ color: "rgba(255,255,255,0.55)" }}
             onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
             onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
             aria-label="Open conversation history"
           >
             <History style={{ width: 16, height: 16 }} />
+            <AnimatePresence>
+              {conversations.length > 0 && (
+                <motion.span
+                  key={conversations.length}
+                  className="absolute -top-1.5 -right-1.5 flex items-center justify-center rounded-full text-[8px] font-black tabular-nums leading-none"
+                  style={{
+                    minWidth: 15, height: 15,
+                    background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+                    color: "#fff",
+                    border: "1.5px solid rgba(3,7,18,0.85)",
+                    padding: "0 3px",
+                    boxShadow: "0 0 6px rgba(99,102,241,0.6)",
+                  }}
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
+                  transition={{ type: "spring", stiffness: 520, damping: 18 }}
+                >
+                  <motion.span
+                    animate={{ scale: [1, 1.25, 1] }}
+                    transition={{ duration: 0.5, delay: 0.15 }}
+                  >
+                    {conversations.length}
+                  </motion.span>
+                </motion.span>
+              )}
+            </AnimatePresence>
           </button>
 
           {/* Logo */}
@@ -374,13 +438,22 @@ export default function App() {
             <Train className="text-white" style={{ width: 16, height: 16 }} />
           </div>
 
-          {/* Title + pills */}
-          <span className="font-bold text-sm" style={{ color: "rgba(255,255,255,0.92)" }}>Rail Live</span>
-          <div className="flex items-center gap-1.5 ml-1">
-            <NetworkPill color="#7eaaff" label="Eurostar" />
-            <NetworkPill color="#ff7676" label="SNCF" />
-            <NetworkPill color="#ff6b5e" label="TFL" />
-          </div>
+          {/* Title + animated service ticker */}
+          <motion.span
+            className="font-black text-sm shrink-0"
+            style={{
+              background: "linear-gradient(90deg, #fff 0%, #a5b4fc 40%, #7eaaff 70%, #fff 100%)",
+              backgroundSize: "200% 100%",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              backgroundClip: "text",
+            }}
+            animate={{ backgroundPosition: ["0% 0%", "100% 0%", "0% 0%"] }}
+            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+          >
+            Rail Live
+          </motion.span>
+          <ServiceTicker />
 
           {/* Live */}
           <div className="ml-auto flex items-center gap-3 shrink-0">

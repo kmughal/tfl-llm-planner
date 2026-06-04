@@ -184,11 +184,10 @@ If the user names a network, that name takes absolute precedence over all keywor
 | **User says "departure board", "full departure board", "dashboard", "full schedule", "all departures", "all services today", "all trains today", or "list all trains" for Eurostar** | **get_eurostar_dashboard** |
 | **User explicitly asks for a MAP, live map, or to plot/visualise train positions** | **get_eurostar_live_map** |
 | User explicitly asks for technical/operational details of a SPECIFIC train number | get_euromap_technical_plan_by_id |
-| User asks when a specific train arrives/departs, or mentions a specific service number | get_euromap_plan_by_id |
+| **User asks about a SPECIFIC service number** — patterns: "service 9114", "s 9114", "train 9114", "9114 today", "is 9114 running", "9114 status", "where does 9114 stop", "9114 on [date]" — extract the number and call with that planID. **MANDATORY: immediately also call get_crew_activities with the same date (YYYY-MM-DD) and serviceCode in the same round.** | **get_euromap_plan_by_id + get_crew_activities** |
 | User explicitly asks for "technical plans", "operational plans", or "engineering" (no specific train) | get_euromap_technical_plans |
 | Any cross-channel journey (London↔Paris, London↔Brussels, London↔Amsterdam) | get_euromap_plans |
-| User mentions Eurostar, Channel Tunnel, or trains between UK and Europe | get_euromap_plans |
-| User asks for train numbers, service codes, or which trains ran on a date | get_euromap_plans |
+| User asks which services are running today (no specific number) | get_euromap_plans |
 | Any other question about Eurostar services | get_euromap_plans |
 | Train journey where BOTH ends are in France | plan_sncf_journey |
 | French rail disruptions, cancellations, or service alerts (SNCF only — NOT Eurostar, NOT TFL) | get_sncf_disruptions |
@@ -205,6 +204,8 @@ If the user names a network, that name takes absolute precedence over all keywor
 - "Eurostar technical plans" → get_euromap_technical_plans
 - Never call plan_sncf_journey for any journey involving the UK
 - "Cancelled trains on Eurostar" or "which Eurostar trains are cancelled" → get_eurostar_dashboard (shows cancelled status per service)
+- Any message containing a 4-digit Eurostar service number (e.g. 9004, 9114, 9301) WITHOUT asking for a full list → get_euromap_plan_by_id with that number as planID
+- NEVER call get_euromap_plans when the user has specified a single service number
 - Disruptions/cancellations + Eurostar → get_eurostar_dashboard, NEVER get_sncf_disruptions
 - Disruptions/cancellations + TFL → get_line_status or get_status_by_mode, NEVER get_sncf_disruptions
 - "Departures from King's Cross" / "Departures from St Pancras" / "Trains from Ebbsfleet" → get_national_rail_departures, NEVER plan_journey
@@ -231,7 +232,8 @@ If the user asks ANYTHING about Eurostar trains, services, schedules, train numb
 | "Show crew/drivers for Eurostar on [date]" | get_crew_activities with date=[date] |
 | "[crewId]'s schedule for [month]" / "monthly rota for [crewId]" | get_crew_monthly_schedule with crewId, year, month |
 
-- Always call get_crew_activities alongside any Euromap tool call — pass the same operational date (YYYY-MM-DD).
+- **MANDATORY**: whenever get_euromap_plan_by_id is called, ALWAYS call get_crew_activities in the SAME round with matching date (YYYY-MM-DD) and serviceCode equal to the planID. Never skip this — show crew even if the result is empty.
+- Always call get_crew_activities alongside any get_euromap_plans call — pass the same operational date (YYYY-MM-DD).
 - Resolve "this Sunday", "next Saturday", etc. from the date anchor table before passing to the tool.
 - For monthly schedules: extract year and month from the user's message; default to current month if unspecified.
 
@@ -635,12 +637,66 @@ func (h *Handler) executeToolCalls(
 			Name:       tc.Function.Name,
 			Content:    result,
 		})
+
+		// Auto-inject crew data whenever a specific plan is fetched.
+		// We fire SSE events only — not adding to msgs — so the LLM history
+		// stays clean (avoids nil-content errors from Ollama).
+		if tc.Function.Name == "get_euromap_plan_by_id" {
+			crewDate, crewSvc := extractCrewArgs(tc.Function.Arguments)
+			if crewDate != "" && crewSvc != "" {
+				crewArgs := fmt.Sprintf(`{"date":%q,"serviceCode":%q}`, crewDate, crewSvc)
+				sendEvent("tool_call", `{"name":"get_crew_activities"}`)
+				log.Printf("[tool] auto-crew call date=%s svc=%s", crewDate, crewSvc)
+				crewResult, crewErr := h.mcp.CallTool(ctx, "get_crew_activities", crewArgs)
+				if crewErr != nil {
+					crewResult = fmt.Sprintf("Crew data unavailable: %v", crewErr)
+				}
+				log.Printf("[tool] auto-crew result %.200s", crewResult)
+				sendEvent("tool_result", fmt.Sprintf(`{"name":"get_crew_activities","result":%q}`, crewResult))
+			}
+		}
 	}
 
 	if journeyToolCalled {
 		msgs = append(msgs, llm.Message{Role: "system", Content: journeyFormatReminder})
 	}
 	return msgs, journeyResult
+}
+
+// extractCrewArgs parses get_euromap_plan_by_id arguments and returns the
+// operational date (YYYY-MM-DD) and serviceCode needed for get_crew_activities.
+func extractCrewArgs(argsJSON string) (date, serviceCode string) {
+	var args map[string]string
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return "", ""
+	}
+	today := time.Now().UTC().Format(dateFmt)
+
+	compact2ISO := func(d string) string {
+		if len(d) == 8 {
+			return d[:4] + "-" + d[4:6] + "-" + d[6:8]
+		}
+		return d
+	}
+
+	if pid := args["planID"]; pid != "" {
+		parts := strings.SplitN(pid, "-", 2)
+		if len(parts) == 2 && len(parts[0]) == 8 {
+			return compact2ISO(parts[0]), parts[1]
+		}
+		// planID is just a service number with no date prefix
+		return today, pid
+	}
+
+	svc := args["serviceCode"]
+	if svc == "" {
+		return "", ""
+	}
+	d := args["date"]
+	if d == "" {
+		return today, svc
+	}
+	return compact2ISO(d), svc
 }
 
 // Health handles GET /api/health

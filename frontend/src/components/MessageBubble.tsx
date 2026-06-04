@@ -1112,10 +1112,14 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
           {toolEvents
             .filter(ev => ev.name === PARIS_METRO_TOOL && ev.type === "tool_result" && !!ev.result)
             .map(ev => withTag(ev.name, <ParisMetroCard key={`ratp-${ev.name}`} result={ev.result ?? ""} />))}
-          {/* Crew / driver cards (SOT Enabler) */}
-          {toolEvents
-            .filter(ev => CREW_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)
-            .map(ev => withTag(ev.name, <CrewCard key={`crew-${ev.name}-${ev.result?.slice(0, 20)}`} result={ev.result ?? ""} />))}
+          {/* Crew / driver cards — suppressed when crew is embedded in a plan card */}
+          {(() => {
+            const hasPlanById = toolEvents.some(ev => ev.name === "get_euromap_plan_by_id" && ev.type === "tool_result")
+            return toolEvents
+              .filter(ev => CREW_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)
+              .filter(ev => !(hasPlanById && ev.name === CREW_ACTIVITIES_TOOL))
+              .map(ev => withTag(ev.name, <CrewCard key={`crew-${ev.name}-${ev.result?.slice(0, 20)}`} result={ev.result ?? ""} />))
+          })()}
           {/* Euromap map cards / dashboard — rendered from raw tool result data */}
           {toolEvents
             .filter(ev => EUROMAP_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)
@@ -1123,7 +1127,10 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
               const r = ev.result ?? ""
               if (ev.name === DASHBOARD_TOOL) return withTag(ev.name, <EuromapDashboard key={`dashboard-${ev.name}`} result={r} />)
               if (ev.name === LIVEMAP_TOOL)   return withTag(ev.name, <EuromapLiveMap   key={`livemap-${ev.name}`}   result={r} />)
-              return withTag(ev.name, <EuromapCard key={`euromap-${ev.name}`} result={r} />)
+              const crewEv = ev.name === "get_euromap_plan_by_id"
+                ? toolEvents.find(e => e.name === CREW_ACTIVITIES_TOOL && e.type === "tool_result" && !!e.result)
+                : undefined
+              return withTag(ev.name, <EuromapCard key={`euromap-${ev.name}`} result={r} crewResult={crewEv?.result} />)
             })}
         </div>
       )}
