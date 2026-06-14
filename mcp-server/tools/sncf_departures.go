@@ -31,7 +31,7 @@ Hints:
   - Use the full station name for accuracy (e.g. 'Paris Gare de Lyon' not 'Paris').
   - Paris has multiple termini — infer the correct one from context or ask the user.
   - 'count' defaults to 10; increase to 20 for a fuller board.
-  - This covers intercity trains only (TGV, TER, Intercités, Ouigo) — not suburban RER/Transilien.`),
+  - The SNCF stop-area feed may include TGV, TER, Intercités, Ouigo, Transilien, or RER services depending on the selected station.`),
 		mcp.WithString("station",
 			mcp.Required(),
 			mcp.Description("Station name to get departures for, e.g. 'Paris Gare de Lyon', 'Lyon Part-Dieu', 'Bordeaux Saint-Jean', 'Marseille Saint-Charles', 'Strasbourg', 'Nantes', 'Lille Flandres'"),

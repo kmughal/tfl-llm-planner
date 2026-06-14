@@ -18,13 +18,19 @@ import { LoadingCounter } from "./components/LoadingCounter"
 import { BusLinesExplorer } from "./components/BusLinesExplorer"
 import { EurostarHub } from "./components/EurostarHub"
 import { EurostarSchedule } from "./components/EurostarSchedule"
+import { EurostarCommandCenter } from "./components/EurostarCommandCenter"
+import { TflCommandCenter } from "./components/TflCommandCenter"
+import { SNCFCommandCenter } from "./components/SNCFCommandCenter"
+import { NationalRailCommandCenter } from "./components/NationalRailCommandCenter"
+import { DashboardMenu } from "./components/DashboardMenu"
+import { EurostarDisplayMenu, EurostarDisplayStyles, useEurostarDisplay } from "./components/EurostarDisplay"
 import { getSessionId, resetSessionId } from "./lib/session"
 import type { ChatMessage, LLMMessage } from "./lib/types"
 import "./index.css"
 
 const TFL_TOOLS      = new Set(["plan_journey", "get_line_status", "get_status_by_mode", "search_stops"])
-const SNCF_TOOLS     = new Set(["plan_sncf_journey", "search_sncf_stations", "get_sncf_disruptions"])
-const EUROSTAR_TOOLS = new Set(["get_euromap_plans", "get_euromap_technical_plans", "get_euromap_plan_by_id", "get_euromap_technical_plan_by_id", "get_eurostar_dashboard", "get_eurostar_live_map"])
+const SNCF_TOOLS     = new Set(["plan_sncf_journey", "search_sncf_stations", "get_sncf_disruptions", "get_sncf_departures", "get_sncf_arrivals", "get_sncf_train", "get_sncf_dashboard"])
+const EUROSTAR_TOOLS = new Set(["get_euromap_plans", "get_euromap_technical_plans", "get_euromap_plan_by_id", "get_euromap_technical_plan_by_id", "get_eurostar_dashboard", "get_eurostar_live_map", "get_traveler_summary", "get_crew_activities", "get_crew_monthly_schedule"])
 
 // ── Nav tab button with animated active indicator ─────────────────────────────
 const NAV_TAB_COLORS: Record<string, { text: string; bg: string; border: string; glow: string }> = {
@@ -220,6 +226,7 @@ function MemoryTimerBadge({ secondsLeft }: { readonly secondsLeft: number }) {
 }
 
 export default function App() {
+  useEurostarDisplay()
   const [page, setPage] = useState<"chat" | "logs" | "config" | "tools">(() => {
     const h = globalThis.location.hash
     if (h === "#logs")   return "logs"
@@ -230,8 +237,12 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen]           = useState(false)
   const [examplesOpen, setExamplesOpen]         = useState(false)
   const [busExplorerOpen, setBusExplorerOpen]   = useState(false)
-  const [eurostarHubOpen, setEurostarHubOpen]         = useState(false)
-  const [eurostarScheduleOpen, setEurostarScheduleOpen] = useState(false)
+  const [eurostarHubOpen, setEurostarHubOpen]               = useState(false)
+  const [eurostarScheduleOpen, setEurostarScheduleOpen]     = useState(false)
+  const [commandCenterOpen, setCommandCenterOpen]           = useState(false)
+  const [tflCommandCenterOpen, setTflCommandCenterOpen]     = useState(false)
+  const [sncfCommandCenterOpen, setSncfCommandCenterOpen]   = useState(false)
+  const [nationalRailCommandCenterOpen, setNationalRailCommandCenterOpen] = useState(false)
   const [memoryCleared, setMemoryCleared]       = useState(false)
   const activeConvIdRef                   = useRef<string>(crypto.randomUUID())
   const [activeConvId, setActiveConvId] = useState(activeConvIdRef.current)
@@ -318,57 +329,61 @@ export default function App() {
 
   if (page === "logs") {
     return (
-      <AnimatePresence mode="wait">
+      <><EurostarDisplayStyles /><AnimatePresence mode="wait">
         <motion.div
           key="logs"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -16 }}
           transition={{ duration: 0.22, ease: "easeInOut" }}
-          className="h-screen w-full"
+          className="app-system-shell h-screen w-full"
         >
           <LogsPage onClose={() => { globalThis.location.hash = ""; setPage("chat") }} />
+          <div className="fixed bottom-3 right-3 z-[90]"><EurostarDisplayMenu /></div>
         </motion.div>
-      </AnimatePresence>
+      </AnimatePresence></>
     )
   }
 
   if (page === "config") {
     return (
-      <AnimatePresence mode="wait">
+      <><EurostarDisplayStyles /><AnimatePresence mode="wait">
         <motion.div
           key="config"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -16 }}
           transition={{ duration: 0.22, ease: "easeInOut" }}
-          className="h-screen w-full"
+          className="app-system-shell h-screen w-full"
         >
           <ConfigPage onClose={() => { globalThis.location.hash = ""; setPage("chat") }} />
+          <div className="fixed bottom-3 right-3 z-[90]"><EurostarDisplayMenu /></div>
         </motion.div>
-      </AnimatePresence>
+      </AnimatePresence></>
     )
   }
 
   if (page === "tools") {
     return (
-      <AnimatePresence mode="wait">
+      <><EurostarDisplayStyles /><AnimatePresence mode="wait">
         <motion.div
           key="tools"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -16 }}
           transition={{ duration: 0.22, ease: "easeInOut" }}
-          className="h-screen w-full"
+          className="app-system-shell h-screen w-full"
         >
           <ToolsPage onClose={() => { globalThis.location.hash = ""; setPage("chat") }} />
+          <div className="fixed bottom-3 right-3 z-[90]"><EurostarDisplayMenu /></div>
         </motion.div>
-      </AnimatePresence>
+      </AnimatePresence></>
     )
   }
 
   return (
     <div className="flex flex-col h-screen relative" style={{ background: "transparent" }}>
+      <EurostarDisplayStyles />
       <ChatMeshGradient theme={activeNetwork} />
       <NetworkBackground theme={activeNetwork} />
       <LoadingCounter visible={isWaiting} theme={activeNetwork} />
@@ -385,7 +400,7 @@ export default function App() {
 
       {/* Header */}
       <header
-        className="relative z-10 border-b"
+        className="relative z-50 border-b"
         style={{
           background: "rgba(3,7,18,0.82)",
           backdropFilter: "blur(20px)",
@@ -508,6 +523,15 @@ export default function App() {
               <span className="hidden sm:inline">Eurostar</span>
             </button>
 
+            <DashboardMenu
+              onEurostar={() => setCommandCenterOpen(true)}
+              onTfl={() => setTflCommandCenterOpen(true)}
+              onSncf={() => setSncfCommandCenterOpen(true)}
+              onNationalRail={() => setNationalRailCommandCenterOpen(true)}
+            />
+
+            <EurostarDisplayMenu inverted />
+
             {/* Bus explorer */}
             <button
               onClick={() => setBusExplorerOpen(true)}
@@ -588,7 +612,7 @@ export default function App() {
           {isEmpty ? (
             <LandingPage onSend={sendMessage} onTemplate={setPrefill} />
           ) : (
-            <div className="max-w-[860px] mx-auto w-full px-4 py-6 flex flex-col gap-4">
+            <div className="max-w-[1180px] mx-auto w-full px-4 py-6 flex flex-col gap-4">
               {messages.map(msg => (
                 <MessageBubble key={msg.id} message={msg} />
               ))}
@@ -624,8 +648,42 @@ export default function App() {
           onClose={() => setEurostarHubOpen(false)}
           onSend={sendMessage}
           onSchedule={() => { setEurostarHubOpen(false); setEurostarScheduleOpen(true) }}
+          onCommandCenter={() => setCommandCenterOpen(true)}
         />
       )}
+
+      <AnimatePresence>
+        {commandCenterOpen && (
+          <EurostarCommandCenter
+            onClose={() => setCommandCenterOpen(false)}
+            onAsk={sendMessage}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {tflCommandCenterOpen && (
+          <TflCommandCenter
+            onClose={() => setTflCommandCenterOpen(false)}
+            onAsk={sendMessage}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {sncfCommandCenterOpen && (
+          <SNCFCommandCenter
+            onClose={() => setSncfCommandCenterOpen(false)}
+            onAsk={sendMessage}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {nationalRailCommandCenterOpen && (
+          <NationalRailCommandCenter onClose={() => setNationalRailCommandCenterOpen(false)} onAsk={sendMessage} />
+        )}
+      </AnimatePresence>
 
       {/* Eurostar schedule modal */}
       {eurostarScheduleOpen && (

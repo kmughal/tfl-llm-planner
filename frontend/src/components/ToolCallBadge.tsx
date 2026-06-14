@@ -23,6 +23,7 @@ const TOOL_META: Record<string, ToolMeta> = {
   get_sncf_departures:              { label: "Fetching SNCF departures",         network: "sncf" },
   get_sncf_arrivals:                { label: "Fetching SNCF arrivals",           network: "sncf" },
   get_sncf_train:                   { label: "Looking up SNCF train",            network: "sncf" },
+  get_sncf_dashboard:               { label: "Loading SNCF network dashboard",   network: "sncf" },
   // Eurostar / Euromap
   get_euromap_plans:                { label: "Fetching Eurostar schedule",       network: "eurostar" },
   get_euromap_technical_plans:      { label: "Fetching Eurostar tech plans",     network: "eurostar" },
@@ -35,6 +36,8 @@ const TOOL_META: Record<string, ToolMeta> = {
   get_weather:                      { label: "Fetching weather",                 network: "weather" },
   // National Rail
   get_national_rail_departures:     { label: "Fetching National Rail trains",    network: "nrail" },
+  get_national_rail_arrivals:       { label: "Fetching National Rail arrivals",  network: "nrail" },
+  get_national_rail_dashboard:      { label: "Loading National Rail dashboard",  network: "nrail" },
   // Paris Metro / RATP
   get_paris_metro_departures:       { label: "Fetching Paris Metro departures",  network: "ratp" },
 }

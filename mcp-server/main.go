@@ -17,14 +17,14 @@ import (
 )
 
 func main() {
-	tflClient       := tfl.NewClient(os.Getenv("TFL_APP_KEY"))
-	sncfClient      := sncf.NewClient(os.Getenv("SNCF_API_KEY"))
-	euromapClient   := euromap.NewClient(os.Getenv("EUROMAP_CLIENT_ID"), os.Getenv("EUROMAP_CLIENT_SECRET"))
-	travelerClient  := traveler.NewClient(os.Getenv("TRAVELER_CLIENT_ID"), os.Getenv("TRAVELER_CONSUMER_ID"))
-	weatherClient   := weather.NewClient()
-	nrailClient     := nationalrail.NewClient(os.Getenv("DARWIN_TOKEN"))
-	ratpClient      := ratp.NewClient(os.Getenv("SNCF_API_KEY"))
-	sotClient       := sotenabler.NewClient(os.Getenv("SOT_CLIENT_ID"), os.Getenv("SOT_CLIENT_SECRET"))
+	tflClient := tfl.NewClient(os.Getenv("TFL_APP_KEY"))
+	sncfClient := sncf.NewClient(os.Getenv("SNCF_API_KEY"))
+	euromapClient := euromap.NewClient(os.Getenv("EUROMAP_CLIENT_ID"), os.Getenv("EUROMAP_CLIENT_SECRET"))
+	travelerClient := traveler.NewClient(os.Getenv("TRAVELER_CLIENT_ID"), os.Getenv("TRAVELER_CONSUMER_ID"))
+	weatherClient := weather.NewClient()
+	nrailClient := nationalrail.NewClient(os.Getenv("DARWIN_TOKEN"))
+	ratpClient := ratp.NewClient(os.Getenv("SNCF_API_KEY"))
+	sotClient := sotenabler.NewClient(os.Getenv("SOT_CLIENT_ID"), os.Getenv("SOT_CLIENT_SECRET"))
 
 	s := server.NewMCPServer(
 		"transport-journey-planner",
@@ -49,6 +49,7 @@ func main() {
 	s.AddTool(tools.GetSNCFDeparturesTool(), tools.HandleGetSNCFDepartures(sncfClient))
 	s.AddTool(tools.GetSNCFArrivalsTool(), tools.HandleGetSNCFArrivals(sncfClient))
 	s.AddTool(tools.GetSNCFTrainTool(), tools.HandleGetSNCFTrain(sncfClient))
+	s.AddTool(tools.GetSNCFDashboardTool(), tools.HandleGetSNCFDashboard(sncfClient))
 
 	// Traveler (Eurostar passenger load) tools
 	s.AddTool(tools.GetTravelerSummaryTool(), tools.HandleGetTravelerSummary(travelerClient))
@@ -59,11 +60,13 @@ func main() {
 	s.AddTool(tools.GetEuromapPlanByIDTool(), tools.HandleGetEuromapPlanByID(euromapClient))
 	s.AddTool(tools.GetEuromapTechnicalPlanByIDTool(), tools.HandleGetEuromapTechnicalPlanByID(euromapClient))
 	s.AddTool(tools.GetEuromapDashboardTool(), tools.HandleGetEuromapDashboard(euromapClient))
-	s.AddTool(tools.GetEuromapLiveMapTool(), tools.HandleGetEuromapLiveMap(euromapClient))
+	s.AddTool(tools.GetEuromapLiveMapTool(), tools.HandleGetEuromapLiveMap(euromapClient, sotClient))
 
 	// Weather, National Rail, Paris Metro tools
 	s.AddTool(tools.GetWeatherTool(), tools.HandleGetWeather(weatherClient))
 	s.AddTool(tools.GetNationalRailDeparturesTool(), tools.HandleGetNationalRailDepartures(nrailClient))
+	s.AddTool(tools.GetNationalRailArrivalsTool(), tools.HandleGetNationalRailArrivals(nrailClient))
+	s.AddTool(tools.GetNationalRailDashboardTool(), tools.HandleGetNationalRailDashboard(nrailClient))
 	s.AddTool(tools.GetRATPhDeparturesTool(), tools.HandleGetRATPhDepartures(ratpClient))
 
 	// SOT Enabler (Eurostar crew / driver) tools

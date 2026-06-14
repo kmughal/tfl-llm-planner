@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from "react"
 import { motion, useInView, useMotionValue, useTransform, animate } from "framer-motion"
 import { Train, Users } from "lucide-react"
 import { cn } from "../lib/utils"
+import { EurostarDisplayMenu, EurostarDisplayStyles, eurostarDisplayClass, useEurostarDisplay } from "./EurostarDisplay"
 
 const ES_NAVY  = "#003366"
 const ES_GOLD  = "#FFD700"
@@ -230,6 +231,7 @@ function ServiceCard({ svc, inView }: { readonly svc: ServiceData; readonly inVi
 
 // ── Main export ───────────────────────────────────────────────────────────────
 export function TravelerSummaryCard({ result }: { readonly result: string }) {
+  const { theme, compact } = useEurostarDisplay()
   const summary = parseTravelerSummary(result)
   if (!summary) return null
 
@@ -243,12 +245,14 @@ export function TravelerSummaryCard({ result }: { readonly result: string }) {
   return (
     <motion.div
       ref={ref}
-      className="rounded-2xl overflow-hidden bg-white w-full"
+      className={`${eurostarDisplayClass(theme, compact)} es-themed-panel relative rounded-lg overflow-hidden bg-white w-full`}
       style={{ boxShadow: "0 8px 40px #00336622, 0 2px 8px #00000012" }}
       initial={{ opacity: 0, y: 24, scale: 0.97 }}
       animate={inView ? { opacity: 1, y: 0, scale: 1 } : {}}
       transition={spring(0)}
     >
+      <EurostarDisplayStyles />
+      <div className="absolute right-3 top-3 z-40"><EurostarDisplayMenu inverted /></div>
       {/* ── Hero header ── */}
       <div
         className="relative px-5 pt-5 pb-5 text-white overflow-hidden"

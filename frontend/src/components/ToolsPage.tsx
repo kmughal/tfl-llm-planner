@@ -53,8 +53,11 @@ const TOOL_DEFS: ToolDef[] = [
   { name: "get_sncf_departures",            label: "Departures",            desc: "Live departures from a French station",               provider: "sncf",     icon: <Radio   className="w-3.5 h-3.5" /> },
   { name: "get_sncf_arrivals",              label: "Arrivals",              desc: "Live arrivals at a French station",                   provider: "sncf",     icon: <Radio   className="w-3.5 h-3.5" /> },
   { name: "get_sncf_train",                 label: "Train Details",         desc: "Full journey detail for a specific SNCF train",       provider: "sncf",     icon: <Train   className="w-3.5 h-3.5" /> },
+  { name: "get_sncf_dashboard",             label: "Network Dashboard",     desc: "Major hubs, departures and active SNCF incidents",    provider: "sncf",     icon: <Radio   className="w-3.5 h-3.5" /> },
   // National Rail
   { name: "get_national_rail_departures",   label: "Departures",            desc: "Live departure board for UK mainline stations",        provider: "nrail",    icon: <Radio   className="w-3.5 h-3.5" /> },
+  { name: "get_national_rail_arrivals",     label: "Arrivals",              desc: "Live arrival board with origin and expected time",     provider: "nrail",    icon: <Radio   className="w-3.5 h-3.5" /> },
+  { name: "get_national_rail_dashboard",    label: "Network Dashboard",     desc: "Major London terminals, delays and station notices",   provider: "nrail",    icon: <Train   className="w-3.5 h-3.5" /> },
   // Paris Metro
   { name: "get_paris_metro_departures",     label: "Metro Departures",      desc: "RER/Metro departures from Paris stations",            provider: "ratp",     icon: <Map     className="w-3.5 h-3.5" /> },
   // Weather

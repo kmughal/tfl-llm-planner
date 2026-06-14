@@ -161,7 +161,7 @@ export function NetworkBackground({ theme }: { readonly theme: NetworkTheme }) {
       {theme && (
         <motion.div
           key={theme}
-          className="fixed inset-0 z-0 pointer-events-none"
+          className="app-network-background fixed inset-0 z-0 pointer-events-none"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}

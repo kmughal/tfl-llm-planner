@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -11,10 +12,10 @@ import (
 )
 
 const (
-	euromapAPIErr    = "Euromap API error: %v"
-	defaultRanges    = "thalys,channel"
-	isoDateTimeZero  = "2006-01-02T00:00:00Z"
-	compactDateFmt   = "20060102"
+	euromapAPIErr   = "Euromap API error: %v"
+	defaultRanges   = "thalys,channel"
+	isoDateTimeZero = "2006-01-02T00:00:00Z"
+	compactDateFmt  = "20060102"
 )
 
 // ── Tool definitions ──────────────────────────────────────────────────────────
@@ -22,7 +23,7 @@ const (
 func GetEuromapPlansTool() mcp.Tool {
 	return mcp.NewTool(
 		"get_euromap_plans",
-		mcp.WithDescription(`Fetch Eurostar commercial service schedules with station stops and coordinates.
+		mcp.WithDescription(`Fetch route-filtered Eurostar commercial service schedules with station stops and coordinates.
 
 ALWAYS use this tool (instead of plan_journey or plan_sncf_journey) when:
   - The journey crosses the Channel Tunnel: London ↔ Paris, London ↔ Brussels, London ↔ Amsterdam
@@ -33,6 +34,14 @@ ALWAYS use this tool (instead of plan_journey or plan_sncf_journey) when:
 ALWAYS provide "from" and "to" when the user specifies an origin and/or destination.
 Known stations: London/St Pancras (SPX), Paris/Paris Nord (PNO), Brussels/Brussels Midi (BRU),
 Amsterdam (AMS), Rotterdam (RDM), Lille Europe (LEW), Calais Frethun (FTN), Liège (LIE), Marne-la-Vallée (MVC).
+
+Use for a Eurostar route search, a general running-services question, or a small set of matching services.
+For "last train/service/departure" requests, set selection="last" and provide the stated origin in "from". The tool will return exactly one latest non-cancelled service using its departure time at that origin station.
+For "first train/service/departure" requests, set selection="first".
+Do NOT use for a dashboard, departure board, all-services list, cancellations, or disruption overview; use get_eurostar_dashboard.
+Do NOT use for a requested map; use get_eurostar_live_map.
+Do NOT use for one named 4-digit service; use get_euromap_plan_by_id.
+Do NOT use for technical or engineering movements; use get_euromap_technical_plans.
 
 Returns map data and stop times for each matching service. Defaults to today if no date is given.`),
 		mcp.WithString("from",
@@ -46,6 +55,9 @@ Returns map data and stop times for each matching service. Defaults to today if 
 		),
 		mcp.WithString("ranges",
 			mcp.Description("Comma-separated ranges to filter by, e.g. 'thalys,channel'. Defaults to 'thalys,channel'."),
+		),
+		mcp.WithString("selection",
+			mcp.Description("Optional result selector: 'first' or 'last'. Use for first/last departure questions after applying from/to route filters."),
 		),
 	)
 }
@@ -86,13 +98,14 @@ func GetEuromapTechnicalPlanByIDTool() mcp.Tool {
 func GetEuromapPlanByIDTool() mcp.Tool {
 	return mcp.NewTool(
 		"get_euromap_plan_by_id",
-		mcp.WithDescription("Fetch a single Eurostar commercial plan by its plan ID (date + service code joined, e.g. '20250519-9409'). "+
+		mcp.WithDescription("Fetch exactly one Eurostar commercial service by its 4-digit service number and date. "+
 			"Use this tool when the user mentions a specific train or service number, for example: "+
 			"'Give me plan for train 9409 running on 2025-05-19', "+
 			"'Show me details for Eurostar service 9004 today', "+
 			"'What stops does train 9409 make?', "+
 			"'Get plan 20250519-9409'. "+
-			"If a date is not mentioned, default to today. Build the planID as YYYYMMDD-{serviceCode}."),
+			"If a date is not mentioned, default to today. Build the planID as YYYYMMDD-{serviceCode}. "+
+			"Do NOT use for service lists, route searches, dashboards, maps, multi-train cancellations, or technical plans."),
 		mcp.WithString("planID",
 			mcp.Description("Full plan ID combining date and service code, e.g. '20250519-9409'. If not known, build it from the date (YYYYMMDD) and service/train number joined by a hyphen."),
 		),
@@ -160,6 +173,7 @@ func HandleGetEuromapPlans(client *euromap.Client) func(context.Context, mcp.Cal
 
 		originCode := resolveStationCode(req.GetString("from", ""))
 		destCode := resolveStationCode(req.GetString("to", ""))
+		selection := strings.ToLower(strings.TrimSpace(req.GetString("selection", "")))
 
 		plans, err := client.GetPlans(fromDateTime, ranges)
 		if err != nil {
@@ -167,6 +181,7 @@ func HandleGetEuromapPlans(client *euromap.Client) func(context.Context, mcp.Cal
 		}
 
 		plans = filterPlansByRoute(plans, originCode, destCode)
+		plans = selectBoundaryPlan(plans, originCode, selection)
 
 		if len(plans) == 0 {
 			label := fmt.Sprintf("from %s (ranges: %s)", fromDateTime, ranges)
@@ -175,8 +190,47 @@ func HandleGetEuromapPlans(client *euromap.Client) func(context.Context, mcp.Cal
 			}
 			return mcp.NewToolResultText(fmt.Sprintf("No plans found for %s", label)), nil
 		}
+		if selection != "" && len(plans) == 1 {
+			return mcp.NewToolResultText(fmt.Sprintf("SELECTION_CONTEXT:%s|%s\n%s", selection, originCode, formatPlans(fromDateTime, ranges, plans))), nil
+		}
 		return mcp.NewToolResultText(formatPlans(fromDateTime, ranges, plans)), nil
 	}
+}
+
+func selectBoundaryPlan(plans euromap.PlansResponse, originCode, selection string) euromap.PlansResponse {
+	if selection != "first" && selection != "last" || len(plans) <= 1 {
+		return plans
+	}
+	candidates := make(euromap.PlansResponse, 0, len(plans))
+	for _, plan := range plans {
+		if canonicalPlanStatus(plan.Status) != "cancelled" {
+			candidates = append(candidates, plan)
+		}
+	}
+	if len(candidates) == 0 {
+		candidates = plans
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return departureAtOrigin(candidates[i], originCode) < departureAtOrigin(candidates[j], originCode)
+	})
+	if selection == "first" {
+		return euromap.PlansResponse{candidates[0]}
+	}
+	return euromap.PlansResponse{candidates[len(candidates)-1]}
+}
+
+func departureAtOrigin(plan euromap.Plan, originCode string) string {
+	if originCode != "" {
+		for _, station := range plan.Stations {
+			if strings.EqualFold(station.ShortCode, originCode) {
+				if station.DepartureDatetime != "" {
+					return station.DepartureDatetime
+				}
+				return station.ArrivalDatetime
+			}
+		}
+	}
+	return plan.DepartureDatetime
 }
 
 func HandleGetEuromapTechnicalPlans(client *euromap.Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -205,30 +259,30 @@ func HandleGetEuromapTechnicalPlans(client *euromap.Client) func(context.Context
 
 var stationAliases = map[string]string{
 	// UK
-	"london":               "SPX",
-	"st pancras":           "SPX",
+	"london":                   "SPX",
+	"st pancras":               "SPX",
 	"st pancras international": "SPX",
 	// France
-	"paris":                "PNO",
-	"paris nord":           "PNO",
-	"paris gare du nord":   "PNO",
-	"lille":                "LEW",
-	"lille europe":         "LEW",
-	"calais":               "FTN",
-	"calais frethun":       "FTN",
-	"marne la vallee":      "MVC",
+	"paris":              "PNO",
+	"paris nord":         "PNO",
+	"paris gare du nord": "PNO",
+	"lille":              "LEW",
+	"lille europe":       "LEW",
+	"calais":             "FTN",
+	"calais frethun":     "FTN",
+	"marne la vallee":    "MVC",
 	// Belgium
-	"brussels":             "BRU",
-	"brussels midi":        "BRU",
-	"bruxelles midi":       "BRU",
-	"bruxelles":            "BRU",
-	"liege":                "LIE",
-	"liège":                "LIE",
+	"brussels":       "BRU",
+	"brussels midi":  "BRU",
+	"bruxelles midi": "BRU",
+	"bruxelles":      "BRU",
+	"liege":          "LIE",
+	"liège":          "LIE",
 	// Netherlands
-	"amsterdam":            "AMS",
-	"amsterdam centraal":   "AMS",
-	"rotterdam":            "RDM",
-	"rotterdam centraal":   "RDM",
+	"amsterdam":          "AMS",
+	"amsterdam centraal": "AMS",
+	"rotterdam":          "RDM",
+	"rotterdam centraal": "RDM",
 }
 
 // resolveStationCode returns the upper-case short code for a station name or
@@ -393,22 +447,37 @@ func formatPlans(fromDateTime, ranges string, plans euromap.PlansResponse) strin
 }
 
 type planStats struct {
-	statusGroups   map[string][]string
-	outbound       int
-	firstDep       string
-	lastDep        string
+	statusGroups map[string][]string
+	outbound     int
+	firstDep     string
+	lastDep      string
 }
 
 func aggregatePlans(plans euromap.PlansResponse) planStats {
 	st := planStats{statusGroups: map[string][]string{}}
 	for _, p := range plans {
-		st.statusGroups[p.Status] = append(st.statusGroups[p.Status], p.ServiceCode)
+		status := canonicalPlanStatus(p.Status)
+		st.statusGroups[status] = append(st.statusGroups[status], p.ServiceCode)
 		if len(p.Stations) > 0 && ukOriginCodes[strings.ToUpper(p.Stations[0].ShortCode)] {
 			st.outbound++
 		}
 		updateDepRange(&st.firstDep, &st.lastDep, fmtISOTime(p.DepartureDatetime))
 	}
 	return st
+}
+
+func canonicalPlanStatus(status string) string {
+	status = strings.ToLower(strings.TrimSpace(status))
+	if strings.Contains(status, "delete") || strings.Contains(status, "cancel") {
+		return "cancelled"
+	}
+	if strings.Contains(status, "suspend") {
+		return "suspended"
+	}
+	if status == "" {
+		return "unknown"
+	}
+	return status
 }
 
 func updateDepRange(first, last *string, dep string) {
@@ -457,9 +526,14 @@ func writePlansSummary(sb *strings.Builder, fromDateTime string, plans euromap.P
 	st := aggregatePlans(plans)
 	inbound := len(plans) - st.outbound
 	cancelledCodes := st.statusGroups["cancelled"]
+	activeCount := len(st.statusGroups["active"])
+	groupsForDisplay := make(map[string][]string, len(st.statusGroups))
+	for status, codes := range st.statusGroups {
+		groupsForDisplay[status] = append([]string(nil), codes...)
+	}
 
 	fmt.Fprintf(sb, "Direction: %d outbound (UK→Europe), %d inbound (Europe→UK)\n\n", st.outbound, inbound)
-	writeStatusGroups(sb, st.statusGroups)
+	writeStatusGroups(sb, groupsForDisplay)
 
 	sb.WriteString("\nHINT: Bulk result — the service codes above (Active/Cancelled/etc. lines) are the ONLY data available. " +
 		"Rules: (1) If the user asked for a general status overview, respond with 2–4 sentences covering total, status breakdown, and direction split — do NOT list individual numbers. " +
@@ -471,7 +545,7 @@ func writePlansSummary(sb *strings.Builder, fromDateTime string, plans euromap.P
 	fmt.Fprintf(sb, "\nSTATUS_SUMMARY_START:%s|%d|%d|%d|%d|%d|%s|%s|%s\nSTATUS_SUMMARY_END\n",
 		fmtISODate(fromDateTime),
 		len(plans),
-		len(st.statusGroups["active"]),
+		activeCount,
 		len(cancelledCodes),
 		st.outbound,
 		inbound,

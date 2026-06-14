@@ -1,13 +1,13 @@
-import "leaflet/dist/leaflet.css"
 import { useState, useEffect, useRef } from "react"
 import { motion, useInView, useMotionValue, useTransform, animate } from "framer-motion"
-import { MapContainer, TileLayer, CircleMarker, Polyline, Popup, useMap } from "react-leaflet"
-import { Train, Clock } from "lucide-react"
+import { Train } from "lucide-react"
 import { cn } from "../lib/utils"
+import { EurostarDisplayMenu, EurostarDisplayStyles, eurostarDisplayClass, useEurostarDisplay } from "./EurostarDisplay"
 
 const ES_NAVY  = "#003366"
 const ES_GOLD  = "#FFD700"
-const ES_TRACK = "#003366"
+const MC_BG    = "#020c23"
+const MC_CYAN  = "#00d4ff"
 
 const STATION_SLUG: Record<string, string> = {
   SPX: "london", PNO: "paris", BRU: "brussels", BXS: "brussels",
@@ -149,190 +149,25 @@ function parseStatusSummary(raw: string): StatusSummary | null {
   return null
 }
 
-// ── Fit-bounds helper ─────────────────────────────────────────────────────────
-function FitBounds({ positions }: { readonly positions: [number, number][] }) {
-  const map = useMap()
-  useEffect(() => {
-    if (positions.length > 0) map.fitBounds(positions, { padding: [28, 28] })
-  }, [map, positions])
-  return null
+// ── SVG route helpers for mission-control PlanCard ───────────────────────────
+function mcStationPts(count: number, w: number, h: number): { x: number; y: number }[] {
+  const pad = 52
+  const uw  = w - pad * 2
+  const cy  = h * 0.52
+  return Array.from({ length: count }, (_, i) => {
+    const t = count > 1 ? i / (count - 1) : 0.5
+    return { x: pad + t * uw, y: cy + Math.sin(t * Math.PI * 1.6 - 0.4) * h * 0.22 }
+  })
 }
 
-// ── Stop-type helpers (extracted to reduce StationStop complexity) ─────────────
-function stopTypeLabel(stopType: string): string {
-  return stopType === "passThrough" || stopType === "pass" ? "pass" : stopType
-}
-
-function stopTypeClass(stopType: string): string {
-  if (stopType === "origin")      return "bg-emerald-50 text-emerald-700"
-  if (stopType === "destination") return "bg-blue-50 text-blue-700"
-  return "bg-gray-100 text-gray-500"
-}
-
-function StationDotIcon({ isTerminal }: { readonly isTerminal: boolean }) {
-  if (isTerminal) return <Train className="w-3 h-3 text-white" />
-  return <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ES_NAVY }} />
-}
-
-// ── Inline crew chip shown at each stop ───────────────────────────────────────
-function CrewChip({ m, index }: { readonly m: CrewMember; readonly index: number }) {
-  const isDriver = m.crewType === "TRAIN_DRIVER"
-  const bg       = isDriver ? ES_NAVY : "#1d4ed8"
-  const fg       = isDriver ? ES_GOLD : "#fff"
-  const name     = [m.firstName, m.lastName].filter(Boolean).join(" ") || m.crewId
-  const ini      = ((m.firstName[0] ?? "") + (m.lastName[0] ?? "")).toUpperCase() || "?"
-
-  return (
-    <motion.div
-      className="flex items-center gap-1 pl-0.5 pr-2 py-0.5 rounded-full"
-      style={{ backgroundColor: `${bg}12`, border: `1px solid ${bg}28` }}
-      initial={{ opacity: 0, x: -8, scale: 0.88 }}
-      animate={{ opacity: 1, x: 0, scale: 1 }}
-      transition={{ delay: index * 0.07, type: "spring", stiffness: 420, damping: 22 }}
-      title={`${name} · ${m.dep}–${m.arr} · ${m.origin}→${m.destination}`}
-    >
-      <div
-        className="w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-black shrink-0 relative"
-        style={{ backgroundColor: bg, color: fg }}
-      >
-        {ini}
-        {isDriver && (
-          <motion.div
-            className="absolute inset-0 rounded-full"
-            style={{ border: `1.5px solid ${ES_GOLD}` }}
-            animate={{ scale: [1, 1.5, 1], opacity: [0.7, 0, 0.7] }}
-            transition={{ repeat: Infinity, duration: 2.4, ease: "easeInOut", delay: index * 0.4 }}
-          />
-        )}
-      </div>
-      <span className="text-[10px] font-semibold leading-none" style={{ color: bg }}>{name}</span>
-      <span
-        className="text-[8px] font-black px-1 py-px rounded-full leading-none shrink-0"
-        style={{ backgroundColor: bg, color: fg }}
-      >
-        {isDriver ? "DRV" : "TM"}
-      </span>
-    </motion.div>
-  )
-}
-
-// ── Animated station stop ─────────────────────────────────────────────────────
-function StationStop({
-  station, index, total, inView, crewAtStop = [],
-}: {
-  readonly station:      MapStation
-  readonly index:        number
-  readonly total:        number
-  readonly inView:       boolean
-  readonly crewAtStop?:  CrewMember[]
-}) {
-  const isFirst    = index === 0
-  const isLast     = index === total - 1
-  const isTerminal = isFirst || isLast
-  const delay      = index * 0.12
-  const time       = station.dep || station.arr
-
-  return (
-    <motion.div
-      className="flex items-stretch gap-3"
-      initial={{ opacity: 0, x: -14 }}
-      animate={inView ? { opacity: 1, x: 0 } : {}}
-      transition={{ delay, duration: 0.3, ease: "easeOut" }}
-    >
-      {/* Track column */}
-      <div className="flex flex-col items-center" style={{ width: 28 }}>
-        <motion.div
-          className="relative z-10 rounded-full flex items-center justify-center shrink-0"
-          style={{
-            width:  isTerminal ? 26 : 18,
-            height: isTerminal ? 26 : 18,
-            backgroundColor: isTerminal ? ES_NAVY : "#fff",
-            border: `2.5px solid ${ES_NAVY}`,
-            boxShadow: isTerminal
-              ? `0 0 0 4px ${ES_NAVY}22, 0 2px 8px ${ES_NAVY}40`
-              : `0 0 0 3px ${ES_NAVY}14`,
-          }}
-          initial={{ scale: 0 }}
-          animate={inView ? { scale: 1 } : {}}
-          transition={{ delay, type: "spring", stiffness: 520, damping: 18 }}
-          whileHover={{ scale: 1.25, boxShadow: `0 0 0 7px ${ES_NAVY}30` }}
-        >
-          <StationDotIcon isTerminal={isTerminal} />
-        </motion.div>
-
-        {!isLast && (
-          <motion.div
-            className="flex-1 rounded-full"
-            style={{ width: 2, backgroundColor: `${ES_TRACK}30`, minHeight: 20, marginTop: 3, marginBottom: 3 }}
-            initial={{ scaleY: 0, originY: "top" }}
-            animate={inView ? { scaleY: 1 } : {}}
-            transition={{ delay: delay + 0.15, duration: 0.25 }}
-          >
-            {isFirst && (
-              <motion.div
-                className="w-full rounded-full"
-                style={{ height: 6, backgroundColor: ES_GOLD }}
-                animate={{ y: [0, 18, 0] }}
-                transition={{ repeat: Infinity, duration: 1.8, ease: "easeInOut", delay: 0.5 }}
-              />
-            )}
-          </motion.div>
-        )}
-      </div>
-
-      {/* Station info */}
-      <motion.div
-        className={cn("flex flex-col pb-4 min-w-0", isLast && "pb-0")}
-        initial={{ opacity: 0 }}
-        animate={inView ? { opacity: 1 } : {}}
-        transition={{ delay: delay + 0.1, duration: 0.25 }}
-      >
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span
-            className="text-sm leading-snug"
-            style={{ fontWeight: isTerminal ? 700 : 500, color: isTerminal ? "#111827" : "#374151" }}
-          >
-            {station.name || station.shortCode}
-          </span>
-          {station.name && station.name !== station.shortCode && (
-            <span
-              className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase"
-              style={{ backgroundColor: isTerminal ? ES_NAVY : "#f3f4f6", color: isTerminal ? "#fff" : "#6b7280" }}
-            >
-              {station.shortCode}
-            </span>
-          )}
-          <span className={cn("text-[9px] font-semibold px-1.5 py-0.5 rounded-full capitalize", stopTypeClass(station.stopType))}>
-            {stopTypeLabel(station.stopType)}
-          </span>
-        </div>
-
-        {time && (
-          <div className="flex items-center gap-1 mt-0.5">
-            <Clock className="w-2.5 h-2.5 text-gray-400 shrink-0" />
-            {station.dep && (
-              <span className="text-[11px] tabular-nums text-gray-500">
-                dep <span className="font-semibold text-gray-700">{station.dep}</span>
-              </span>
-            )}
-            {station.dep && station.arr && <span className="text-gray-300 text-[10px]">·</span>}
-            {station.arr && (
-              <span className="text-[11px] tabular-nums text-gray-500">
-                arr <span className="font-semibold text-gray-700">{station.arr}</span>
-              </span>
-            )}
-          </div>
-        )}
-        {crewAtStop.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-1.5">
-            {crewAtStop.map((m, ci) => (
-              <CrewChip key={`${m.crewId}-${m.origin}`} m={m} index={ci} />
-            ))}
-          </div>
-        )}
-      </motion.div>
-    </motion.div>
-  )
+function mcRoutePath(pts: { x: number; y: number }[]): string {
+  if (pts.length < 2) return `M ${pts[0].x} ${pts[0].y}`
+  let d = `M ${pts[0].x} ${pts[0].y}`
+  for (let i = 0; i < pts.length - 1; i++) {
+    const dx = (pts[i + 1].x - pts[i].x) * 0.45
+    d += ` C ${pts[i].x + dx},${pts[i].y} ${pts[i + 1].x - dx},${pts[i + 1].y} ${pts[i + 1].x},${pts[i + 1].y}`
+  }
+  return d
 }
 
 // ── Status summary card sub-components ───────────────────────────────────────
@@ -409,7 +244,7 @@ function StatusSummaryCard({ summary }: { readonly summary: StatusSummary }) {
               animate={{ opacity: [1, 0.3, 1], scale: [1, 1.4, 1] }}
               transition={{ repeat: Infinity, duration: 1.6, ease: "easeInOut" }}
             />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-white/80">Live</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/80">Schedule</span>
           </div>
         </div>
 
@@ -422,7 +257,7 @@ function StatusSummaryCard({ summary }: { readonly summary: StatusSummary }) {
             </div>
           </div>
           <div className="text-right">
-            <div className="text-[11px] text-white/50 uppercase tracking-widest mb-0.5">On time</div>
+            <div className="text-[11px] text-white/50 uppercase tracking-widest mb-0.5">Active share</div>
             <div className="text-2xl font-black tabular-nums" style={{ color: ES_GOLD }}>
               <CountUp to={Math.round(activeRate)} inView={inView} delay={0.3} />%
             </div>
@@ -599,64 +434,210 @@ function StatusSummaryCard({ summary }: { readonly summary: StatusSummary }) {
   )
 }
 
-// ── Plan card (all hooks unconditional) ──────────────────────────────────────
-function PlanCard({ plans, crewResult }: { readonly plans: EuromapPlan[]; readonly crewResult?: string }) {
-  const [sel, setSel] = useState(0)
-  const listRef = useRef<HTMLDivElement>(null)
-  const inView  = useInView(listRef, { once: true, margin: "-40px" })
-  const allCrew = crewResult ? parseDayCrew(crewResult) : []
+// ── Station style lookup ──────────────────────────────────────────────────────
+interface StnStyle { grad: string; icon: string; city: string }
+const STN_STYLE: Record<string, StnStyle> = {
+  SPX: { grad: "linear-gradient(135deg,#0d3a52 0%,#1a5c3a 100%)", icon: "🏛",  city: "London" },
+  EBF: { grad: "linear-gradient(135deg,#0d2a40 0%,#0d3a30 100%)", icon: "🚉",  city: "Ebbsfleet" },
+  EBD: { grad: "linear-gradient(135deg,#0d2a40 0%,#0d3a30 100%)", icon: "🚉",  city: "Ebbsfleet" },
+  ASI: { grad: "linear-gradient(135deg,#0d2a38 0%,#1a3a2a 100%)", icon: "🚉",  city: "Ashford" },
+  FTN: { grad: "linear-gradient(135deg,#1a3040 0%,#0d3a40 100%)", icon: "⚓",  city: "Calais" },
+  LEW: { grad: "linear-gradient(135deg,#3a0d52 0%,#260d4a 100%)", icon: "🎡",  city: "Lille" },
+  LIL: { grad: "linear-gradient(135deg,#3a0d52 0%,#260d4a 100%)", icon: "🎡",  city: "Lille" },
+  MVC: { grad: "linear-gradient(135deg,#3a2d0d 0%,#1a0d3a 100%)", icon: "🏰",  city: "Marne-la-Vallée" },
+  BRU: { grad: "linear-gradient(135deg,#0d265c 0%,#0d4a52 100%)", icon: "🏰",  city: "Brussels" },
+  BXS: { grad: "linear-gradient(135deg,#0d265c 0%,#0d4a52 100%)", icon: "🏰",  city: "Brussels" },
+  LIE: { grad: "linear-gradient(135deg,#3a1a0d 0%,#2a0d3a 100%)", icon: "🏰",  city: "Liège" },
+  AMS: { grad: "linear-gradient(135deg,#0d3a1a 0%,#0d2a40 100%)", icon: "🌷",  city: "Amsterdam" },
+  ASD: { grad: "linear-gradient(135deg,#0d3a1a 0%,#0d2a40 100%)", icon: "🌷",  city: "Amsterdam" },
+  RTD: { grad: "linear-gradient(135deg,#0d2a40 0%,#1a3a40 100%)", icon: "⚓",  city: "Rotterdam" },
+  RDM: { grad: "linear-gradient(135deg,#0d2a40 0%,#1a3a40 100%)", icon: "⚓",  city: "Rotterdam" },
+  KOL: { grad: "linear-gradient(135deg,#0d1a3a 0%,#2a0d3a 100%)", icon: "⛪",  city: "Cologne" },
+  AAH: { grad: "linear-gradient(135deg,#1a0d3a 0%,#2a1a0d 100%)", icon: "🏛",  city: "Aachen" },
+  AAC: { grad: "linear-gradient(135deg,#1a0d3a 0%,#2a1a0d 100%)", icon: "🏛",  city: "Aachen" },
+  PNO: { grad: "linear-gradient(135deg,#52260d 0%,#4a3a0d 100%)", icon: "🗼",  city: "Paris" },
+  WNH: { grad: "linear-gradient(135deg,#1a1a40 0%,#0d2a40 100%)", icon: "🚉",  city: "Woippy" },
+}
+function stnStyle(code: string): StnStyle {
+  return STN_STYLE[code.toUpperCase()] ?? { grad: "linear-gradient(135deg,#0d1a30 0%,#0a1220 100%)", icon: "🚉", city: code }
+}
 
-  const plan      = plans[Math.min(sel, plans.length - 1)]
-  const positions = plan.stations.map((s): [number, number] => [s.lat, s.lng])
-  const origin    = plan.stations.find(s => s.stopType === "origin")
-  const dest      = plan.stations.find(s => s.stopType === "destination")
-  const bDate     = plan.travelDate ?? planDate(plan.planID)
-  const bUrl      = origin && dest && bDate ? bookingUrl(origin.shortCode, dest.shortCode, bDate) : null
-  const center: [number, number] = positions.length > 0
-    ? [
-        positions.reduce((a, p) => a + p[0], 0) / positions.length,
-        positions.reduce((a, p) => a + p[1], 0) / positions.length,
-      ]
-    : [51, 0.5]
+// ── Journey stage card (left column) ─────────────────────────────────────────
+function StopCard({
+  station, index, inView,
+}: { readonly station: MapStation; readonly index: number; readonly inView: boolean }) {
+  const isTerminal = station.stopType === "origin" || station.stopType === "destination"
+  const isPass     = station.stopType === "passThrough" || station.stopType === "pass"
+  const st         = stnStyle(station.shortCode)
+  const city       = station.name && station.name !== station.shortCode ? station.name : st.city
 
   return (
-    <div className="rounded-xl overflow-hidden border border-[#003366]/20 shadow-md bg-white w-full">
+    <motion.div
+      className="rounded-xl overflow-hidden"
+      style={{
+        background: st.grad,
+        border:     `1px solid rgba(255,255,255,${isTerminal ? 0.18 : 0.08})`,
+        opacity:    isPass ? 0.55 : 1,
+        marginBottom: isTerminal ? 0 : 0,
+      }}
+      initial={{ opacity: 0, x: -20, scale: 0.96 }}
+      animate={inView ? { opacity: isPass ? 0.55 : 1, x: 0, scale: 1 } : {}}
+      transition={{ delay: index * 0.08, type: "spring", stiffness: 380, damping: 26 }}
+      whileHover={isPass ? {} : { scale: 1.02, boxShadow: "0 8px 28px rgba(0,0,0,0.5)" }}
+    >
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        {/* Landmark icon */}
+        <div className="text-2xl shrink-0 leading-none">{st.icon}</div>
 
-      {/* Header */}
+        {/* Main info */}
+        <div className="flex-1 min-w-0">
+          <div
+            className="font-black text-xs leading-tight truncate"
+            style={{ color: isTerminal ? "white" : "rgba(255,255,255,0.75)" }}
+          >
+            {city.toUpperCase()}
+          </div>
+          <div className="text-[9px] font-mono mt-px" style={{ color: "rgba(255,255,255,0.38)" }}>
+            {station.shortCode}
+            {!isTerminal && !isPass && (
+              <span className="ml-1.5 capitalize" style={{ color: "rgba(255,255,255,0.3)" }}>
+                {station.stopType}
+              </span>
+            )}
+          </div>
+          {(station.dep || station.arr) && (
+            <div className="flex items-center gap-2 mt-1">
+              {station.dep && (
+                <span className="text-[11px] font-black tabular-nums" style={{ color: ES_GOLD }}>
+                  {station.dep}
+                </span>
+              )}
+              {station.dep && station.arr && (
+                <span className="text-[8px]" style={{ color: "rgba(255,255,255,0.25)" }}>arr {station.arr}</span>
+              )}
+              {!station.dep && station.arr && (
+                <span className="text-[11px] font-black tabular-nums" style={{ color: "rgba(255,255,255,0.7)" }}>
+                  arr {station.arr}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Status badge for terminals */}
+        {isTerminal && (
+          <div className="shrink-0">
+            <div
+              className="text-[8px] font-black px-1.5 py-0.5 rounded-full"
+              style={{ background: "rgba(16,185,129,0.2)", color: "#34d399", border: "1px solid rgba(16,185,129,0.3)" }}
+            >
+              ● On Time
+            </div>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  )
+}
+
+// ── Journey Stage PlanCard ─────────────────────────────────────────────────────
+function PlanCard({ plans, crewResult, selection }: { readonly plans: EuromapPlan[]; readonly crewResult?: string; readonly selection?: "first" | "last" }) {
+  const [sel, setSel] = useState(0)
+  const cardRef = useRef<HTMLDivElement>(null)
+  const inView  = useInView(cardRef, { once: true, margin: "-60px" })
+  const allCrew = crewResult ? parseDayCrew(crewResult) : []
+
+  const plan   = plans[Math.min(sel, plans.length - 1)]
+  const stns   = plan.stations
+  const origin = stns.find(s => s.stopType === "origin")
+  const dest   = stns.find(s => s.stopType === "destination")
+  const bDate  = plan.travelDate ?? planDate(plan.planID)
+  const bUrl   = origin && dest && bDate ? bookingUrl(origin.shortCode, dest.shortCode, bDate) : null
+
+  return (
+    <div
+      ref={cardRef}
+      className="rounded-2xl overflow-hidden w-full select-none"
+      style={{
+        background: "linear-gradient(160deg, #080f1e 0%, #0a1628 55%, #080f1e 100%)",
+        border:     "1px solid rgba(255,255,255,0.07)",
+        boxShadow:  "0 32px 80px rgba(0,0,0,0.8)",
+      }}
+    >
+      {selection && (
+        <div className="flex flex-wrap items-center gap-4 px-5 py-4" style={{ background:"linear-gradient(90deg,#c9a227,#e3b93f)", color:"#07101f" }}>
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-black/10 text-xl">{selection === "last" ? "↓" : "↑"}</div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] font-black uppercase tracking-[0.18em]">{selection === "last" ? "Last departure" : "First departure"}</div>
+            <div className="truncate text-sm font-black">{origin?.name || origin?.shortCode} → {dest?.name || dest?.shortCode}</div>
+          </div>
+          <div className="text-right"><div className="text-[9px] font-bold uppercase opacity-60">Service {plan.serviceCode}</div><div className="text-3xl font-black tabular-nums">{origin?.dep || plan.dep || "—"}</div></div>
+        </div>
+      )}
+      {/* ── Header ── */}
       <div
-        className="flex items-center justify-between px-4 py-2.5 text-white"
-        style={{ background: `linear-gradient(135deg, ${ES_NAVY} 0%, #004a99 100%)` }}
+        className="relative flex items-center justify-between px-5 py-3 overflow-hidden"
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
       >
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-full bg-white/15 flex items-center justify-center">
-            <Train className="w-4 h-4" />
+        {/* Shimmer sweep */}
+        <motion.div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: "linear-gradient(105deg,transparent 40%,rgba(255,255,255,0.03) 50%,transparent 60%)" }}
+          animate={{ x: ["-100%","200%"] }}
+          transition={{ repeat: Infinity, duration: 5, ease: "easeInOut", repeatDelay: 4 }}
+        />
+        {/* Left: Eurostar e + journey label */}
+        <div className="flex items-center gap-3 z-10">
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm shrink-0"
+            style={{ background: "linear-gradient(135deg,#003366 0%,#0055cc 100%)", color: ES_GOLD }}
+          >
+            e
           </div>
           <div>
-            <div className="font-bold text-sm leading-none">Eurostar</div>
-            <div className="text-[10px] text-white/70 leading-none mt-0.5">
-              {plan.isTechnical ? "Technical Plans" : "Service Plans"}
+            <div className="text-[9px] uppercase tracking-widest font-bold" style={{ color: "rgba(255,255,255,0.35)" }}>
+              {plan.isTechnical ? "Technical Plan" : "Journey"}
+            </div>
+            <div className="font-black text-sm text-white leading-tight">
+              {origin?.name || origin?.shortCode || "—"}
+              <span className="mx-1.5" style={{ color: MC_CYAN }}>→</span>
+              {dest?.name || dest?.shortCode || "—"}
             </div>
           </div>
         </div>
-        <span className="text-[11px] bg-white/20 rounded-full px-2.5 py-0.5 font-semibold">
-          {plans.length} service{plans.length === 1 ? "" : "s"}
-        </span>
+        {/* Right: plan ID + status + times */}
+        <div className="flex items-center gap-2.5 z-10">
+          <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.25)" }}>{plan.planID}</span>
+          <span
+            className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide"
+            style={{
+              background: plan.status === "active" ? "rgba(16,185,129,0.15)" : "rgba(245,158,11,0.15)",
+              color:      plan.status === "active" ? "#34d399" : "#fbbf24",
+              border:     `1px solid ${plan.status === "active" ? "#34d39940" : "#fbbf2440"}`,
+            }}
+          >
+            ● {plan.status}
+          </span>
+          {(plan.dep || plan.arr) && (
+            <div className="font-black text-sm tabular-nums text-white">
+              {plan.dep}<span style={{ color: MC_CYAN, margin: "0 4px" }}>→</span>{plan.arr}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Service tabs */}
+      {/* ── Service tabs (multi-plan) ── */}
       {plans.length > 1 && (
-        <div className="flex overflow-x-auto border-b border-gray-100 bg-gray-50">
+        <div className="flex overflow-x-auto" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           {plans.map((p, i) => (
             <button
-              key={p.planID}
-              type="button"
-              onClick={() => setSel(i)}
-              className={cn(
-                "px-3 py-2 text-xs font-semibold whitespace-nowrap border-b-2 transition-colors",
-                i === sel
-                  ? "border-[#003366] text-[#003366] bg-white"
-                  : "border-transparent text-gray-400 hover:text-gray-600",
-              )}
+              key={p.planID} type="button" onClick={() => setSel(i)}
+              className="px-4 py-2 text-xs font-bold whitespace-nowrap transition-all"
+              style={{
+                color:        i === sel ? MC_CYAN : "rgba(255,255,255,0.3)",
+                borderBottom: `2px solid ${i === sel ? MC_CYAN : "transparent"}`,
+                background:   i === sel ? "rgba(0,212,255,0.05)" : "transparent",
+              }}
             >
               {p.serviceCode}
             </button>
@@ -664,126 +645,276 @@ function PlanCard({ plans, crewResult }: { readonly plans: EuromapPlan[]; readon
         </div>
       )}
 
-      {/* Plan summary bar */}
-      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-gray-100 text-xs bg-[#f8faff]">
-        <span className="font-bold text-gray-800">{plan.planID}</span>
-        <span className="text-gray-400 capitalize">{plan.planType}</span>
-        <span className={cn(
-          "rounded-full px-2 py-0.5 font-bold text-[10px]",
-          plan.status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
-        )}>
-          ● {plan.status}
-        </span>
-        {(plan.dep || plan.arr) && (
-          <span className="ml-auto flex items-center gap-1 font-bold tabular-nums" style={{ color: ES_NAVY }}>
-            <Clock className="w-3 h-3" />
-            {plan.dep} → {plan.arr}
-          </span>
-        )}
-        {plan.travelDate && <span className="ml-auto text-gray-400">{plan.travelDate}</span>}
-      </div>
-
-      <div className="flex flex-col md:flex-row">
-        {/* Animated stop list */}
-        <div ref={listRef} className="flex-1 px-4 py-4 border-r border-gray-100 min-w-0">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-3 flex items-center gap-1.5">
-            <Train className="w-3 h-3" /> Route · {plan.stations.length} stops
-          </div>
-          {plan.stations.map((s, i) => (
-            <StationStop
-              key={`${s.shortCode}-${i}`}
-              station={s}
-              index={i}
-              total={plan.stations.length}
-              inView={inView}
-              crewAtStop={allCrew.filter(m => m.origin === s.shortCode)}
-            />
+      {/* ── Body: Journey cards + route line + service panel ── */}
+      <div
+        className="p-4"
+        style={{ display: "grid", gridTemplateColumns: "1fr 36px 1fr", gap: "0 8px", alignItems: "start" }}
+      >
+        {/* Left: stop cards */}
+        <div className="flex flex-col gap-2">
+          {stns.map((s, i) => (
+            <StopCard key={`sc-${s.shortCode}-${i}`} station={s} index={i} inView={inView} />
           ))}
         </div>
 
-        {/* Leaflet map */}
-        {positions.length > 0 && (
-          <div className="flex-1 min-h-[260px]" style={{ minWidth: 0 }}>
-            <MapContainer
-              center={center}
-              zoom={6}
-              style={{ height: "100%", minHeight: 260, width: "100%" }}
-              scrollWheelZoom={false}
-            >
-              <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution="© OpenStreetMap contributors"
-              />
-              <FitBounds positions={positions} />
-              <Polyline positions={positions} color={ES_NAVY} weight={3} opacity={0.8} />
-              {plan.stations.map((s, i) => {
-                const terminal = s.stopType === "origin" || s.stopType === "destination"
+        {/* Center: animated route line */}
+        <div className="flex flex-col items-center" style={{ paddingTop: 18 }}>
+          {stns.map((s, i) => {
+            const isTerminal = s.stopType === "origin" || s.stopType === "destination"
+            const isPass     = s.stopType === "passThrough" || s.stopType === "pass"
+            const dotR       = isTerminal ? 10 : isPass ? 5 : 7
+            const dotColor   = isTerminal ? ES_GOLD : isPass ? "rgba(255,255,255,0.2)" : MC_CYAN
+            const isLast     = i === stns.length - 1
+            const crewHere   = allCrew.filter(m => m.origin === s.shortCode)
+
+            return (
+              <div key={`rc-${s.shortCode}-${i}`} className="flex flex-col items-center w-full" style={{ flex: "1 0 auto" }}>
+                {/* Dot */}
+                <motion.div
+                  className="rounded-full shrink-0 relative"
+                  style={{
+                    width:  dotR * 2,
+                    height: dotR * 2,
+                    background:  isTerminal ? ES_GOLD : isPass ? "rgba(255,255,255,0.12)" : MC_BG,
+                    border:      `2px solid ${dotColor}`,
+                    boxShadow:   isTerminal ? `0 0 12px ${ES_GOLD}80` : !isPass ? `0 0 8px ${MC_CYAN}50` : "none",
+                  }}
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={inView ? { scale: 1, opacity: 1 } : {}}
+                  transition={{ delay: 0.3 + i * 0.1, type: "spring", stiffness: 500, damping: 22 }}
+                >
+                  {/* Crew count badge */}
+                  {crewHere.length > 0 && (
+                    <div
+                      className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-black"
+                      style={{ background: ES_GOLD, color: MC_BG, zIndex: 2 }}
+                    >
+                      {crewHere.length}
+                    </div>
+                  )}
+                  {/* Pulse for terminals */}
+                  {isTerminal && (
+                    <motion.div
+                      className="absolute inset-0 rounded-full"
+                      style={{ border: `2px solid ${ES_GOLD}` }}
+                      animate={{ scale: [1, 1.7, 1], opacity: [0.6, 0, 0.6] }}
+                      transition={{ repeat: Infinity, duration: 2.5, delay: i * 0.2 }}
+                    />
+                  )}
+                </motion.div>
+
+                {/* Connecting line */}
+                {!isLast && (
+                  <motion.div
+                    className="w-0.5 rounded-full"
+                    style={{
+                      background: `linear-gradient(180deg, ${isTerminal ? ES_GOLD : MC_CYAN}60 0%, rgba(0,212,255,0.2) 100%)`,
+                      minHeight: 32,
+                      flex: "1 0 32px",
+                    }}
+                    initial={{ scaleY: 0, originY: "top" }}
+                    animate={inView ? { scaleY: 1 } : {}}
+                    transition={{ delay: 0.4 + i * 0.1, duration: 0.3 }}
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Right: service info panel */}
+        <div className="flex flex-col gap-3 pt-1">
+
+          {/* Journey summary card */}
+          <div
+            className="rounded-xl p-3"
+            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+          >
+            <div className="text-[8px] uppercase tracking-widest font-bold mb-1.5" style={{ color: "rgba(255,255,255,0.28)" }}>
+              Route overview
+            </div>
+            {(plan.dep || plan.arr) && (
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xl font-black tabular-nums text-white">{plan.dep || "—"}</span>
+                <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, ${ES_GOLD}80, ${MC_CYAN}80)` }} />
+                <span className="text-xl font-black tabular-nums text-white">{plan.arr || "—"}</span>
+              </div>
+            )}
+            <div className="flex gap-1 flex-wrap">
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}>
+                {plan.planID}
+              </span>
+              <span className="text-[9px] capitalize px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}>
+                {plan.planType || "commercial"}
+              </span>
+              <span
+                className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                style={{
+                  background: plan.status === "active" ? "rgba(16,185,129,0.15)" : "rgba(245,158,11,0.15)",
+                  color:      plan.status === "active" ? "#34d399" : "#fbbf24",
+                }}
+              >
+                ● {plan.status}
+              </span>
+            </div>
+          </div>
+
+          {/* Stops count */}
+          <div
+            className="rounded-xl p-3"
+            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+          >
+            <div className="text-[8px] uppercase tracking-widest font-bold mb-2" style={{ color: "rgba(255,255,255,0.28)" }}>
+              All Stops · {stns.length}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {stns.map((s, i) => {
+                const isTerminal = s.stopType === "origin" || s.stopType === "destination"
+                const isPass     = s.stopType === "passThrough" || s.stopType === "pass"
+                const st         = stnStyle(s.shortCode)
+                const time       = s.dep || s.arr
                 return (
-                  <CircleMarker
-                    key={`m-${s.shortCode}-${i}`}
-                    center={[s.lat, s.lng]}
-                    radius={terminal ? 9 : 6}
-                    fillColor={terminal ? ES_NAVY : "#fff"}
-                    color={ES_NAVY}
-                    weight={2.5}
-                    fillOpacity={1}
+                  <motion.div
+                    key={`stop-r-${s.shortCode}-${i}`}
+                    className="flex items-center gap-2"
+                    initial={{ opacity: 0, x: 8 }}
+                    animate={inView ? { opacity: 1, x: 0 } : {}}
+                    transition={{ delay: 0.4 + i * 0.07 }}
                   >
-                    <Popup>
-                      <div style={{ minWidth: 120 }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: ES_NAVY }}>
-                          {s.name || s.shortCode}
-                        </div>
-                        <div style={{ color: "#6b7280", fontSize: 11, textTransform: "capitalize" }}>
-                          {s.stopType}
-                        </div>
-                        {s.dep && <div style={{ fontSize: 11 }}>Dep {s.dep}</div>}
-                        {s.arr && <div style={{ fontSize: 11 }}>Arr {s.arr}</div>}
-                      </div>
-                    </Popup>
-                  </CircleMarker>
+                    <div
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{
+                        background: isTerminal ? ES_GOLD : isPass ? "rgba(255,255,255,0.15)" : MC_CYAN,
+                        boxShadow:  isTerminal ? `0 0 6px ${ES_GOLD}` : "none",
+                      }}
+                    />
+                    <span
+                      className="text-[10px] flex-1 truncate"
+                      style={{
+                        color:      isTerminal ? "white" : isPass ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.65)",
+                        fontWeight: isTerminal ? 700 : 400,
+                      }}
+                    >
+                      {st.city !== s.shortCode ? st.city : s.name || s.shortCode}
+                    </span>
+                    {time && (
+                      <span className="text-[10px] tabular-nums font-bold shrink-0"
+                        style={{ color: isTerminal ? ES_GOLD : "rgba(255,255,255,0.3)" }}>
+                        {time}
+                      </span>
+                    )}
+                  </motion.div>
                 )
               })}
-            </MapContainer>
+            </div>
           </div>
-        )}
-      </div>
 
-      {/* Booking footer */}
-      {bUrl && (
-        <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between bg-[#f8faff]">
-          <div className="text-xs text-gray-500 min-w-0 mr-3 truncate">
-            <span className="font-semibold" style={{ color: ES_NAVY }}>
-              {origin?.name || origin?.shortCode}
-            </span>
-            <span className="mx-2 text-gray-300">→</span>
-            <span className="font-semibold" style={{ color: ES_NAVY }}>
-              {dest?.name || dest?.shortCode}
-            </span>
-            {plan.dep && <span className="ml-2 text-gray-400">· dep {plan.dep}</span>}
-          </div>
-          <motion.a
-            href={bUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-bold text-white shrink-0"
-            style={{ background: `linear-gradient(135deg, ${ES_NAVY} 0%, #0055cc 100%)` }}
-            whileHover={{ scale: 1.05, boxShadow: `0 4px 16px ${ES_NAVY}50` }}
-            whileTap={{ scale: 0.97 }}
-          >
-            Book on Eurostar ↗
-          </motion.a>
+          {/* Crew section */}
+          {allCrew.length > 0 && (
+            <div
+              className="rounded-xl p-3"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+            >
+              <div className="flex items-center gap-1.5 mb-2">
+                <motion.span
+                  className="w-1.5 h-1.5 rounded-full inline-block"
+                  style={{ background: ES_GOLD }}
+                  animate={{ opacity: [1, 0.2, 1] }}
+                  transition={{ repeat: Infinity, duration: 1.4 }}
+                />
+                <div className="text-[8px] uppercase tracking-widest font-bold" style={{ color: "rgba(255,255,255,0.28)" }}>
+                  Crew on Duty
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {allCrew.slice(0, 5).map((m, ci) => {
+                  const isDriver = m.crewType === "TRAIN_DRIVER"
+                  const name = [m.firstName, m.lastName].filter(Boolean).join(" ") || m.crewId
+                  const ini  = ((m.firstName[0] ?? "") + (m.lastName[0] ?? "")).toUpperCase() || "?"
+                  return (
+                    <motion.div
+                      key={`${m.crewId}-${m.origin}`}
+                      className="flex items-center gap-2"
+                      initial={{ opacity: 0, x: 8 }}
+                      animate={inView ? { opacity: 1, x: 0 } : {}}
+                      transition={{ delay: 0.6 + ci * 0.06 }}
+                    >
+                      <div
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-black shrink-0 relative"
+                        style={{ background: isDriver ? ES_GOLD : MC_CYAN, color: MC_BG }}
+                      >
+                        {ini}
+                        {isDriver && (
+                          <motion.div
+                            className="absolute inset-0 rounded-full"
+                            style={{ border: `1.5px solid ${ES_GOLD}` }}
+                            animate={{ scale: [1, 1.6, 1], opacity: [0.6, 0, 0.6] }}
+                            transition={{ repeat: Infinity, duration: 2.2, delay: ci * 0.3 }}
+                          />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[10px] font-semibold truncate" style={{ color: isDriver ? ES_GOLD : MC_CYAN }}>
+                          {name}
+                        </div>
+                        <div className="text-[8px]" style={{ color: "rgba(255,255,255,0.28)" }}>
+                          {m.origin}→{m.destination} · {m.dep}–{m.arr}
+                        </div>
+                      </div>
+                      <span
+                        className="text-[7px] font-black px-1 py-px rounded-full shrink-0"
+                        style={{ background: isDriver ? ES_GOLD : MC_CYAN, color: MC_BG }}
+                      >
+                        {isDriver ? "DRV" : "TM"}
+                      </span>
+                    </motion.div>
+                  )
+                })}
+                {allCrew.length > 5 && (
+                  <div className="text-[9px]" style={{ color: "rgba(255,255,255,0.25)" }}>+{allCrew.length - 5} more</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Booking CTA */}
+          {bUrl && (
+            <motion.a
+              href={bUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full text-center text-[11px] font-black py-2.5 rounded-xl"
+              style={{
+                background: `linear-gradient(135deg, ${ES_GOLD} 0%, #ffa500 100%)`,
+                color: MC_BG,
+                boxShadow: `0 4px 20px rgba(255,215,0,0.3)`,
+              }}
+              whileHover={{ scale: 1.03, boxShadow: `0 6px 28px rgba(255,215,0,0.52)` }}
+              whileTap={{ scale: 0.97 }}
+            >
+              Book on Eurostar ↗
+            </motion.a>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
 export function EuromapCard({ result, crewResult }: { readonly result: string; readonly crewResult?: string }) {
+  const { theme, compact } = useEurostarDisplay()
   const summary = parseStatusSummary(result)
-  if (summary) return <StatusSummaryCard summary={summary} />
-
   const plans = parseResult(result)
-  if (plans.length === 0) return null
-  return <PlanCard plans={plans} crewResult={crewResult} />
+  const selectionMatch = /SELECTION_CONTEXT:(first|last)\|/.exec(result)
+  const selection = selectionMatch?.[1] as "first" | "last" | undefined
+  if (!summary && plans.length === 0) return null
+
+  return (
+    <div className={`${eurostarDisplayClass(theme, compact)} relative w-full`}>
+      <EurostarDisplayStyles />
+      <div className="absolute right-3 top-3 z-40"><EurostarDisplayMenu inverted={theme !== "light" || !summary} /></div>
+      {summary ? <StatusSummaryCard summary={summary} /> : <PlanCard plans={plans} crewResult={crewResult} selection={selection} />}
+    </div>
+  )
 }

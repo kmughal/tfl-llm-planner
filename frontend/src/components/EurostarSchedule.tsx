@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { X, Train, ArrowRight, Clock, AlertCircle, RefreshCw, ChevronLeft, ChevronRight, Users, Phone, MapPin } from "lucide-react"
+import { EurostarDisplayMenu, EurostarDisplayStyles, eurostarDisplayClass, useEurostarDisplay } from "./EurostarDisplay"
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080"
 const NAVY = "#003366"
@@ -108,13 +109,13 @@ function destSt(t: TrainPlan): EStation | undefined   { return t.stations.find(s
 function isOutbound(t: TrainPlan): boolean             { return originSt(t)?.country === "GB" }
 
 function statusColor(s: string): string {
-  if (s === "cancelled" || s === "suspended") return "#ef4444"
+  if (s === "cancelled" || s === "deleted" || s === "suspended") return "#ef4444"
   if (s === "active") return "#10b981"
   return "#f59e0b"
 }
 
 function statusLabel(s: string): string {
-  if (s === "cancelled")  return "Cancelled"
+  if (s === "cancelled" || s === "deleted") return "Cancelled"
   if (s === "suspended")  return "Suspended"
   if (s === "active")     return "Active"
   return s
@@ -774,6 +775,7 @@ function DetailPanel({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function EurostarSchedule({ onClose }: { readonly onClose: () => void }) {
+  const { theme, compact } = useEurostarDisplay()
   const today = useMemo(() => startOfDay(new Date()), [])
   const dates = useMemo(() => Array.from({ length: 30 }, (_, i) => addDays(today, i)), [today])
 
@@ -843,7 +845,7 @@ export function EurostarSchedule({ onClose }: { readonly onClose: () => void }) 
       onClick={onClose}
     >
       <motion.div
-        className="relative w-full max-w-5xl max-h-[92vh] flex flex-col rounded-2xl overflow-hidden"
+        className={`${eurostarDisplayClass(theme, compact)} es-themed-panel es-legacy-dark relative w-full max-w-5xl max-h-[92vh] flex flex-col rounded-lg overflow-hidden`}
         style={{
           background: "rgba(4,10,28,0.97)",
           border: "1px solid rgba(0,51,102,0.45)",
@@ -855,6 +857,7 @@ export function EurostarSchedule({ onClose }: { readonly onClose: () => void }) 
         transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
         onClick={e => e.stopPropagation()}
       >
+        <EurostarDisplayStyles />
         {/* ── Header ── */}
         <div
           className="flex items-center gap-3 px-5 py-4 border-b shrink-0"
@@ -885,6 +888,7 @@ export function EurostarSchedule({ onClose }: { readonly onClose: () => void }) 
             </div>
           )}
 
+          <EurostarDisplayMenu inverted={theme !== "light"} />
           <button
             type="button"
             onClick={() => load(selectedDate)}
@@ -960,7 +964,7 @@ export function EurostarSchedule({ onClose }: { readonly onClose: () => void }) 
         {/* ── Body: train list + detail ── */}
         <div className="flex-1 flex min-h-0">
           {/* Train list */}
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2.5 min-w-0">
+          <div className="es-density-list flex-1 overflow-y-auto p-4 flex flex-col gap-2.5 min-w-0">
             {loading && Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
 
             {error && (

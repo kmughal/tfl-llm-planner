@@ -10,15 +10,18 @@ import { SNCFDisruptions } from "./SNCFDisruptions"
 import { SNCFDepartures } from "./SNCFDepartures"
 import { SNCFArrivals } from "./SNCFArrivals"
 import { SNCFTrain } from "./SNCFTrain"
+import { SNCFDashboardCard } from "./SNCFDashboardCard"
 import { TravelerSummaryCard } from "./TravelerSummaryCard"
 import { RoadsCard, RoadDisruptionsCard } from "./RoadsCard"
 import { BusArrivalsCard } from "./BusArrivalsCard"
 import { BusLinesCard } from "./BusLinesCard"
 import { WeatherCard } from "./WeatherCard"
 import { NationalRailCard } from "./NationalRailCard"
+import { NationalRailDashboardCard } from "./NationalRailDashboardCard"
 import { ParisMetroCard } from "./ParisMetroCard"
 import { CrewCard } from "./CrewCard"
-import { Train, Bus, MapPin, Clock, ArrowRight, Volume2, VolumeX } from "lucide-react"
+import { TflStatusCard } from "./TflStatusCard"
+import { Train, Bus, MapPin, Clock, ArrowRight, Volume2, VolumeX, RefreshCw, Map as MapIcon, Radio } from "lucide-react"
 
 const DASHBOARD_TOOL      = "get_eurostar_dashboard"
 const LIVEMAP_TOOL        = "get_eurostar_live_map"
@@ -26,19 +29,21 @@ const DISRUPTIONS_TOOL    = "get_sncf_disruptions"
 const DEPARTURES_TOOL     = "get_sncf_departures"
 const ARRIVALS_TOOL       = "get_sncf_arrivals"
 const TRAIN_TOOL          = "get_sncf_train"
+const SNCF_DASHBOARD_TOOL = "get_sncf_dashboard"
 const TRAVELER_TOOL       = "get_traveler_summary"
 const ROADS_TOOL            = "get_tfl_roads"
 const ROAD_DISRUPTIONS_TOOL = "get_road_disruptions"
 const BUS_ARRIVALS_TOOL     = "get_bus_arrivals"
 const BUS_LINES_TOOL        = "get_all_bus_lines"
 const WEATHER_TOOL          = "get_weather"
-const NRAIL_TOOL            = "get_national_rail_departures"
+const NRAIL_TOOLS           = new Set(["get_national_rail_departures", "get_national_rail_arrivals", "get_national_rail_dashboard"])
 const PARIS_METRO_TOOL      = "get_paris_metro_departures"
 const CREW_ACTIVITIES_TOOL  = "get_crew_activities"
 const CREW_MONTHLY_TOOL     = "get_crew_monthly_schedule"
 const CREW_TOOLS = new Set([CREW_ACTIVITIES_TOOL, CREW_MONTHLY_TOOL])
-const SNCF_RICH_TOOLS     = new Set([DISRUPTIONS_TOOL, DEPARTURES_TOOL, ARRIVALS_TOOL, TRAIN_TOOL])
+const SNCF_RICH_TOOLS     = new Set([DISRUPTIONS_TOOL, DEPARTURES_TOOL, ARRIVALS_TOOL, TRAIN_TOOL, SNCF_DASHBOARD_TOOL])
 const TFL_ROAD_TOOLS      = new Set([ROADS_TOOL, ROAD_DISRUPTIONS_TOOL])
+const TFL_STATUS_TOOLS    = new Set(["get_line_status", "get_status_by_mode"])
 const EUROMAP_TOOLS = new Set([
   "get_euromap_plans",
   "get_euromap_technical_plans",
@@ -74,6 +79,23 @@ function withTag(name: string, card: React.ReactNode) {
       <ToolTag name={name} />
       {card}
     </div>
+  )
+}
+
+function EurostarMapLoading() {
+  return (
+    <motion.div className="w-full overflow-hidden rounded-lg border" style={{ minHeight: 260, background:"linear-gradient(145deg,#07101f,#0b1b35)", borderColor:"rgba(96,165,250,0.3)" }} initial={{opacity:0,y:8}} animate={{opacity:1,y:0}}>
+      <div className="flex items-center gap-3 border-b px-5 py-4" style={{borderColor:"rgba(255,255,255,0.08)"}}>
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{background:"rgba(37,99,235,0.2)",color:"#60a5fa"}}><MapIcon size={20}/></div>
+        <div><div className="text-sm font-black text-white">Building Eurostar operating map</div><div className="text-[11px] text-slate-400">Joining commercial plans, technical coordinates and SOT crew assignments</div></div>
+        <Radio className="ml-auto text-emerald-400" size={17}/>
+      </div>
+      <div className="relative h-48 overflow-hidden">
+        {[18,38,58,78].map((top,index)=><motion.div key={top} className="absolute h-px" style={{top:`${top}%`,left:"-30%",width:"45%",background:index===2?"#d4a72c":"#2563eb"}} animate={{x:[0,900]}} transition={{duration:2.8+index*0.45,repeat:Infinity,ease:"linear",delay:index*0.2}}/>) }
+        <div className="absolute inset-0 flex items-center justify-center"><motion.div className="h-16 w-16 rounded-full border-2 border-blue-400/30 border-t-blue-300" animate={{rotate:360}} transition={{duration:1.1,repeat:Infinity,ease:"linear"}}/></div>
+      </div>
+      <div className="flex flex-wrap gap-4 border-t px-5 py-3 text-[10px] text-slate-400" style={{borderColor:"rgba(255,255,255,0.08)"}}><span>Euromap service plans</span><span>Technical route points</span><span>Start-on-Time crew</span><span className="ml-auto text-blue-300">get_eurostar_live_map</span></div>
+    </motion.div>
   )
 }
 
@@ -363,6 +385,17 @@ function detectJourneyColor(rawText: string): string {
   return /^sncf\s/i.test(rawText.trimStart()) ? SNCF_RED : TFL_BLUE
 }
 
+function optionColor(base: string, isDirect: boolean): string {
+  if (base === SNCF_RED) return isDirect ? SNCF_RED : "#d97706"
+  return base
+}
+
+function stationCode(name: string): string {
+  const m = /\(([^)]+)\)/.exec(name)
+  const src = m ? m[1] : name
+  return src.replace(/[^A-Za-z]/g, "").slice(0, 3).toUpperCase()
+}
+
 // ── Horizontal animated stop timeline ────────────────────────────────────────
 // Each stop "arrives" sequentially: track draws first, then dot pops in.
 const STOP_STEP = 0.32
@@ -471,127 +504,117 @@ function stepNetworkLabel(step: string): string {
 }
 
 function JourneyCard({ block, color }: { readonly block: Block & { kind: "journey" }; readonly color: string }) {
+  const ref    = useRef<HTMLDivElement>(null)
+  const inView = useInView(ref, { once: true, margin: "-40px" })
   const { optionNum, details } = block
   const { departure, arrival, duration, connections, steps, stops } = details
-  const isDirect = connections === 0
-  const hasStops = stops.length >= 2
-  const hasTime  = departure.time || arrival.time
+  const isDirect  = connections === 0
+  const cardColor = optionColor(color, isDirect)
+  const hasStops  = stops.length >= 2
 
   return (
-    <div className="rounded-xl overflow-hidden shadow-sm bg-white" style={{ border: `1px solid ${color}25` }}>
-
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: 14 }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      style={{ borderRadius: 14, overflow: "hidden", background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}
+    >
       {/* Header band */}
-      <div className="flex items-center justify-between px-4 py-2.5 text-white" style={{ backgroundColor: color }}>
-        <div className="flex items-center gap-2">
-          <Train className="w-4 h-4 shrink-0" />
-          <span className="font-semibold text-sm tracking-tight">Option {optionNum}</span>
+      <div style={{ background: cardColor, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <Train size={14} style={{ color: "#fff", flexShrink: 0 }} />
+          <span style={{ color: "#fff", fontWeight: 700, fontSize: 13, fontFamily: "system-ui,sans-serif" }}>Option {optionNum}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           {connections !== null && (
-            isDirect
-              ? <span className="flex items-center gap-1 bg-white/20 rounded-full px-2 py-0.5 text-[11px] font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-emerald-300" />Direct</span>
-              : <span className="flex items-center gap-1 bg-white/20 rounded-full px-2 py-0.5 text-[11px] font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-amber-300" />{connections} change{connections === 1 ? "" : "s"}</span>
+            <span style={{ background: "rgba(255,255,255,0.22)", color: "#fff", padding: "3px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, fontFamily: "system-ui,sans-serif" }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: isDirect ? "#4ade80" : "#fcd34d", flexShrink: 0 }} />
+              {isDirect ? "Direct" : `${connections} change${connections === 1 ? "" : "s"}`}
+            </span>
           )}
           {duration && (
-            <div className="flex items-center gap-1.5 bg-white/20 rounded-full px-2.5 py-0.5">
-              <Clock className="w-3 h-3" />
-              <span className="text-xs font-semibold">{duration}</span>
-            </div>
+            <span style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", padding: "3px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, fontFamily: "system-ui,sans-serif" }}>
+              <Clock size={10} style={{ flexShrink: 0 }} />
+              {duration}
+            </span>
           )}
         </div>
       </div>
 
-      <div className="px-4 py-3 flex flex-col gap-3">
-        {/* Animated stop timeline — shown only for short journeys; vertical list handles larger sets */}
-        {hasStops && stops.length <= 6 && <HorizontalRoute stops={stops} color={color} />}
-
-        {/* Fallback dep→arr bar when no stop data */}
-        {!hasStops && hasTime && (
-          <div className="flex items-center gap-2">
-            <div className="min-w-0 shrink-0">
-              <div className="text-xl font-bold text-gray-900 tabular-nums leading-none">{departure.time || "—"}</div>
-              {departure.station && <div className="text-[11px] text-gray-500 mt-0.5 max-w-[110px] leading-tight line-clamp-2">{departure.station}</div>}
-            </div>
-            <div className="flex-1 flex items-center gap-0.5">
-              <div className="w-2 h-2 rounded-full border-2 shrink-0" style={{ borderColor: color }} />
-              <div className="flex-1 h-0.5 relative" style={{ backgroundColor: `${color}30` }}>
-                {connections !== null && connections > 0 && <ConnectionDots connections={connections} color={color} />}
-              </div>
-              <ArrowRight className="w-3 h-3 shrink-0" style={{ color }} />
-              <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
-            </div>
-            <div className="min-w-0 shrink-0 text-right">
-              <div className="text-xl font-bold text-gray-900 tabular-nums leading-none">{arrival.time || "—"}</div>
-              {arrival.station && <div className="text-[11px] text-gray-500 mt-0.5 max-w-[110px] leading-tight line-clamp-2 text-right">{arrival.station}</div>}
-            </div>
+      {/* Dep / arr times + progress */}
+      {(departure.time || arrival.time) && (
+        <div style={{ padding: "14px 16px 10px", background: "#fff", borderBottom: "1px solid #f1f5f9" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <span style={{ fontSize: 22, fontWeight: 800, color: "#111827", fontFamily: "monospace", letterSpacing: "-0.5px" }}>{departure.time || "—"}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#6b7280", fontFamily: "system-ui,sans-serif" }}>
+              {departure.station ? stationCode(departure.station) : ""}{departure.station && arrival.station ? " → " : ""}{arrival.station ? stationCode(arrival.station) : ""}
+            </span>
+            <span style={{ fontSize: 22, fontWeight: 800, color: "#111827", fontFamily: "monospace", letterSpacing: "-0.5px" }}>{arrival.time || "—"}</span>
           </div>
-        )}
-
-        {/* All stops — vertical list */}
-        {hasStops && (
-          <div className="border-t pt-2 flex flex-col gap-0" style={{ borderColor: `${color}15` }}>
-            <div className="text-[10px] font-semibold uppercase tracking-wider pb-1.5" style={{ color: `${color}99` }}>
-              All stops · {stops.length}
+          {hasStops && <HorizontalRoute stops={stops} color={cardColor} />}
+          {!hasStops && (
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <div style={{ width: 14, height: 14, borderRadius: "50%", background: cardColor, flexShrink: 0 }} />
+              <div style={{ flex: 1, height: 3, background: cardColor, borderRadius: 2 }} />
+              {connections !== null && connections > 0 && <RefreshCw size={11} style={{ color: cardColor, flexShrink: 0 }} />}
+              <div style={{ flex: 1, height: 3, background: cardColor, borderRadius: 2 }} />
+              <div style={{ width: 14, height: 14, borderRadius: "50%", background: cardColor, flexShrink: 0 }} />
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ALL STOPS */}
+      {hasStops && (
+        <div style={{ padding: "10px 16px 12px", borderBottom: steps.length > 0 ? "1px solid #f1f5f9" : "none" }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: `${cardColor}aa`, letterSpacing: "0.08em", textTransform: "uppercase" as const, marginBottom: 7, fontFamily: "system-ui,sans-serif" }}>
+            ALL STOPS · {stops.length}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column" as const }}>
             {stops.map((stop, i) => {
-              const isFirst = i === 0
-              const isLast  = i === stops.length - 1
+              const isFirst = i === 0, isLast = i === stops.length - 1
+              const isConn  = i > 0 && stops[i - 1]?.name === stop.name
               return (
-                <div key={`vs-${stop.name}-${i}`} className="flex items-stretch gap-2 min-w-0">
-                  {/* dot + connector */}
-                  <div className="flex flex-col items-center shrink-0" style={{ width: 14 }}>
-                    <div
-                      className="rounded-full border-2 shrink-0 mt-1"
-                      style={{
-                        width:           isFirst || isLast ? 10 : 7,
-                        height:          isFirst || isLast ? 10 : 7,
-                        borderColor:     color,
-                        backgroundColor: isFirst || isLast ? color : "#fff",
-                      }}
-                    />
-                    {!isLast && (
-                      <div className="flex-1 w-px min-h-[10px]" style={{ backgroundColor: `${color}35` }} />
-                    )}
+                <div key={`vs-${stop.name}-${i}`} style={{ display: "flex", alignItems: "stretch", gap: 10, minWidth: 0 }}>
+                  <div style={{ display: "flex", flexDirection: "column" as const, alignItems: "center", flexShrink: 0, width: 14 }}>
+                    {isConn
+                      ? <div style={{ width: 12, height: 12, marginTop: 3, display: "flex", alignItems: "center", justifyContent: "center" }}><RefreshCw size={10} style={{ color: cardColor }} /></div>
+                      : <div style={{ width: isFirst || isLast ? 10 : 8, height: isFirst || isLast ? 10 : 8, borderRadius: "50%", flexShrink: 0, marginTop: 4, background: isFirst || isLast ? cardColor : "#fff", border: `2px solid ${cardColor}` }} />
+                    }
+                    {!isLast && <div style={{ flex: 1, width: 2, background: `${cardColor}30`, minHeight: 10 }} />}
                   </div>
-                  {/* name + time */}
-                  <div className="flex items-center justify-between w-full pb-1.5 min-w-0">
-                    <span
-                      className="text-xs leading-snug truncate"
-                      style={{
-                        fontWeight: isFirst || isLast ? 600 : 400,
-                        color:      isFirst || isLast ? "#111827" : "#4b5563",
-                      }}
-                    >
-                      {stop.name}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", paddingBottom: 6, minWidth: 0 }}>
+                    <span style={{ fontSize: 12, fontWeight: isFirst || isLast ? 600 : 400, color: isFirst || isLast ? "#111827" : "#4b5563", fontFamily: "system-ui,sans-serif" }}>
+                      {stop.name}{isConn ? <span style={{ fontSize: 10, color: cardColor, fontWeight: 600, marginLeft: 5 }}>· {stop.time}</span> : null}
                     </span>
-                    {stop.time && (
-                      <span className="text-[10px] tabular-nums text-gray-400 ml-2 shrink-0">{stop.time}</span>
-                    )}
+                    {!isConn && stop.time && <span style={{ fontSize: 11, color: "#9ca3af", fontFamily: "monospace", flexShrink: 0, marginLeft: 6 }}>{stop.time}</span>}
                   </div>
                 </div>
               )
             })}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Step-by-step legs */}
-        {steps.length > 0 && (
-          <div className="border-t pt-2 flex flex-col gap-1.5" style={{ borderColor: `${color}15` }}>
-            {steps.map((step) => {
-              const mode = stepNetworkLabel(step)
-              return (
-                <div key={step.slice(0, 40)} className="flex items-start gap-2 text-xs text-gray-600">
-                  <span className="mt-0.5 shrink-0" style={{ color }}>
-                    <StepIcon text={mode || step} />
-                  </span>
-                  <Inline text={step} />
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-    </div>
+      {/* Service legs */}
+      {steps.length > 0 && (
+        <div style={{ padding: "8px 16px 12px", display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
+          {steps.map((step, i) => {
+            const isConn = /connection|change|transfer/i.test(step)
+            return (
+              <div key={`step-${i}`} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 9px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                {isConn
+                  ? <RefreshCw size={10} style={{ color: cardColor, flexShrink: 0 }} />
+                  : <Train size={10} style={{ color: cardColor, flexShrink: 0 }} />
+                }
+                <span style={{ fontSize: 10, color: "#374151", fontFamily: "system-ui,sans-serif" }}><Inline text={step} /></span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </motion.div>
   )
 }
 
@@ -945,33 +968,76 @@ function BulletList({ items }: { readonly items: string[] }) {
 }
 
 function RichMessage({ text }: { readonly text: string }) {
-  const jColor = detectJourneyColor(text)
-  const lastTrain = detectLastTrain(text)
-  return (
+  const jColor     = detectJourneyColor(text)
+  const isSncf     = jColor === SNCF_RED
+  const lastTrain  = detectLastTrain(text)
+  const blocks     = parseBlocks(text)
+
+  const journeyBlocks = isSncf
+    ? (blocks.filter(b => b.kind === "journey") as Array<Block & { kind: "journey" }>)
+    : []
+  const firstJourney = journeyBlocks[0]
+  const directCount  = journeyBlocks.filter(b => b.details.connections === 0).length
+  const changeCount  = journeyBlocks.filter(b => (b.details.connections ?? 0) > 0).length
+  const summaryParts: string[] = []
+  if (directCount > 0) summaryParts.push("Direct")
+  if (changeCount > 0) summaryParts.push(`${changeCount} Change${changeCount > 1 ? "s" : ""}`)
+
+  const renderedBlocks = blocks.map((block, bi) => {
+    if (block.kind === "h3")
+      return <p key={`h3-${block.text.slice(0, 20)}`} className="text-xs font-semibold uppercase tracking-wide text-[#003688] mt-1">{block.text}</p>
+    if (block.kind === "journey")
+      return <JourneyCard key={`journey-${block.optionNum}`} block={block} color={jColor} />
+    if (block.kind === "route")
+      return <RouteMap key={`route-${block.items[0]?.slice(0, 15)}`} items={block.items} />
+    if (block.kind === "steps")
+      return <div key={`steps-${block.items[0]?.slice(0, 15)}`} className="bg-[#f5f7fc] rounded-xl px-3 py-2.5 border border-[#003688]/10"><StepList items={block.items} /></div>
+    if (block.kind === "bullets")
+      return <BulletList key={`bullets-${block.items[0]?.slice(0, 15)}`} items={block.items} />
+    return (
+      <p key={`para-${block.lines[0]?.slice(0, 15)}-${bi}`} className="text-sm leading-relaxed" style={{ color: "inherit" }}>
+        <Inline text={block.lines.join(" ")} />
+      </p>
+    )
+  })
+
+  const innerContent = (
     <div className="flex flex-col gap-2.5">
       {lastTrain && <LastTrainCard info={lastTrain} />}
-      {parseBlocks(text).map((block) => {
-        if (block.kind === "h3") {
-          return <p key={`h3-${block.text.slice(0, 20)}`} className="text-xs font-semibold uppercase tracking-wide text-[#003688] mt-1">{block.text}</p>
-        }
-        if (block.kind === "journey") {
-          return <JourneyCard key={`journey-${block.optionNum}`} block={block} color={jColor} />
-        }
-        if (block.kind === "route") {
-          return <RouteMap key={`route-${block.items[0]?.slice(0, 15)}`} items={block.items} />
-        }
-        if (block.kind === "steps") {
-          return <div key={`steps-${block.items[0]?.slice(0, 15)}`} className="bg-[#f5f7fc] rounded-xl px-3 py-2.5 border border-[#003688]/10"><StepList items={block.items} /></div>
-        }
-        if (block.kind === "bullets") {
-          return <BulletList key={`bullets-${block.items[0]?.slice(0, 15)}`} items={block.items} />
-        }
-        return (
-          <p key={`para-${block.lines[0]?.slice(0, 15)}`} className="text-sm leading-relaxed" style={{ color: "inherit" }}>
-            <Inline text={block.lines.join(" ")} />
-          </p>
-        )
-      })}
+      {renderedBlocks}
+    </div>
+  )
+
+  if (!isSncf || journeyBlocks.length === 0) return innerContent
+
+  return (
+    <div style={{ borderRadius: 16, overflow: "hidden", border: "1px solid #e5e7eb", boxShadow: "0 4px 24px rgba(0,0,0,0.07)", background: "#fff" }}>
+      {/* SNCF header */}
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 36, height: 36, background: SNCF_RED, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <span style={{ color: "#fff", fontSize: 9, fontWeight: 900, letterSpacing: "0.06em", fontFamily: "system-ui,sans-serif" }}>SNCF</span>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", fontFamily: "system-ui,sans-serif" }}>SNCF journeys</div>
+          <div style={{ fontSize: 11, color: "#9ca3af", fontFamily: "system-ui,sans-serif" }}>
+            {journeyBlocks.length} Option{journeyBlocks.length > 1 ? "s" : ""}{summaryParts.length > 0 ? ` · ${summaryParts.join(" & ")}` : ""}
+          </div>
+        </div>
+      </div>
+      {/* Route summary */}
+      {firstJourney && (
+        <div style={{ padding: "10px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" as const, gap: 6 }}>
+          <span style={{ fontWeight: 600, fontSize: 13, color: "#111827", fontFamily: "system-ui,sans-serif" }}>
+            {firstJourney.details.departure.station || ""}{firstJourney.details.departure.station && firstJourney.details.arrival.station ? " to " : ""}{firstJourney.details.arrival.station || ""}
+          </span>
+          <span style={{ fontSize: 11, color: SNCF_RED, fontWeight: 600, fontFamily: "system-ui,sans-serif" }}>Plan Another Journey</span>
+        </div>
+      )}
+      {/* Cards */}
+      <div style={{ padding: "12px", display: "flex", flexDirection: "column" as const, gap: 10 }}>
+        {lastTrain && <LastTrainCard info={lastTrain} />}
+        {renderedBlocks}
+      </div>
     </div>
   )
 }
@@ -1036,8 +1102,8 @@ function SpeakButton({ content }: { readonly content: string }) {
     <button
       type="button"
       onClick={toggle}
-      className="mt-1.5 flex items-center gap-1 text-[11px] transition-colors"
-      style={{ color: speaking ? "rgba(160,180,255,0.9)" : "rgba(255,255,255,0.35)" }}
+      className="app-assistant-speak mt-1.5 flex items-center gap-1 text-[11px] transition-colors"
+      style={{ color: speaking ? "#4169e1" : undefined }}
       aria-label={speaking ? "Stop speaking" : "Read aloud"}
     >
       {speaking
@@ -1052,6 +1118,7 @@ function SpeakButton({ content }: { readonly content: string }) {
 export function MessageBubble({ message }: { readonly message: ChatMessage }) {
   const isUser = message.role === "user"
   const toolEvents: ToolEvent[] = message.toolEvents ?? []
+  const hasVerifiedBoundarySelection = toolEvents.some(ev => ev.type === "tool_result" && ev.result?.includes("SELECTION_CONTEXT:"))
 
   return (
     <motion.div
@@ -1061,11 +1128,14 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
       transition={{ duration: 0.32, ease: "easeOut" }}
     >
       {!isUser && toolEvents.length > 0 && (
-        <div className="flex flex-col gap-2 w-full max-w-[90%]">
+        <div className="flex flex-col gap-2 w-full">
+          {toolEvents.some(ev => ev.name === LIVEMAP_TOOL && ev.type === "tool_call") &&
+            !toolEvents.some(ev => ev.name === LIVEMAP_TOOL && ev.type === "tool_result") && <EurostarMapLoading />}
           {/* Regular tool badges (and euromap tool_call pending badges) */}
           <div className="flex flex-wrap gap-1.5 px-1">
             {toolEvents
-              .filter(ev => (!EUROMAP_TOOLS.has(ev.name) && !SNCF_RICH_TOOLS.has(ev.name) && !TFL_ROAD_TOOLS.has(ev.name) && !CREW_TOOLS.has(ev.name) && ev.name !== TRAVELER_TOOL && ev.name !== BUS_ARRIVALS_TOOL && ev.name !== BUS_LINES_TOOL && ev.name !== WEATHER_TOOL && ev.name !== NRAIL_TOOL && ev.name !== PARIS_METRO_TOOL) || ev.type === "tool_call")
+              .filter(ev => (((!EUROMAP_TOOLS.has(ev.name) && !SNCF_RICH_TOOLS.has(ev.name) && !TFL_ROAD_TOOLS.has(ev.name) && !CREW_TOOLS.has(ev.name) && !TFL_STATUS_TOOLS.has(ev.name) && ev.name !== TRAVELER_TOOL && ev.name !== BUS_ARRIVALS_TOOL && ev.name !== BUS_LINES_TOOL && ev.name !== WEATHER_TOOL && !NRAIL_TOOLS.has(ev.name) && ev.name !== PARIS_METRO_TOOL) || ev.type === "tool_call") && !(ev.name === LIVEMAP_TOOL && ev.type === "tool_call")))
+              .filter(ev => !(ev.type === "tool_call" && toolEvents.some(result => result.type === "tool_result" && result.name === ev.name)))
               .map((ev) => (
                 <ToolCallBadge key={`${ev.type}-${ev.name}`} event={ev} />
               ))}
@@ -1079,6 +1149,7 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
               if (ev.name === DEPARTURES_TOOL)  return withTag(ev.name, <SNCFDepartures  key={`departures-${ev.name}`}  result={r} />)
               if (ev.name === ARRIVALS_TOOL)    return withTag(ev.name, <SNCFArrivals    key={`arrivals-${ev.name}`}    result={r} />)
               if (ev.name === TRAIN_TOOL)       return withTag(ev.name, <SNCFTrain       key={`train-${ev.name}`}       result={r} />)
+              if (ev.name === SNCF_DASHBOARD_TOOL) return withTag(ev.name, <SNCFDashboardCard key={`sncf-dashboard-${ev.name}`} result={r} />)
               return null
             })}
           {/* TFL road cards */}
@@ -1104,14 +1175,18 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
           {toolEvents
             .filter(ev => ev.name === WEATHER_TOOL && ev.type === "tool_result" && !!ev.result)
             .map(ev => withTag(ev.name, <WeatherCard key={`weather-${ev.name}`} result={ev.result ?? ""} />))}
-          {/* National Rail departure cards */}
+          {/* National Rail live cards */}
           {toolEvents
-            .filter(ev => ev.name === NRAIL_TOOL && ev.type === "tool_result" && !!ev.result)
-            .map(ev => withTag(ev.name, <NationalRailCard key={`nrail-${ev.name}`} result={ev.result ?? ""} />))}
+            .filter(ev => NRAIL_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)
+            .map(ev => withTag(ev.name, ev.name === "get_national_rail_dashboard" ? <NationalRailDashboardCard key={`nrail-${ev.name}`} result={ev.result ?? ""}/> : <NationalRailCard key={`nrail-${ev.name}`} result={ev.result ?? ""} />))}
           {/* Paris Metro / RATP cards */}
           {toolEvents
             .filter(ev => ev.name === PARIS_METRO_TOOL && ev.type === "tool_result" && !!ev.result)
             .map(ev => withTag(ev.name, <ParisMetroCard key={`ratp-${ev.name}`} result={ev.result ?? ""} />))}
+          {/* TFL Underground / DLR / Overground status cards */}
+          {toolEvents
+            .filter(ev => TFL_STATUS_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)
+            .map(ev => withTag(ev.name, <TflStatusCard key={`tfl-status-${ev.name}`} result={ev.result ?? ""} />))}
           {/* Crew / driver cards — suppressed when crew is embedded in a plan card */}
           {(() => {
             const hasPlanById = toolEvents.some(ev => ev.name === "get_euromap_plan_by_id" && ev.type === "tool_result")
@@ -1134,8 +1209,8 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
             })}
         </div>
       )}
-      <div
-        className={cn("px-4 py-3 text-sm leading-relaxed", isUser ? "rounded-3xl rounded-br-md max-w-[75%]" : "rounded-3xl rounded-bl-md max-w-[90%]")}
+      {(isUser || !hasVerifiedBoundarySelection) && <div
+        className={cn("px-4 py-3 text-sm leading-relaxed", isUser ? "rounded-3xl rounded-br-md max-w-[75%]" : "app-assistant-bubble rounded-3xl rounded-bl-md max-w-[90%]")}
         style={
           isUser
             ? {
@@ -1147,12 +1222,8 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
                 color: "#fff",
               }
             : {
-                background: "rgba(255,255,255,0.10)",
                 backdropFilter: "blur(20px)",
                 WebkitBackdropFilter: "blur(20px)",
-                border: "1px solid rgba(255,255,255,0.14)",
-                boxShadow: "0 4px 32px rgba(0,0,0,0.35)",
-                color: "rgba(255,255,255,0.92)",
               }
         }
       >
@@ -1160,7 +1231,7 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
         {!isUser && message.content && !message.streaming && (
           <SpeakButton content={message.content} />
         )}
-      </div>
+      </div>}
     </motion.div>
   )
 }

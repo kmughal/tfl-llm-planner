@@ -18,6 +18,8 @@ func GetEuromapDashboardTool() mcp.Tool {
 
 Use when the user asks for a departure board, dashboard, or full list of services — even without those exact words.
 Do NOT use for map/live-map requests.
+Do NOT use for one specific service number; use get_euromap_plan_by_id.
+Do NOT use for a route-filtered journey search; use get_euromap_plans with from and to.
 
 Trigger phrases (any of these → use this tool):
   - "departure board", "full departure board", "departures today"

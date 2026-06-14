@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion"
-import { X, LayoutDashboard, Map, Users, Cloud, Train, Zap, Globe, CalendarRange } from "lucide-react"
+import { X, LayoutDashboard, Map, Users, Cloud, Train, Zap, Globe, CalendarRange, Cpu } from "lucide-react"
+import { EurostarDisplayMenu, EurostarDisplayStyles, eurostarDisplayClass, useEurostarDisplay } from "./EurostarDisplay"
 
 const NAVY = "#003366"
 const GOLD = "#C89A0C"
@@ -59,7 +60,7 @@ const ACTIONS: Action[] = [
     icon: <Zap style={{ width: 20, height: 20 }} />,
     label: "Disruptions",
     sublabel: "Delays, cancellations & alerts",
-    query: "Are there any Eurostar or SNCF disruptions today?",
+    query: "Show all delayed, cancelled, or disrupted Eurostar services today",
     accent: "#7d3c0e",
   },
   {
@@ -75,11 +76,14 @@ export function EurostarHub({
   onClose,
   onSend,
   onSchedule,
+  onCommandCenter,
 }: {
-  readonly onClose:    () => void
-  readonly onSend:     (msg: string) => void
-  readonly onSchedule: () => void
+  readonly onClose:          () => void
+  readonly onSend:           (msg: string) => void
+  readonly onSchedule:       () => void
+  readonly onCommandCenter?: () => void
 }) {
+  const { theme, compact } = useEurostarDisplay()
   function handleAction(query: string) {
     onClose()
     onSend(query)
@@ -99,7 +103,7 @@ export function EurostarHub({
       >
         <motion.div
           key="eurostar-hub-panel"
-          className="relative w-full max-w-2xl max-h-[88vh] overflow-hidden flex flex-col rounded-2xl"
+          className={`${eurostarDisplayClass(theme, compact)} es-themed-panel es-legacy-dark relative w-full max-w-2xl max-h-[88vh] overflow-hidden flex flex-col rounded-lg`}
           style={{
             background: "rgba(6,12,30,0.96)",
             border: "1px solid rgba(0,51,102,0.5)",
@@ -111,6 +115,7 @@ export function EurostarHub({
           transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
           onClick={e => e.stopPropagation()}
         >
+          <EurostarDisplayStyles />
           {/* Header */}
           <div
             className="flex items-center gap-3 px-5 py-4 border-b shrink-0"
@@ -134,6 +139,7 @@ export function EurostarHub({
               className="h-1 w-16 rounded-full hidden sm:block"
               style={{ background: `linear-gradient(90deg, ${GOLD}, transparent)` }}
             />
+            <EurostarDisplayMenu inverted={theme !== "light"} />
             <button
               type="button"
               onClick={onClose}
@@ -148,11 +154,48 @@ export function EurostarHub({
           </div>
 
           <div className="overflow-y-auto p-4 flex flex-col gap-3">
+            {/* ── Featured: Command Center ── */}
+            {onCommandCenter && (
+              <motion.button
+                type="button"
+                onClick={() => { onClose(); onCommandCenter() }}
+                className="es-preserve-inverse w-full flex items-center gap-4 p-4 rounded-lg text-left"
+                style={{
+                  background: "linear-gradient(135deg, rgba(10,25,60,0.7) 0%, rgba(0,60,140,0.45) 100%)",
+                  border: "1px solid rgba(0,130,255,0.4)",
+                }}
+                whileHover={{ scale: 1.015, borderColor: "rgba(0,160,255,0.6)" }}
+                whileTap={{ scale: 0.985 }}
+                transition={{ duration: 0.15 }}
+              >
+                <div
+                  className="flex items-center justify-center w-12 h-12 rounded-xl shrink-0"
+                  style={{ background: "rgba(0,100,220,0.25)", border: "1px solid rgba(0,150,255,0.3)" }}
+                >
+                  <Cpu style={{ width: 22, height: 22, color: "#22d3ee" }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm" style={{ color: "rgba(255,255,255,0.95)" }}>
+                    Operational Dashboard
+                  </p>
+                  <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
+                    All trains & crew for today · auto-refreshing · full screen
+                  </p>
+                </div>
+                <div
+                  className="text-xs font-semibold px-2.5 py-1 rounded-full shrink-0"
+                  style={{ background: "rgba(0,160,255,0.15)", color: "#22d3ee", border: "1px solid rgba(0,160,255,0.3)" }}
+                >
+                  Open →
+                </div>
+              </motion.button>
+            )}
+
             {/* ── Featured: Train Schedule ── */}
             <motion.button
               type="button"
               onClick={onSchedule}
-              className="w-full flex items-center gap-4 p-4 rounded-2xl text-left"
+              className="es-preserve-inverse w-full flex items-center gap-4 p-4 rounded-lg text-left"
               style={{
                 background: `linear-gradient(135deg, rgba(0,51,102,0.55) 0%, rgba(0,80,180,0.35) 100%)`,
                 border: "1px solid rgba(0,100,220,0.35)",
@@ -184,13 +227,13 @@ export function EurostarHub({
             </motion.button>
 
             {/* ── Regular action grid ── */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="es-density-list grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               {ACTIONS.map(action => (
                 <motion.button
                   key={action.label}
                   type="button"
                   onClick={() => handleAction(action.query)}
-                  className="flex flex-col gap-2 p-4 rounded-xl text-left"
+                  className="es-density-card flex flex-col gap-2 p-4 rounded-lg text-left"
                   style={{
                     background: "rgba(255,255,255,0.04)",
                     border: "1px solid rgba(255,255,255,0.07)",

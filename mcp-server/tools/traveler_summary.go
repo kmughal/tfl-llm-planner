@@ -24,7 +24,8 @@ Use this when the user asks about: how busy a train is, passenger numbers, occup
 service class breakdown, traveler statistics, or demographic split for Eurostar services.
 Data is cached per calendar day; subsequent requests for the same date use the cache.
 Defaults to today if no date is given.
-Combine with get_euromap_plans for full schedule + load data on the same service.`),
+Use this tool directly for passenger/load questions. Only combine it with a timetable tool when the user also explicitly asks for schedule or stop information.
+Do not use for crew assignments or general service status.`),
 		mcp.WithString("travelDate",
 			mcp.Description("Travel date in YYYY-MM-DD format, e.g. '2025-10-15'. Defaults to today."),
 		),
@@ -72,7 +73,7 @@ func HandleGetTravelerSummary(client *traveler.Client) func(context.Context, mcp
 // ── Formatter ─────────────────────────────────────────────────────────────────
 
 const travelerClassOrder = "standard,comfort,premium"
-const travelerTypeOrder  = "normal,kid,senior,youth,pmr,vip,group"
+const travelerTypeOrder = "normal,kid,senior,youth,pmr,vip,group"
 
 func formatTravelerSummary(date string, data traveler.Response) string {
 	var sb strings.Builder
@@ -83,7 +84,7 @@ func formatTravelerSummary(date string, data traveler.Response) string {
 
 	for _, svc := range data {
 		classCounts := map[string]int{}
-		typeCounts  := map[string]int{}
+		typeCounts := map[string]int{}
 		origin, destination := "", ""
 
 		for _, route := range svc.Routes {

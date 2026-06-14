@@ -61,13 +61,13 @@ export function ChatMeshGradient({ theme }: { readonly theme: NetworkTheme }) {
 
   return (
     <div
-      className="absolute inset-0 overflow-hidden pointer-events-none"
+      className="app-chat-mesh absolute inset-0 overflow-hidden pointer-events-none"
       style={{ background: cfg.bg, transition: "background 2s ease-in-out" }}
     >
       <AnimatePresence mode="sync">
         <motion.div
           key={key}
-          className="absolute inset-0"
+          className="app-chat-mesh-orbs absolute inset-0"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -87,7 +87,7 @@ export function ChatMeshGradient({ theme }: { readonly theme: NetworkTheme }) {
 
       {/* Depth vignette */}
       <div
-        className="absolute inset-0"
+        className="app-chat-vignette absolute inset-0"
         style={{
           background:
             "radial-gradient(ellipse 85% 80% at 50% 50%, transparent 30%, rgba(2,6,16,0.65) 100%)",

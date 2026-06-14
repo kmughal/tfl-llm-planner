@@ -56,6 +56,7 @@ const TOOL_NETWORKS = [
       { name: "get_sncf_departures",    desc: "Departures from a given station" },
       { name: "get_sncf_arrivals",      desc: "Arrivals at a given station" },
       { name: "get_sncf_train",         desc: "Track a specific train by number" },
+      { name: "get_sncf_dashboard",     desc: "Major hubs, departures and national incidents" },
     ],
   },
   {

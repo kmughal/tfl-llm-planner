@@ -24,10 +24,10 @@ func GetCrewActivitiesTool() mcp.Tool {
 		mcp.WithDescription(`Fetch Eurostar crew (train drivers and staff) assigned to services on a given date.
 Automatically enriches results with crew member names and contact details.
 
-ALWAYS call this tool alongside any get_euromap_plans / get_euromap_plan_by_id call so that
-driver information is shown next to every Eurostar train result.
+Use only when the user explicitly asks about crew, drivers, train managers, duty assignments, or a roster.
+Do not use for ordinary timetable, route, dashboard, map, disruption, or single-service status questions.
 
-Also call when the user asks:
+Use when the user asks:
   - "who is driving train [number] today / on [date]?"
   - "which drivers are on duty on [date]?"
   - "show me the crew for Eurostar services on [date]"
@@ -87,7 +87,7 @@ func HandleGetCrewActivities(client *sotenabler.Client) func(context.Context, mc
 		if serviceFilter != "" {
 			var filtered []sotenabler.Activity
 			for _, a := range activities {
-				if a.ServiceCode == serviceFilter {
+				if normalizeLiveMapServiceCode(a.ServiceCode) == normalizeLiveMapServiceCode(serviceFilter) {
 					filtered = append(filtered, a)
 				}
 			}

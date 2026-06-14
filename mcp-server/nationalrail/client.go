@@ -3,30 +3,26 @@ package nationalrail
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 )
 
 const baseURL = "https://huxley2.azurewebsites.net"
 
-// Known CRS codes for Eurostar connection stations.
 var KnownStations = map[string]string{
-	"london st pancras":       "STP",
-	"st pancras":              "STP",
-	"kings cross":             "KGX",
-	"king's cross":            "KGX",
-	"london kings cross":      "KGX",
-	"london bridge":           "LBG",
-	"london waterloo":         "WAT",
-	"london victoria":         "VIC",
-	"london paddington":       "PAD",
-	"london euston":           "EUS",
-	"ashford international":   "AFK",
-	"ashford":                 "AFK",
-	"ebbsfleet international": "EBD",
-	"ebbsfleet":               "EBD",
-	"stratford international": "SFA",
+	"london st pancras": "STP", "st pancras": "STP", "st pancras international": "STP",
+	"kings cross": "KGX", "king's cross": "KGX", "london kings cross": "KGX", "london king's cross": "KGX",
+	"london bridge": "LBG", "waterloo": "WAT", "london waterloo": "WAT", "victoria": "VIC", "london victoria": "VIC",
+	"paddington": "PAD", "london paddington": "PAD", "euston": "EUS", "london euston": "EUS",
+	"ashford international": "AFK", "ashford": "AFK", "ebbsfleet international": "EBD", "ebbsfleet": "EBD",
+	"stratford international": "SFA", "stratford": "SRA", "liverpool street": "LST", "london liverpool street": "LST",
+	"birmingham new street": "BHM", "manchester piccadilly": "MAN", "leeds": "LDS", "york": "YRK",
+	"newcastle": "NCL", "edinburgh waverley": "EDB", "edinburgh": "EDB", "glasgow central": "GLC",
+	"bristol temple meads": "BRI", "cardiff central": "CDF", "brighton": "BTN", "cambridge": "CBG",
 }
 
 type Client struct {
@@ -35,30 +31,55 @@ type Client struct {
 }
 
 func NewClient(darwinToken string) *Client {
-	return &Client{
-		http:  &http.Client{Timeout: 15 * time.Second},
-		token: darwinToken,
-	}
+	return &Client{http: &http.Client{Timeout: 15 * time.Second}, token: darwinToken}
 }
 
 type DeparturesResponse struct {
-	LocationName  string         `json:"locationName"`
-	CRS           string         `json:"crs"`
-	GeneratedAt   string         `json:"generatedAt"`
-	TrainServices []TrainService `json:"trainServices"`
+	LocationName           string         `json:"locationName"`
+	CRS                    string         `json:"crs"`
+	GeneratedAt            string         `json:"generatedAt"`
+	StationManager         string         `json:"stationManager"`
+	PlatformsAreHidden     bool           `json:"platformsAreHidden"`
+	ServicesAreUnavailable bool           `json:"servicesAreUnavailable"`
+	NRCCMessages           []NRCCMessage  `json:"nrccMessages"`
+	TrainServices          []TrainService `json:"trainServices"`
 }
 
-// TrainService uses full datetime strings as returned by /staffdepartures.
-// std/etd format: "2026-05-16T14:31:00" — zero datetime "0001-01-01T00:00:00" means not specified.
+type NRCCMessage struct {
+	XHTMLMessage string `json:"xhtmlMessage"`
+}
+
 type TrainService struct {
-	STD          string        `json:"std"`
-	ETD          string        `json:"etd"`
-	ETDSpecified bool          `json:"etdSpecified"`
-	Platform     string        `json:"platform"`
-	Operator     string        `json:"operator"`
-	OperatorCode string        `json:"operatorCode"`
-	Destination  []Destination `json:"destination"`
-	IsCancelled  bool          `json:"isCancelled"`
+	STA                 string        `json:"sta"`
+	STASpecified        bool          `json:"staSpecified"`
+	ETA                 string        `json:"eta"`
+	ETASpecified        bool          `json:"etaSpecified"`
+	ATA                 string        `json:"ata"`
+	ATASpecified        bool          `json:"ataSpecified"`
+	STD                 string        `json:"std"`
+	STDSpecified        bool          `json:"stdSpecified"`
+	ETD                 string        `json:"etd"`
+	ETDSpecified        bool          `json:"etdSpecified"`
+	ATD                 string        `json:"atd"`
+	ATDSpecified        bool          `json:"atdSpecified"`
+	Platform            string        `json:"platform"`
+	PlatformIsHidden    bool          `json:"platformIsHidden"`
+	ServiceIsSuppressed bool          `json:"serviceIsSupressed"`
+	Operator            string        `json:"operator"`
+	OperatorCode        string        `json:"operatorCode"`
+	Origin              []Destination `json:"origin"`
+	Destination         []Destination `json:"destination"`
+	IsCancelled         bool          `json:"isCancelled"`
+	TrainID             string        `json:"trainid"`
+	UID                 string        `json:"uid"`
+	RID                 string        `json:"rid"`
+	Length              int           `json:"length"`
+	CancelReason        *Reason       `json:"cancelReason"`
+	DelayReason         *Reason       `json:"delayReason"`
+}
+
+type Reason struct {
+	Value int `json:"value"`
 }
 
 type Destination struct {
@@ -69,7 +90,6 @@ type Destination struct {
 
 const dtLayout = "2006-01-02T15:04:05"
 
-// FormatHHMM extracts HH:MM from a datetime string like "2026-05-16T14:31:00".
 func FormatHHMM(dt string) string {
 	t, err := time.Parse(dtLayout, dt)
 	if err != nil || t.Year() < 2000 {
@@ -78,10 +98,9 @@ func FormatHHMM(dt string) string {
 	return t.Format("15:04")
 }
 
-// DelayMins returns the delay in minutes between two datetime strings.
-func DelayMins(std, etd string) int {
-	s, err1 := time.Parse(dtLayout, std)
-	e, err2 := time.Parse(dtLayout, etd)
+func DelayMins(scheduled, expected string) int {
+	s, err1 := time.Parse(dtLayout, scheduled)
+	e, err2 := time.Parse(dtLayout, expected)
 	if err1 != nil || err2 != nil || e.Year() < 2000 {
 		return 0
 	}
@@ -93,66 +112,37 @@ func DelayMins(std, etd string) int {
 }
 
 func (c *Client) GetDepartures(crs string, count int) (*DeparturesResponse, error) {
-	// /staffdepartures works; /departures returns HTTP 500 on the public instance.
-	// Huxley2's public instance uses its own Darwin token internally — external tokens
-	// via query param are not supported, so we use anonymous access.
-	_ = c.token // reserved for a future direct SOAP implementation
-	u := fmt.Sprintf("%s/staffdepartures/%s/%d", baseURL, crs, count)
+	return c.getBoard("staffdepartures", crs, count)
+}
+
+func (c *Client) GetArrivals(crs string, count int) (*DeparturesResponse, error) {
+	return c.getBoard("staffarrivals", crs, count)
+}
+
+func (c *Client) getBoard(kind, crs string, count int) (*DeparturesResponse, error) {
+	_ = c.token // The public Huxley2 instance supplies its Darwin credentials internally.
+	u := fmt.Sprintf("%s/%s/%s/%d", baseURL, kind, strings.ToUpper(crs), count)
 	resp, err := c.http.Get(u)
 	if err != nil {
-		return nil, fmt.Errorf("national rail departures: %w", err)
+		return nil, fmt.Errorf("national rail %s: %w", kind, err)
 	}
 	defer resp.Body.Close()
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read body: %w", err)
+		return nil, fmt.Errorf("read national rail response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("huxley2 returned %d", resp.StatusCode)
 	}
-
 	var result DeparturesResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("decode: %w", err)
+		return nil, fmt.Errorf("decode national rail response: %w", err)
 	}
 	return &result, nil
 }
 
-// SampleDepartures returns static demo data shaped like a real response.
-// Used as a fallback when the Huxley2 proxy is unavailable.
-func SampleDepartures(crs string) *DeparturesResponse {
-	today := "2026-05-16"
-	return &DeparturesResponse{
-		LocationName: crs,
-		CRS:          crs,
-		TrainServices: []TrainService{
-			{
-				STD: today + "T15:00:00", ETD: today + "T15:00:00", ETDSpecified: true,
-				Platform: "1", Operator: "Thameslink",
-				Destination: []Destination{{LocationName: "Brighton", CRS: "BTN"}},
-			},
-			{
-				STD: today + "T15:12:00", ETD: today + "T15:17:00", ETDSpecified: true,
-				Platform: "4", Operator: "East Midlands Railway",
-				Destination: []Destination{{LocationName: "Sheffield", CRS: "SHF"}},
-			},
-			{
-				STD: today + "T15:18:00", ETD: today + "T15:18:00", ETDSpecified: true,
-				Platform: "A", Operator: "Thameslink",
-				Destination: []Destination{{LocationName: "Cambridge", CRS: "CBG"}},
-			},
-			{
-				STD: today + "T15:30:00", ETD: today + "T15:30:00", ETDSpecified: true,
-				Platform: "3", Operator: "LNER",
-				Destination: []Destination{{LocationName: "Edinburgh", CRS: "EDB"}},
-			},
-			{
-				STD: today + "T15:45:00", ETD: "0001-01-01T00:00:00", ETDSpecified: false,
-				Platform: "2", Operator: "East Midlands Railway",
-				Destination: []Destination{{LocationName: "Nottingham", CRS: "NOT"}},
-				IsCancelled: true,
-			},
-		},
-	}
+var htmlTag = regexp.MustCompile(`<[^>]*>`)
+
+func PlainMessage(value string) string {
+	return strings.TrimSpace(html.UnescapeString(htmlTag.ReplaceAllString(value, " ")))
 }

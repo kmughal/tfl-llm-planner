@@ -399,9 +399,9 @@ func (c *Client) GetBusArrivals(stopCode, lineID string) (*BusStopArrivals, erro
 			if len(record) >= 4 {
 				var stopN, lineN string
 				var etaMs int64
-				json.Unmarshal(record[1], &stopN)  //nolint:errcheck
-				json.Unmarshal(record[2], &lineN)  //nolint:errcheck
-				json.Unmarshal(record[3], &etaMs)  //nolint:errcheck
+				json.Unmarshal(record[1], &stopN) //nolint:errcheck
+				json.Unmarshal(record[2], &lineN) //nolint:errcheck
+				json.Unmarshal(record[3], &etaMs) //nolint:errcheck
 				if result.StopName == "" && stopN != "" {
 					result.StopName = stopN
 				}

@@ -24,6 +24,10 @@ func (h *MemoryHandler) FlushMemory(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "sessionId required"})
 		return
 	}
+	if !validMemoryKey(sessionID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid sessionId"})
+		return
+	}
 	if err := h.store.Flush(c.Request.Context(), sessionID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

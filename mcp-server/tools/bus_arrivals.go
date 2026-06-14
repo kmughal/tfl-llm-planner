@@ -28,6 +28,8 @@ Use when the user asks:
   - "Bus arrivals at stop 490009264W"
   - "Next 169 at Brisbane Road"
 
+Use this tool only for live/next/due bus predictions. For browsing or listing every bus route, use get_all_bus_lines.
+
 stop_name is a human-readable stop or street name (e.g. "Brisbane Road", "Oxford Circus").
 stop_code is a NaPTAN/ATCO code found on bus stop signs (e.g. "490009264W").
 line_id is the bus route number/letter (e.g. "169", "W3", "N73").

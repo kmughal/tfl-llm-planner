@@ -20,9 +20,11 @@ Use when the user asks about:
   - "What roads does TFL manage?"
   - "Are there any road issues on the TFL network?"
   - "TFL road conditions today"
+	  - "Road status update operated by TFL"
 
 Returns all TFL-managed A-roads with severity: Good, Moderate, Serious, or Severe.
-Do NOT use for tube/rail/bus — use get_line_status for those.`),
+This is the correct tool for broad road status or traffic-condition updates even when no road is named.
+Do NOT use bus tools for road or traffic status. Do NOT use this for tube/rail/bus service status.`),
 	)
 }
 
@@ -62,7 +64,7 @@ a217, a219, a220, a221, a222, a224, a232, a298, a308, a316, a406`),
 
 func HandleGetRoadDisruptions(client *tfl.Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		roadID := strings.ToLower(req.GetString("roadId", ""))
+		roadID := strings.ToLower(strings.Trim(req.GetString("roadId", ""), "[] \"'"))
 		if roadID == "" {
 			return mcp.NewToolResultError("roadId is required (e.g. 'a1')"), nil
 		}

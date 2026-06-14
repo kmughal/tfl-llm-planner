@@ -21,8 +21,8 @@ const tflBase = "https://api.tfl.gov.uk"
 const countdownBase = "https://countdown.api.tfl.gov.uk/interfaces/ura/instant_V1"
 
 type BusLine struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
 	RouteSection string `json:"routeSection,omitempty"` // e.g. "Tottenham Court Road to Canada Water"
 	ServiceType  string `json:"serviceType,omitempty"`  // "Regular", "Night", "Express"
 }
@@ -168,7 +168,7 @@ func GetBusLineArrivals(c *gin.Context) {
 			continue
 		}
 		switch recType {
-		case 0:
+		case 4:
 			if len(record) >= 3 {
 				json.Unmarshal(record[2], &result.ServerTimeMs) //nolint:errcheck
 			}

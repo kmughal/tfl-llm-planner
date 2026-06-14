@@ -22,7 +22,7 @@ func GetLineStatusTool() mcp.Tool {
 		mcp.WithDescription(`Get current service status for one or more TFL (Transport for London) lines.
 Returns severity, description and disruption reason for each queried line.
 
-SCOPE — TFL ONLY. Covers: tube, DLR, Overground, Elizabeth line, tram, bus.
+SCOPE — TFL NAMED RAIL LINES ONLY. Covers: Tube, DLR, Overground, Elizabeth line and tram.
 NEVER use for French trains → use get_sncf_disruptions for SNCF.
 NEVER use for Eurostar → use get_euromap_plans for cross-channel services.
 

@@ -5,16 +5,105 @@
 @layer base {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    background-color: #f5f4f1;
-    background-image: radial-gradient(rgba(26, 25, 21, 0.05) 1px, transparent 1px);
+    background-color: var(--es-bg, #f5f4f1);
+    background-image: radial-gradient(color-mix(in srgb, var(--es-text, #1a1915) 5%, transparent) 1px, transparent 1px);
     background-size: 22px 22px;
-    color: #1a1915;
+    color: var(--es-text, #1a1915);
     font-family: "Inter", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
   ::-webkit-scrollbar { width: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #d4cdc0; border-radius: 3px; }
+}
+
+html[data-app-theme="light"] body { --app-shell: rgba(255,255,255,0.88); --app-shell-border: rgba(15,23,42,0.12); }
+html[data-app-theme="dark"] body { --app-shell: rgba(3,7,18,0.88); --app-shell-border: rgba(255,255,255,0.1); }
+html[data-app-theme="contrast"] body { --app-shell: #000; --app-shell-border: #fff; }
+
+html[data-app-theme="light"] #root > div > header,
+html[data-app-theme="light"] #root > div > footer {
+  background: var(--app-shell) !important;
+  border-color: var(--app-shell-border) !important;
+  color: #101828;
+}
+html[data-app-theme="light"] #root > div > header button,
+html[data-app-theme="light"] #root > div > footer,
+html[data-app-theme="light"] #root > div > footer p { color: #344054 !important; }
+html[data-app-theme="light"] #root > div > header [style*="rgba(255,255,255"] { color: #475467 !important; }
+html[data-app-theme="light"] .app-chat-mesh { background: linear-gradient(160deg, #f8fafc 0%, #eef4fb 55%, #f7f8fa 100%) !important; }
+html[data-app-theme="light"] .app-chat-mesh-orbs { opacity: 0.16 !important; }
+html[data-app-theme="light"] .app-chat-vignette { display: none; }
+html[data-app-theme="light"] .app-network-background { background: rgba(238,244,251,0.72) !important; }
+html[data-app-theme="light"] .app-assistant-bubble {
+  background: rgba(255,255,255,0.9);
+  border: 1px solid #d0d5dd;
+  box-shadow: 0 4px 24px rgba(16,24,40,0.09);
+  color: #101828;
+}
+html[data-app-theme="light"] .app-assistant-speak { color: #667085; }
+html[data-app-theme="light"] .app-landing { background: linear-gradient(160deg, #f8fafc 0%, #eef4fb 52%, #f7f8fa 100%) !important; }
+html[data-app-theme="light"] .app-landing [style*="color: rgba(255,255,255"],
+html[data-app-theme="light"] .app-landing [style*="color: rgba(255, 255, 255"],
+html[data-app-theme="light"] .app-landing [style*="color: white"] { color: #344054 !important; }
+html[data-app-theme="light"] .app-landing button { background: rgba(255,255,255,0.82) !important; border-color: #d0d5dd !important; }
+html[data-app-theme="light"] .app-landing button:hover { background: #fff !important; }
+html[data-app-theme="light"] .app-landing [aria-label="CHANNEX"] span { color: #003366 !important; }
+html[data-app-theme="light"] .app-landing [aria-label="CHANNEX"] span:nth-child(n+5) { color: #9a7200 !important; }
+html[data-app-theme="light"] .app-system-shell > div:first-child { background: #f7f8fa !important; color: #101828 !important; }
+html[data-app-theme="light"] .app-system-shell [style*="background: rgb(6, 11, 18)"],
+html[data-app-theme="light"] .app-system-shell [style*="background: rgb(10, 15, 26)"],
+html[data-app-theme="light"] .app-system-shell [style*="background: rgb(8, 16, 26)"],
+html[data-app-theme="light"] .app-system-shell [style*="background: rgb(13, 17, 23)"],
+html[data-app-theme="light"] .app-system-shell [style*="background: rgba(6, 11, 18"],
+html[data-app-theme="light"] .app-system-shell [style*="background: rgba(0, 0, 0"] { background: #fff !important; }
+html[data-app-theme="light"] .app-system-shell [style*="border-bottom"],
+html[data-app-theme="light"] .app-system-shell [style*="border-top"],
+html[data-app-theme="light"] .app-system-shell [style*="border-right"] { border-color: #d0d5dd !important; }
+html[data-app-theme="light"] .app-system-shell [style*="color: rgb(226, 232, 240)"],
+html[data-app-theme="light"] .app-system-shell [style*="color: rgb(156, 163, 175)"],
+html[data-app-theme="light"] .app-system-shell [style*="color: rgba(255, 255, 255"] { color: #344054 !important; }
+html[data-app-theme="dark"] body,
+html[data-app-theme="contrast"] body { background-color: var(--es-bg); color: var(--es-text); }
+html[data-app-theme="dark"] .app-assistant-bubble {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: 0 4px 32px rgba(0,0,0,0.35);
+  color: rgba(255,255,255,0.92);
+}
+html[data-app-theme="dark"] .app-assistant-speak { color: rgba(255,255,255,0.48); }
+html[data-app-theme="contrast"] *:focus-visible { outline: 3px solid #ffdf00 !important; outline-offset: 2px; }
+html[data-app-theme="contrast"] button,
+html[data-app-theme="contrast"] input,
+html[data-app-theme="contrast"] textarea,
+html[data-app-theme="contrast"] select { border-color: #fff !important; }
+html[data-app-theme="contrast"] #root > div > header,
+html[data-app-theme="contrast"] #root > div > footer { background: #000 !important; border-color: #fff !important; }
+html[data-app-theme="contrast"] .app-chat-mesh,
+html[data-app-theme="contrast"] .app-network-background,
+html[data-app-theme="contrast"] .app-landing { background: #000 !important; }
+html[data-app-theme="contrast"] .app-chat-mesh-orbs { opacity: 0.05 !important; }
+html[data-app-theme="contrast"] .app-assistant-bubble {
+  background: #000;
+  border: 2px solid #fff;
+  box-shadow: none;
+  color: #fff;
+}
+html[data-app-theme="contrast"] .app-assistant-speak { color: #fff; }
+html[data-app-theme="contrast"] .app-landing [style*="color: rgba(255,255,255"],
+html[data-app-theme="contrast"] .app-landing [style*="color: rgba(255, 255, 255"] { color: #fff !important; }
+html[data-app-theme="contrast"] .app-system-shell,
+html[data-app-theme="contrast"] .app-system-shell > div:first-child,
+html[data-app-theme="contrast"] .app-system-shell header,
+html[data-app-theme="contrast"] .app-system-shell footer { background: #000 !important; color: #fff !important; border-color: #fff !important; }
+html.app-compact #root > div > header > div { padding-top: 7px !important; padding-bottom: 7px !important; }
+html.app-compact #root > div > footer { padding-top: 7px !important; padding-bottom: 7px !important; }
+html.app-compact .app-density-section { padding-top: 10px !important; padding-bottom: 10px !important; }
+
+@media (max-width: 720px) {
+  .euromap-map-layout { flex-direction: column; }
+  .euromap-map-canvas { height: 520px !important; }
+  .euromap-live-shell { border-radius: 0 !important; }
 }
 
 /* ── Apple Card liquid mesh gradient ─────────────────────────────────────── */

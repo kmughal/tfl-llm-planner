@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Train, ChevronDown, ChevronUp, Search, X, Users, Phone } from "lucide-react"
 import { cn } from "../lib/utils"
+import { EurostarDisplayMenu, EurostarDisplayStyles, eurostarDisplayClass, useEurostarDisplay } from "./EurostarDisplay"
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080"
 
@@ -79,7 +80,8 @@ function parseDashboard(raw: string): DashboardData | null {
           ? { code: s, time: "" }
           : { code: s.slice(0, colonIdx), time: s.slice(colonIdx + 1) }
       })
-    services.push({ serviceCode, status, dep, arr, origin, dest, stops })
+    const normalizedStatus = /delete|cancel/i.test(status) ? "cancelled" : status
+    services.push({ serviceCode, status: normalizedStatus, dep, arr, origin, dest, stops })
   }
 
   return { summary, services }
@@ -567,6 +569,7 @@ function ServiceRow({
 
 // ── Main export ───────────────────────────────────────────────────────────────
 export function EuromapDashboard({ result }: { readonly result: string }) {
+  const { theme, compact } = useEurostarDisplay()
   const [filter, setFilter] = useState<FilterTab>("all")
   const [search, setSearch] = useState("")
   const [highlightActive, setHighlightActive] = useState(true)
@@ -628,8 +631,9 @@ export function EuromapDashboard({ result }: { readonly result: string }) {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
-      className="w-full rounded-2xl overflow-hidden border border-gray-100 shadow-lg"
+      className={`${eurostarDisplayClass(theme, compact)} es-themed-panel w-full rounded-lg overflow-hidden border border-gray-100 shadow-lg`}
     >
+      <EurostarDisplayStyles />
       {/* Header */}
       <div
         className="px-4 py-4"
@@ -644,6 +648,7 @@ export function EuromapDashboard({ result }: { readonly result: string }) {
           <span className="ml-auto text-[11px] bg-white/15 text-white/90 px-2 py-0.5 rounded-full font-mono border border-white/10">
             {summary.date}
           </span>
+          <EurostarDisplayMenu inverted />
         </div>
         <div className="flex gap-2 flex-wrap">
           <StatTile label="Total"     value={summary.total}     textColor="#fff"     bgColor="rgba(255,255,255,0.12)" />
@@ -743,7 +748,7 @@ export function EuromapDashboard({ result }: { readonly result: string }) {
       </div>
 
       {/* Service list */}
-      <div ref={listRef} className="bg-gray-50 flex flex-col gap-1.5 p-2.5 max-h-[520px] overflow-y-auto">
+      <div ref={listRef} className="es-density-list bg-gray-50 flex flex-col gap-1.5 p-2.5 max-h-[520px] overflow-y-auto">
         {filtered.length === 0 ? (
           <div className="text-center text-sm text-gray-400 py-10">
             {q ? `No results for "${search}"` : "No services"}

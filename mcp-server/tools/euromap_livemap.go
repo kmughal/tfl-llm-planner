@@ -9,6 +9,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"tfl-mcp-server/euromap"
+	"tfl-mcp-server/sotenabler"
 )
 
 func GetEuromapLiveMapTool() mcp.Tool {
@@ -26,7 +27,8 @@ Trigger phrases (map intent required):
   - "where are the trains" / "where is train X"
   - "plot trains on a map"
 
-Returns LIVEMAP_START/LIVEMAP_SERVICE/LIVEMAP_END blocks the frontend renders as an animated map.`),
+This tool already enriches mapped services with matching Start-on-Time crew assignments. Do not call get_crew_activities separately for the same map request.
+Returns LIVEMAP_START/LIVEMAP_SERVICE/LIVEMAP_END blocks the frontend renders as a large animated operating map.`),
 		mcp.WithString("fromDateTime",
 			mcp.Description("Start date/time in ISO8601 format, e.g. '2025-05-12T00:00:00Z'. Omit to use today."),
 		),
@@ -36,7 +38,7 @@ Returns LIVEMAP_START/LIVEMAP_SERVICE/LIVEMAP_END blocks the frontend renders as
 	)
 }
 
-func HandleGetEuromapLiveMap(client *euromap.Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func HandleGetEuromapLiveMap(client *euromap.Client, sotClient *sotenabler.Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		fromDateTime := req.GetString("fromDateTime", "")
 		if fromDateTime == "" {
@@ -67,9 +69,65 @@ func HandleGetEuromapLiveMap(client *euromap.Client) func(context.Context, mcp.C
 		// The commercial Plan.Station.Latitude/Longitude fields are strings and
 		// are often empty; technical PassagePoint.Place has reliable float64 values.
 		coordsByCode := buildCoordMap(techPlans)
+		crewByService := loadLiveMapCrew(sotClient, fmtISODate(fromDateTime))
 
-		return mcp.NewToolResultText(formatLiveMap(fromDateTime, plans, techByCode, coordsByCode)), nil
+		return mcp.NewToolResultText(formatLiveMap(fromDateTime, plans, techByCode, coordsByCode, crewByService)), nil
 	}
+}
+
+type liveMapCrew struct {
+	Role  string
+	ID    string
+	Name  string
+	Depot string
+}
+
+func loadLiveMapCrew(client *sotenabler.Client, date string) map[string][]liveMapCrew {
+	result := make(map[string][]liveMapCrew)
+	activities, err := client.GetActivities(date)
+	if err != nil || len(activities) == 0 {
+		return result
+	}
+	ids := make([]string, 0, len(activities))
+	seen := map[string]bool{}
+	for _, activity := range activities {
+		if activity.CrewID != "" && !seen[activity.CrewID] {
+			seen[activity.CrewID] = true
+			ids = append(ids, activity.CrewID)
+		}
+	}
+	agents, _ := client.GetAgents(ids)
+	agentByID := make(map[string]sotenabler.Agent, len(agents))
+	for _, agent := range agents {
+		agentByID[agent.EmployeeID] = agent
+	}
+	for _, activity := range activities {
+		key := normalizeLiveMapServiceCode(activity.ServiceCode)
+		if key == "" {
+			continue
+		}
+		agent := agentByID[activity.CrewID]
+		name := strings.TrimSpace(agent.FirstName + " " + agent.LastName)
+		if name == "" {
+			name = activity.CrewID
+		}
+		result[key] = append(result[key], liveMapCrew{Role: activity.CrewType, ID: activity.CrewID, Name: name, Depot: agent.HomeDepot})
+	}
+	return result
+}
+
+func normalizeLiveMapServiceCode(value string) string {
+	var digits strings.Builder
+	for _, r := range value {
+		if r >= '0' && r <= '9' {
+			digits.WriteRune(r)
+		}
+	}
+	value = strings.TrimLeft(digits.String(), "0")
+	if len(value) > 4 {
+		value = value[len(value)-4:]
+	}
+	return value
 }
 
 // buildCoordMap collects one reliable lat/lon per station short-code from all
@@ -131,6 +189,7 @@ func formatLiveMap(
 	plans euromap.PlansResponse,
 	techByCode map[string]*euromap.TechnicalPlan,
 	coordsByCode map[string][2]float64,
+	crewByService map[string][]liveMapCrew,
 ) string {
 	sorted := make(euromap.PlansResponse, len(plans))
 	copy(sorted, plans)
@@ -161,13 +220,25 @@ func formatLiveMap(
 		tp := techByCode[p.ServiceCode]
 		stops := liveMapStops(p, tp, coordsByCode)
 
-		fmt.Fprintf(&sb, "LIVEMAP_SERVICE:%s|%s|%s|%s|%d|%s|%s|%s\n",
-			p.ServiceCode, p.Status, direction, rame, coaches, dep, arr, stops)
+		crew := formatLiveMapCrew(crewByService[normalizeLiveMapServiceCode(p.ServiceCode)])
+		fmt.Fprintf(&sb, "LIVEMAP_SERVICE:%s|%s|%s|%s|%d|%s|%s|%s|%s\n",
+			p.ServiceCode, p.Status, direction, rame, coaches, dep, arr, stops, crew)
 	}
 
 	fmt.Fprintln(&sb, "LIVEMAP_END")
 	fmt.Fprintf(&sb, "\nHINT: The frontend renders LIVEMAP blocks as an interactive animated map with real-time train positions. Reply with 1–2 sentences only: date, total services, active/cancelled count. Do NOT describe or list individual trains.")
 	return sb.String()
+}
+
+func formatLiveMapCrew(crew []liveMapCrew) string {
+	parts := make([]string, 0, len(crew))
+	clean := func(value string) string {
+		return strings.NewReplacer("|", " ", ";", " ", ",", " ", "~", " ").Replace(strings.TrimSpace(value))
+	}
+	for _, member := range crew {
+		parts = append(parts, strings.Join([]string{clean(member.Role), clean(member.ID), clean(member.Name), clean(member.Depot)}, "~"))
+	}
+	return strings.Join(parts, ";")
 }
 
 // extractRameInfo returns the rame (formation) identifier and coach count.

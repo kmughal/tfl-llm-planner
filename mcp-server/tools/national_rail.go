@@ -4,156 +4,249 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"tfl-mcp-server/nationalrail"
 )
 
 func GetNationalRailDeparturesTool() mcp.Tool {
-	return mcp.NewTool(
-		"get_national_rail_departures",
-		mcp.WithDescription(`Show live UK National Rail departures from a station.
+	return mcp.NewTool("get_national_rail_departures",
+		mcp.WithDescription(`Live UK National Rail departure board for one station. Use for departures, next trains, platforms, delays, cancellations, or trains from a UK mainline station. This is not a journey planner. Use the optional destination filter when the user asks for trains to a particular place.`),
+		mcp.WithString("station", mcp.Required(), mcp.Description("Origin station name or three-letter CRS code, for example King's Cross, KGX, Leeds or LDS")),
+		mcp.WithString("destination", mcp.Description("Optional destination station name or CRS code used to filter the live board")),
+		mcp.WithNumber("count", mcp.Description("Maximum services to return, default 10 and maximum 20")),
+	)
+}
 
-Returns the next trains including scheduled time, estimated time, delay, operator, destination and platform.
+func GetNationalRailArrivalsTool() mcp.Tool {
+	return mcp.NewTool("get_national_rail_arrivals",
+		mcp.WithDescription(`Live UK National Rail arrivals board for one station. Use for arrivals, incoming trains, expected arrival times, or trains arriving from a particular origin. Do not use the departures tool for an arrivals request.`),
+		mcp.WithString("station", mcp.Required(), mcp.Description("Destination station name or three-letter CRS code, for example King's Cross or KGX")),
+		mcp.WithString("origin", mcp.Description("Optional origin station name or CRS code used to filter the live board")),
+		mcp.WithNumber("count", mcp.Description("Maximum services to return, default 10 and maximum 20")),
+	)
+}
 
-Use this tool when the user asks:
-  - "Trains from St Pancras" / "Trains from King's Cross" / "Departures from King's Cross"
-  - "Trains from Ebbsfleet after my Eurostar arrives"
-  - "Connecting trains from Ashford International after my Eurostar"
-  - "What's running from [UK station] right now?"
-  - "Is the train to Sheffield on time?"
-  - "Live arrivals from King's Cross to Leeds" — use station="King's Cross" (the FROM station)
-  - "Trains from [UK station] to [UK city]" — use the FROM station, show all departures
-
-THIS IS THE ONLY NATIONAL RAIL TOOL. There is no "plan_national_rail" tool.
-When user says "[station] to [city]" with National Rail/train context, call this tool
-with the FROM station and let the user find their destination in the results.
-
-Supported stations — pass the EXACT name or CRS code:
-  - "St Pancras" or "STP"            — London St Pancras (Eurostar + Thameslink + East Midlands)
-  - "King's Cross" or "KGX"          — LNER, Thameslink, Hull Trains (Leeds, Edinburgh, Newcastle)
-  - "Ebbsfleet" or "EBD"             — Ebbsfleet International (Eurostar stop, Kent)
-  - "Ashford International" or "AFK" — Ashford International (Eurostar stop, Kent)
-  - "London Bridge" / "LBG", "Victoria" / "VIC", "Waterloo" / "WAT", "Paddington" / "PAD", "Euston" / "EUS"
-
-IMPORTANT: Ebbsfleet (EBD) and Ashford International (AFK) are two completely different stations.
-  - User says "Ebbsfleet" → station="Ebbsfleet" or "EBD"
-  - User says "Ashford"   → station="Ashford International" or "AFK"
-  - Never substitute one for the other.
-
-Hints:
-  - For passengers arriving at St Pancras on Eurostar, use station='STP' to show onward connections.
-  - 'count' defaults to 10.`),
-		mcp.WithString("station",
-			mcp.Required(),
-			mcp.Description("Station name or 3-letter CRS code, e.g. 'St Pancras', 'STP', 'King\\'s Cross', 'KGX', 'Ashford International'"),
-		),
-		mcp.WithNumber("count",
-			mcp.Description("Number of departures to return (default 10, max 20)"),
-		),
+func GetNationalRailDashboardTool() mcp.Tool {
+	return mcp.NewTool("get_national_rail_dashboard",
+		mcp.WithDescription(`Aggregated live National Rail operating picture across major London terminals. Use for a National Rail dashboard, network overview, mainline operating picture, major hubs, widespread delays, or station alerts. For one station use the departures or arrivals tool instead.`),
+		mcp.WithNumber("count", mcp.Description("Services per hub, default 6 and maximum 10")),
 	)
 }
 
 func HandleGetNationalRailDepartures(client *nationalrail.Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return handleNationalRailBoard(client, "departures")
+}
+
+func HandleGetNationalRailArrivals(client *nationalrail.Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return handleNationalRailBoard(client, "arrivals")
+}
+
+func handleNationalRailBoard(client *nationalrail.Client, kind string) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		station := nrStation(req)
+		station := nrArgument(req, "station", "at", "from", "origin", "crs", "location")
+		if kind == "arrivals" {
+			station = nrArgument(req, "station", "at", "to", "destination", "crs", "location")
+		}
 		if station == "" {
-			return mcp.NewToolResultError("'station' is required — pass the UK station name, e.g. station=\"King's Cross\""), nil
+			return mcp.NewToolResultError("'station' is required; pass a UK station name or CRS code"), nil
 		}
-		count := int(req.GetFloat("count", 10))
-		if count < 1 {
-			count = 10
-		}
-		if count > 20 {
-			count = 20
-		}
-
+		count := nrCount(req, 10, 20)
 		crs := resolveCRS(station)
-		result, err := client.GetDepartures(crs, count)
+		var result *nationalrail.DeparturesResponse
+		var err error
+		filter := ""
+		if kind == "arrivals" {
+			result, err = client.GetArrivals(crs, count)
+			filter = nrArgument(req, "origin", "from")
+		} else {
+			result, err = client.GetDepartures(crs, count)
+			filter = nrArgument(req, "destination", "to")
+		}
 		if err != nil {
-			// Huxley2 is a free public proxy and occasionally goes down.
-			// Return sample data so the UI still renders the departure board.
-			sample := nationalrail.SampleDepartures(crs)
-			return mcp.NewToolResultText(
-				"[SAMPLE DATA — live feed temporarily unavailable]\n" + formatNRDepartures(sample),
-			), nil
+			return mcp.NewToolResultError(fmt.Sprintf("National Rail live feed error: %v", err)), nil
 		}
-
-		if result.TrainServices == nil || len(result.TrainServices) == 0 {
-			return mcp.NewToolResultText(fmt.Sprintf("No departures found at %s (%s).", result.LocationName, crs)), nil
-		}
-
-		return mcp.NewToolResultText(formatNRDepartures(result)), nil
+		services := filterNRServices(result.TrainServices, kind, filter)
+		return mcp.NewToolResultText(formatNRBoard(result, kind, filter, services)), nil
 	}
 }
 
-func resolveCRS(input string) string {
-	upper := strings.ToUpper(strings.TrimSpace(input))
-	// Already a valid 3-letter CRS code (all uppercase letters)
-	if len(upper) == 3 && upper == input {
-		return upper
-	}
-	lower := strings.ToLower(strings.TrimSpace(input))
-	if code, ok := nationalrail.KnownStations[lower]; ok {
-		return code
-	}
-	// Fall back: Huxley2 accepts CRS codes case-insensitively
-	return upper
+var nrDashboardHubs = []struct{ name, crs string }{
+	{"London King's Cross", "KGX"}, {"London St Pancras", "STP"}, {"London Euston", "EUS"},
+	{"London Paddington", "PAD"}, {"London Waterloo", "WAT"}, {"London Victoria", "VIC"},
 }
 
-func formatNRDepartures(r *nationalrail.DeparturesResponse) string {
+func HandleGetNationalRailDashboard(client *nationalrail.Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		count := nrCount(req, 6, 10)
+		type hubResult struct {
+			name, crs string
+			board     *nationalrail.DeparturesResponse
+			err       error
+		}
+		results := make([]hubResult, len(nrDashboardHubs))
+		var wg sync.WaitGroup
+		for i, hub := range nrDashboardHubs {
+			wg.Add(1)
+			go func(index int, name, crs string) {
+				defer wg.Done()
+				board, err := client.GetDepartures(crs, count)
+				results[index] = hubResult{name: name, crs: crs, board: board, err: err}
+			}(i, hub.name, hub.crs)
+		}
+		wg.Wait()
+
+		var sb strings.Builder
+		total := 0
+		for _, result := range results {
+			if result.board != nil {
+				total += len(result.board.TrainServices)
+			}
+		}
+		fmt.Fprintf(&sb, "NRAIL_DASHBOARD_START:%s|%d|%d\n", time.Now().UTC().Format(time.RFC3339), len(results), total)
+		for _, result := range results {
+			if result.err != nil || result.board == nil {
+				fmt.Fprintf(&sb, "NRAIL_HUB:%s|%s|0|0|0|unavailable\n", nrSanitise(result.name), result.crs)
+				continue
+			}
+			delayed, cancelled := 0, 0
+			for _, service := range result.board.TrainServices {
+				_, _, delay, status := nrTiming(service, "departures")
+				if delay > 0 {
+					delayed++
+				}
+				if status == "cancelled" {
+					cancelled++
+				}
+			}
+			fmt.Fprintf(&sb, "NRAIL_HUB:%s|%s|%d|%d|%d|live\n", nrSanitise(result.board.LocationName), result.crs, len(result.board.TrainServices), delayed, cancelled)
+			for _, service := range result.board.TrainServices {
+				scheduled, expected, delay, status := nrTiming(service, "departures")
+				place, _ := nrPlace(service.Destination)
+				fmt.Fprintf(&sb, "NRAIL_DASH_SERVICE:%s|%s|%s|%d|%s|%s|%s|%s|%s\n", result.crs, scheduled, expected, delay, nrSanitise(service.Operator), nrSanitise(place), nrPlatform(service), status, nrSanitise(service.TrainID))
+			}
+			for _, notice := range result.board.NRCCMessages {
+				fmt.Fprintf(&sb, "NRAIL_ALERT:%s|%s\n", result.crs, nrSanitise(nationalrail.PlainMessage(notice.XHTMLMessage)))
+			}
+		}
+		fmt.Fprintln(&sb, "NRAIL_DASHBOARD_END")
+		return mcp.NewToolResultText(sb.String()), nil
+	}
+}
+
+func formatNRBoard(r *nationalrail.DeparturesResponse, kind, filter string, services []nationalrail.TrainService) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "NRAIL_START:%s|%s|%d\n", r.LocationName, r.CRS, len(r.TrainServices))
-
-	for _, svc := range r.TrainServices {
-		dest := ""
-		if len(svc.Destination) > 0 {
-			dest = svc.Destination[0].LocationName
-			if svc.Destination[0].Via != "" {
-				dest += " (via " + svc.Destination[0].Via + ")"
-			}
-		}
-
-		std := nationalrail.FormatHHMM(svc.STD)
-		etdDisplay := "On time"
-		delayMins := 0
-
-		if svc.IsCancelled {
-			etdDisplay = "Cancelled"
-		} else if svc.ETDSpecified {
-			etd := nationalrail.FormatHHMM(svc.ETD)
-			delayMins = nationalrail.DelayMins(svc.STD, svc.ETD)
-			if etd != "" && etd != std {
-				etdDisplay = etd
-			}
-		}
-
-		fmt.Fprintf(&sb, "DEP:%s|%s|%d|%s|%s|%s\n",
-			std,
-			etdDisplay,
-			delayMins,
-			nrSanitise(svc.Operator),
-			nrSanitise(dest),
-			nrSanitise(svc.Platform),
-		)
+	fmt.Fprintf(&sb, "NRAIL_BOARD_START:%s|%s|%s|%s|%d|%s\n", kind, nrSanitise(r.LocationName), r.CRS, r.GeneratedAt, len(services), nrSanitise(filter))
+	for _, notice := range r.NRCCMessages {
+		fmt.Fprintf(&sb, "NRAIL_NOTICE:%s\n", nrSanitise(nationalrail.PlainMessage(notice.XHTMLMessage)))
 	}
-
-	fmt.Fprintln(&sb, "NRAIL_END")
-	fmt.Fprintf(&sb, "\nHINT: Render NRAIL blocks as a departure board. Highlight cancellations in red and delays in amber. Mention platform numbers prominently.")
+	for _, service := range services {
+		scheduled, expected, delay, status := nrTiming(service, kind)
+		locations := service.Destination
+		if kind == "arrivals" {
+			locations = service.Origin
+		}
+		place, placeCRS := nrPlace(locations)
+		reason := ""
+		if service.IsCancelled && service.CancelReason != nil {
+			reason = fmt.Sprintf("Cancellation reason code %d", service.CancelReason.Value)
+		}
+		fmt.Fprintf(&sb, "NRAIL_SERVICE:%s|%s|%d|%s|%s|%s|%s|%s|%s|%s|%s\n", scheduled, expected, delay, nrSanitise(service.Operator), nrSanitise(place), placeCRS, nrPlatform(service), status, nrSanitise(service.TrainID), nrSanitise(service.UID), nrSanitise(reason))
+	}
+	fmt.Fprintln(&sb, "NRAIL_BOARD_END")
 	return sb.String()
 }
 
-// nrStation extracts the station name from common parameter aliases that
-// llama-family models use instead of the canonical "station" key.
-func nrStation(req mcp.CallToolRequest) string {
-	for _, key := range []string{"station", "from", "origin", "crs", "location"} {
-		if v := strings.TrimSpace(req.GetString(key, "")); v != "" {
-			return v
+func nrTiming(service nationalrail.TrainService, kind string) (string, string, int, string) {
+	scheduled, expected := service.STD, service.ETD
+	if kind == "arrivals" {
+		scheduled, expected = service.STA, service.ETA
+	}
+	scheduledText, expectedText := nationalrail.FormatHHMM(scheduled), nationalrail.FormatHHMM(expected)
+	delay := nationalrail.DelayMins(scheduled, expected)
+	status := "on-time"
+	if service.IsCancelled {
+		status = "cancelled"
+	} else if delay > 0 {
+		status = "delayed"
+	} else if expectedText == "" {
+		expectedText = "On time"
+	}
+	return scheduledText, expectedText, delay, status
+}
+
+func nrPlatform(service nationalrail.TrainService) string {
+	if service.PlatformIsHidden || service.Platform == "" {
+		return "TBC"
+	}
+	return nrSanitise(service.Platform)
+}
+
+func nrPlace(values []nationalrail.Destination) (string, string) {
+	if len(values) == 0 {
+		return "", ""
+	}
+	name := values[0].LocationName
+	if values[0].Via != "" {
+		name += " (via " + values[0].Via + ")"
+	}
+	return name, values[0].CRS
+}
+
+func filterNRServices(services []nationalrail.TrainService, kind, filter string) []nationalrail.TrainService {
+	if strings.TrimSpace(filter) == "" {
+		return services
+	}
+	wanted, wantedCRS := strings.ToLower(strings.TrimSpace(filter)), resolveCRS(filter)
+	filtered := make([]nationalrail.TrainService, 0, len(services))
+	for _, service := range services {
+		places := service.Destination
+		if kind == "arrivals" {
+			places = service.Origin
+		}
+		for _, place := range places {
+			if strings.EqualFold(place.CRS, wantedCRS) || strings.Contains(strings.ToLower(place.LocationName), wanted) {
+				filtered = append(filtered, service)
+				break
+			}
+		}
+	}
+	return filtered
+}
+
+func resolveCRS(input string) string {
+	trimmed := strings.TrimSpace(input)
+	lower := strings.ToLower(trimmed)
+	if code, ok := nationalrail.KnownStations[lower]; ok {
+		return code
+	}
+	return strings.ToUpper(trimmed)
+}
+
+func nrArgument(req mcp.CallToolRequest, keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(req.GetString(key, "")); value != "" {
+			return value
 		}
 	}
 	return ""
 }
 
-func nrSanitise(s string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(s, "|", " "), "\n", " ")
+func nrCount(req mcp.CallToolRequest, fallback, maximum int) int {
+	count := int(req.GetFloat("count", float64(fallback)))
+	if count < 1 {
+		return fallback
+	}
+	if count > maximum {
+		return maximum
+	}
+	return count
+}
+
+func nrSanitise(value string) string {
+	value = strings.ReplaceAll(value, "|", " ")
+	value = strings.ReplaceAll(value, "\n", " ")
+	return strings.TrimSpace(value)
 }

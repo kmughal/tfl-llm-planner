@@ -525,6 +525,7 @@ export function LandingPage({
 
   return (
     <div
+      className="app-landing"
       style={{
         minHeight: "100%",
         background: "linear-gradient(160deg, #080e1a 0%, #0c1628 50%, #07111f 100%)",
