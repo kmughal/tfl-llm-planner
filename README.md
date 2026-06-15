@@ -1,313 +1,210 @@
-# TFL + SNCF Journey Planner — AI Assistant
+# Channex
 
-> Ask in plain English. Get real transport data for London and France.  
-> **100% free to run.** No cloud LLM bills.
+Agentic rail and transport operations cockpit for Eurostar, TfL, SNCF, National Rail, Paris Metro, buses, roads, crew, weather, and live network dashboards.
 
+![Channex landing](docs/screenshots/landing.jpg)
+
+![National Rail dashboard](docs/screenshots/national-rail-dashboard.jpg)
+
+![TfL road status tool result](docs/screenshots/road-status-tool.jpg)
+
+## What It Does
+
+Channex is a local-first transport assistant with a proper operations UI, not just a chat box.
+
+- It uses a local LLM through Ollama.
+- It exposes real transport tools through an MCP server.
+- The Go backend runs the tool loop, streams responses, and keeps short-lived session memory.
+- The frontend renders live tool responses as rich cards, maps, boards, and command centers.
+
+You can ask things like:
+
+```text
+Show live map of all Eurostar trains
+Last Eurostar from Paris tonight
+Road status update operated by TfL
+Arrivals at London Euston
+SNCF departures from Lyon Part-Dieu
+How busy is service 9005 today?
 ```
-"Fastest route from Paddington to Canary Wharf at 8:30am?"
-"Is the Central line running normally right now?"
-"Plan a train journey from Paris to Lyon tomorrow morning."
-"Are there any disruptions on the SNCF network?"
-```
 
----
+## Networks
 
-## What this is
+- Eurostar: Euromap commercial plans, technical plans, live map, passenger loads, crew overlays
+- TfL: journeys, line status, mode status, roads, road disruptions, bus arrivals, bus network
+- SNCF: journeys, departures, arrivals, disruptions, train lookup, national dashboard
+- National Rail: departures, arrivals, major London terminal dashboard
+- Paris Metro / RER: departures for key Paris interchanges
+- Shared context: weather and session memory
 
-A conversational transport assistant that combines:
+## Highlights
 
-- **Real TFL data** — live journey planning, line status, stop search across London
-- **Real SNCF data** — French rail journey planning, station search, disruptions, departures
-- **Local LLM** — Ollama runs on your machine, zero cost, no rate limits
-- **MCP (Model Context Protocol)** — the LLM decides which tools to call and when
-- **Streaming UI** — tokens stream as the model thinks, tool calls show in real time
-
----
+- Real MCP tool calling with deterministic Go-side tool routing
+- Dedicated dashboards for Eurostar, TfL, SNCF, and National Rail
+- Rich frontend cards for departures, arrivals, disruptions, maps, and operating pictures
+- Light, dark, high-contrast, and compact display modes across the app
+- Session memory with backend-enforced expiry and server-side flush
+- Local LLM workflow, so you can run the whole stack without API billing for the model layer
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Browser :3000                        │
-│              React + Tailwind (rich transport UI)           │
-└───────────────────────┬─────────────────────────────────────┘
-                        │  POST /api/chat  (SSE stream)
-┌───────────────────────▼─────────────────────────────────────┐
-│                    Go Backend :8080                         │
-│                                                             │
-│   1. Receives user message                                  │
-│   2. Sends to Ollama with MCP tool definitions              │
-│   3. Executes tool calls → MCP server                       │
-│   4. Loops until LLM produces final text answer             │
-│   5. Streams tokens + tool events back via SSE              │
-└──────────┬────────────────────────────┬─────────────────────┘
-           │  OpenAI-compatible API     │  SSE MCP client
-┌──────────▼──────────┐      ┌──────────▼─────────────────────┐
-│   Ollama :11434     │      │     Go MCP Server :8081        │
-│                     │      │                                │
-│  llama3.2 (local)   │      │  TFL tools:                    │
-│  runs on your GPU   │      │  • plan_journey                │
-│  or CPU, free       │      │  • get_line_status             │
-└─────────────────────┘      │  • get_status_by_mode          │
-                             │  • search_stops                │
-                             │                                │
-                             │  SNCF tools:                   │
-                             │  • plan_sncf_journey           │
-                             │  • search_sncf_stations        │
-                             │  • get_sncf_disruptions        │
-                             └──────────┬─────────────────────┘
-                                        │  HTTPS
-                             ┌──────────▼─────────────────────┐
-                             │     api.tfl.gov.uk (free)      │
-                             │  /Journey/JourneyResults       │
-                             │  /Line/{ids}/Status            │
-                             │  /StopPoint/Search             │
-                             └────────────────────────────────┘
-                             ┌──────────▼─────────────────────┐
-                             │  api.sncf.com/v1/coverage/sncf │
-                             │  /places                       │
-                             │  /journeys                     │
-                             │  /disruptions                  │
-                             │  /stop_areas/{id}/departures   │
-                             └────────────────────────────────┘
+```text
+Browser UI (React + Vite)
+  -> streams chat, dashboards, and tool cards
+
+Go backend (:8080)
+  -> receives the user message
+  -> selects the relevant tool family
+  -> asks the local LLM for tool calls
+  -> executes tools through MCP
+  -> streams tokens + tool events back to the browser
+  -> stores short-lived session memory
+
+Go MCP server (:8081)
+  -> exposes transport tools for TfL, Eurostar, SNCF, National Rail, RATP, crew, weather
+
+Ollama
+  -> local model runtime
+
+External data
+  -> TfL
+  -> SNCF / Navitia
+  -> Eurostar internal-style feeds configured through env
+  -> Huxley2 / Darwin-backed National Rail boards
 ```
 
----
+## Screens To Show Off
+
+- Landing experience with quick prompts and live network identity
+- National Rail command center with terminal pulse, notices, and next movements
+- TfL road-status tool response rendered directly in chat
+
+The screenshots used in this README live in [docs/screenshots](/Users/khurramshahzad/Documents/code/prac/tfl-llm-sample/docs/screenshots).
 
 ## Stack
 
-| Layer | Tech | Cost |
-|---|---|---|
-| Frontend | React 19 + TypeScript + Vite | Free |
-| Styling | Tailwind CSS + framer-motion | Free |
-| Backend API | Go + Gin | Free |
-| LLM | Ollama (`llama3.2`) | Free — runs locally |
-| MCP | `mark3labs/mcp-go` | Free |
-| London data | TFL Open API | Free |
-| French rail data | SNCF Navitia API | Free with registration |
+| Layer | Tech |
+|---|---|
+| Frontend | React 19, TypeScript, Vite, Tailwind, Framer Motion, Leaflet |
+| Backend | Go, Gin |
+| MCP | `mark3labs/mcp-go` |
+| Local model | Ollama |
+| Data sources | TfL, SNCF/Navitia, Eurostar-related APIs, Huxley2/National Rail, RATP |
 
----
+## Quick Start
 
-## Prerequisites
+### 1. Install prerequisites
 
-- [Go 1.22+](https://go.dev/dl/)
-- [Node.js 18+](https://nodejs.org/)
-- [Ollama](https://ollama.com/)
-- SNCF API key — register free at [numerique.sncf.com/startup/api](https://numerique.sncf.com/startup/api)
+- Go
+- Node.js
+- Ollama
 
----
-
-## Quick start
-
-### 1 — Install Ollama and pull the model
+Pull a local model:
 
 ```bash
-brew install ollama        # macOS
-# or: curl -fsSL https://ollama.com/install.sh | sh
-
-ollama serve               # keep this running
-ollama pull llama3.2       # ~2 GB, one-time download
+ollama serve
+ollama pull llama3.2
 ```
 
-### 2 — Configure API keys
+### 2. Configure `.env`
 
-Create a `.env` file in the project root:
+Project root:
 
 ```bash
-# .env
-TFL_APP_KEY=           # optional — free tier works without one
+TFL_APP_KEY=
 SNCF_API_KEY=your_key_here
+DARWIN_TOKEN=
+EUROMAP_CLIENT_ID=
+EUROMAP_CLIENT_SECRET=
+TRAVELER_CLIENT_ID=
+TRAVELER_CONSUMER_ID=
+SOT_CLIENT_ID=
+SOT_CLIENT_SECRET=
 ```
 
-> **TFL** — register at [api-portal.tfl.gov.uk](https://api-portal.tfl.gov.uk/) for higher rate limits (optional).  
-> **SNCF** — register at [numerique.sncf.com/startup/api](https://numerique.sncf.com/startup/api) to get a free API key.
+Not every feature needs every credential, but the richer Eurostar and crew flows do.
 
-### 3 — Start everything
+### 3. Start the stack
 
 ```bash
 make dev
 ```
 
-This runs the MCP server, backend, and frontend in parallel.  
-Open `http://localhost:3000` and start asking questions.
+That starts:
 
-#### Manual start (alternative)
+- Ollama
+- the MCP server
+- the Go backend
+- the frontend dev server
+
+Open the frontend URL shown by Vite. In this repo it is commonly `http://localhost:3000`.
+
+## Useful Endpoints
+
+- `POST /api/chat`
+- `GET /api/tfl/command-center`
+- `GET /api/sncf/command-center`
+- `GET /api/national-rail/command-center`
+- `GET /api/eurostar/trains`
+- `GET /api/crew/activities`
+- `DELETE /api/memory/:sessionId`
+
+## Memory
+
+Session memory is intentionally short-lived.
+
+- The frontend starts a 10-minute timer after completed turns.
+- The backend also enforces a 10-minute TTL, so memory expires even if the browser never sends the flush request.
+- Memory is stored per session, capped, atomically written, and excluded from the currently active conversation when injected back into the system prompt.
+
+## Tool Selection
+
+Tool selection is not left entirely to the model.
+
+- The backend narrows the tool family first: Eurostar, TfL, SNCF, National Rail, Paris, Weather
+- It then applies intent-specific selectors for each family
+- It normalizes common tool alias mistakes and argument-shape mistakes before execution
+
+That extra routing layer is what keeps prompts like `Road status update operated by TFL` from drifting into unrelated bus tools.
+
+## Project Layout
+
+```text
+backend/
+  handlers/         chat loop, dashboards, routing, memory flush
+  llm/              Ollama-compatible client
+  mcpclient/        MCP SSE client
+  memory/           expiring session memory store
+
+mcp-server/
+  tools/            transport tools exposed to the model
+  tfl/              TfL client
+  sncf/             SNCF client
+  nationalrail/     National Rail client
+  euromap/          Eurostar plans and map data
+  sotenabler/       crew activity integration
+
+frontend/
+  src/components/   rich cards, dashboards, command centers
+  src/hooks/        chat streaming, memory timer, UI state
+
+docs/screenshots/
+  landing.jpg
+  national-rail-dashboard.jpg
+  road-status-tool.jpg
+```
+
+## Verification
+
+Recent backend checks for this repo included:
 
 ```bash
-# Terminal 1 — MCP server
-cd mcp-server
-MCP_TRANSPORT=sse MCP_PORT=8081 SNCF_API_KEY=your_key go run .
-
-# Terminal 2 — Backend
-cd backend
-go run .
-
-# Terminal 3 — Frontend
-cd frontend
-npm install && npm run dev
+go test -vet=off ./...
+go test -race ./memory ./handlers
 ```
 
----
+Frontend spot checks were done against the live app in the in-app browser, including theme contrast validation.
 
-## Environment variables
-
-### MCP server
-
-| Variable | Default | Description |
-|---|---|---|
-| `MCP_TRANSPORT` | `stdio` | Set to `sse` for HTTP mode |
-| `MCP_PORT` | `8081` | SSE server port |
-| `TFL_APP_KEY` | _(none)_ | Optional TFL API key for higher rate limits |
-| `SNCF_API_KEY` | _(required)_ | SNCF Navitia API key |
-
-### Backend
-
-| Variable | Default | Description |
-|---|---|---|
-| `OLLAMA_URL` | `http://localhost:11434/v1` | Ollama base URL |
-| `OLLAMA_MODEL` | `llama3.2` | Model name |
-| `MCP_URL` | `http://localhost:8081/sse` | MCP server SSE endpoint |
-| `PORT` | `8080` | Backend port |
-
----
-
-## MCP tools
-
-### TFL (London)
-
-| Tool | TFL endpoint | What it does |
-|---|---|---|
-| `plan_journey` | `/Journey/JourneyResults/{from}/to/{to}` | Journey planning with legs, times, fares |
-| `get_line_status` | `/Line/{ids}/Status` | Status for specific lines by ID |
-| `get_status_by_mode` | `/Line/Mode/{mode}/Status` | Status for all lines of a transport mode |
-| `search_stops` | `/StopPoint/Search` | Find stations and stops by name |
-
-### SNCF (France)
-
-| Tool | SNCF endpoint | What it does |
-|---|---|---|
-| `plan_sncf_journey` | `/journeys` | Plan a train journey between two French stations |
-| `search_sncf_stations` | `/places` | Find SNCF stations by name |
-| `get_sncf_disruptions` | `/disruptions` | Active disruptions on the French rail network |
-
-> **Raw API responses** are saved as pretty-printed JSON to `mcp-server/responses/` whenever SNCF tools are called — useful for debugging.
-
----
-
-## Example conversations
-
-### London (TFL)
-
-```
-You:       How do I get from King's Cross to Canary Wharf?
-Assistant: [calls plan_journey]
-           Option 1 — 28 min
-             Take Jubilee line from King's Cross St. Pancras
-             Alight at Canary Wharf
-
-You:       Any problems on the tube right now?
-Assistant: [calls get_status_by_mode with mode=tube]
-           ✓ Bakerloo: Good Service
-           ✓ Central: Good Service
-           ⚠ District: Minor Delays — Signal failure at Earls Court
-```
-
-### France (SNCF)
-
-```
-You:       Plan a train from Paris to Lyon tomorrow at 9am
-Assistant: [calls search_sncf_stations, then plan_sncf_journey]
-           Option 1 — 1h 58min, 0 transfers
-             TGV INOUI — departs Paris Gare de Lyon 09:00
-             Arrives Lyon Part-Dieu 10:58
-
-You:       Any rail disruptions in France today?
-Assistant: [calls get_sncf_disruptions]
-           ⚠ TER Auvergne-Rhône-Alpes: Strike action — reduced service
-             Affected: Lyon ↔ Grenoble corridor
-             Until: 18:00 today
-```
-
----
-
-## Project structure
-
-```
-tfl-llm-sample/
-├── .env                 # API keys (gitignored)
-├── Makefile             # make dev — starts all 3 services
-│
-├── mcp-server/          # Go — MCP server exposing TFL + SNCF tools
-│   ├── main.go          # Server entrypoint, stdio/SSE transport
-│   ├── responses/       # Raw SNCF API responses (auto-saved, gitignored)
-│   ├── tfl/
-│   │   └── client.go    # TFL HTTP client
-│   ├── sncf/
-│   │   └── client.go    # SNCF Navitia HTTP client
-│   └── tools/
-│       ├── journey.go          # plan_journey (TFL)
-│       ├── status.go           # get_line_status (TFL)
-│       ├── status_by_mode.go   # get_status_by_mode (TFL)
-│       ├── stops.go            # search_stops (TFL)
-│       ├── sncf_journey.go     # plan_sncf_journey
-│       ├── sncf_stations.go    # search_sncf_stations
-│       └── sncf_disruptions.go # get_sncf_disruptions
-│
-├── backend/             # Go — API server + agentic loop
-│   ├── main.go          # Gin server, MCP connection with retry
-│   ├── handlers/
-│   │   └── chat.go      # POST /api/chat — SSE streaming + agent loop
-│   ├── llm/
-│   │   └── client.go    # Ollama client (streaming, tool call accumulation)
-│   └── mcpclient/
-│       └── client.go    # MCP SSE client with auto-reconnect
-│
-└── frontend/            # React + TypeScript
-    └── src/
-        ├── App.tsx
-        ├── hooks/useChat.ts        # SSE stream consumer + state
-        └── components/
-            ├── MessageBubble.tsx   # Rich rendering — journey cards,
-            │                       # route diagrams, tube badges
-            ├── ChatInput.tsx       # Auto-growing textarea
-            ├── ToolCallBadge.tsx   # Live tool call indicators
-            └── SuggestionPills.tsx # Quick-start prompts
-```
-
----
-
-## How the agent loop works
-
-```
-User message
-    │
-    ▼
-Build messages [ system | history | user ]
-    │
-    ▼
-┌──────────────────────────────────────────┐
-│  LLM (Ollama) with TFL + SNCF tools      │
-│                                          │
-│  Streaming output:                       │
-│  • text tokens → streamed to UI          │
-│  • tool_calls  → captured + merged       │
-└──────────┬───────────────────────────────┘
-           │ tool_calls present?
-    ┌──────▼──────┐
-    │  YES        │  NO → return final answer
-    └──────┬──────┘
-           │
-    ┌──────▼──────────────────────────────┐
-    │  Execute tool via MCP server        │
-    │  → real TFL or SNCF API call        │
-    │  → add result to messages           │
-    └──────┬──────────────────────────────┘
-           │
-           └──── loop (max 5 rounds)
-```
-
----
-
-## Licence
+## License
 
 MIT

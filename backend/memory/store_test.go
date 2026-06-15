@@ -96,11 +96,19 @@ func TestNewFileStoreRejectsCorruptJSON(t *testing.T) {
 
 func TestNewFileStoreSecuresExistingFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "memory.json")
-	if err := os.WriteFile(path, []byte("{}"), 0o644); err != nil { t.Fatal(err) }
-	if _, err := NewFileStore(path); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(path, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewFileStore(path); err != nil {
+		t.Fatal(err)
+	}
 	info, err := os.Stat(path)
-	if err != nil { t.Fatal(err) }
-	if got := info.Mode().Perm(); got != 0o600 { t.Fatalf("permissions = %o, want 600", got) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("permissions = %o, want 600", got)
+	}
 }
 
 func TestFileStoreHonorsCancelledContext(t *testing.T) {
