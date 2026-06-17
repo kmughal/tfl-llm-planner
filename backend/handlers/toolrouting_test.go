@@ -151,12 +151,33 @@ func TestSelectToolsForTFLIntents(t *testing.T) {
 	tests := []struct{ message, want string }{
 		{"Road status update operated by TFL", "get_tfl_roads"},
 		{"TfL road conditions today", "get_tfl_roads"},
+		{"How are the roads looking like operated by TfL", "get_tfl_roads"},
 		{"Show all TfL bus routes", "get_all_bus_lines"},
 		{"Next bus at Oxford Circus", "get_bus_arrivals"},
 		{"Any roadworks on the A40?", "get_road_disruptions"},
 		{"TfL Central line status", "get_line_status"},
 		{"TfL Underground status", "get_status_by_mode"},
+		{"All tube line status right now", "get_status_by_mode"},
 		{"TfL journey from Victoria to Stratford", "plan_journey"},
+	}
+	for _, tt := range tests {
+		if got := selectedToolNames(selectToolsForMessage(tt.message, tools)); got != tt.want {
+			t.Fatalf("%q selected %s, want %s", tt.message, got, tt.want)
+		}
+	}
+}
+
+func TestSelectToolsForParisIntents(t *testing.T) {
+	tools := []llm.Tool{
+		tool("get_paris_metro_departures"), tool("get_sncf_departures"),
+		tool("get_sncf_disruptions"), tool("plan_sncf_journey"), tool("get_status_by_mode"),
+	}
+	tests := []struct{ message, want string }{
+		{"RER B departures from Gare du Nord", "get_paris_metro_departures"},
+		{"How do I get into Paris from Gare du Nord?", "get_paris_metro_departures"},
+		{"Next trains from Gare de Lyon", "get_paris_metro_departures"},
+		{"Paris transit from Chatelet les Halles", "get_paris_metro_departures"},
+		{"If Eurostar into Paris is late, what are the best onward options right now?", "get_paris_metro_departures,get_sncf_departures,get_sncf_disruptions"},
 	}
 	for _, tt := range tests {
 		if got := selectedToolNames(selectToolsForMessage(tt.message, tools)); got != tt.want {
@@ -182,7 +203,12 @@ func TestNormalizeAliasesAndArguments(t *testing.T) {
 		{"crew service extraction", call("get_crew_activities", `{"date":"20260613"}`), "crew for 9114", "get_crew_activities", "serviceCode", "9114"},
 		{"dashboard date", call("get_eurostar_dashboard", `{"fromDateTime":"2026-06-13"}`), "dashboard", "get_eurostar_dashboard", "fromDateTime", "2026-06-13T00:00:00Z"},
 		{"last train selector", call("get_euromap_plans", `{"fromDateTime":"2026-06-14"}`), "Last Eurostar from Paris tonight", "get_euromap_plans", "selection", "last"},
+		{"strip accidental first selector", call("get_euromap_plans", `{"from":"Paris","selection":"first"}`), "Find a train for me from Paris using Eurostar", "get_euromap_plans", "from", "Paris"},
+		{"take train from paris now", call("get_euromap_plans", `{"from":"Paris","fromDateTime":"2026-06-17T00:00:00Z","to":"PNO"}`), "I want to take a train from Paris using Eurostar", "get_euromap_plans", "from", "Paris"},
 		{"traveler service extraction", call("get_traveler_summary", `{"travelDate":"20260613"}`), "load for Eurostar 9114", "get_traveler_summary", "serviceCode", "9114"},
+		{"status by mode typo fix", call("get_status_by_mode", `{"modes":"tube,dler,overground,elizabeth line","lines":"all"}`), "all tube line status right now", "get_status_by_mode", "modes", "tube,dlr,overground,elizabeth-line"},
+		{"status by mode singular alias", call("get_status_by_mode", `{"mode":"tube"}`), "all tube line status right now", "get_status_by_mode", "modes", "tube"},
+		{"paris station normalization", call("get_paris_metro_departures", `{"from":"chatelet les halles","count":99}`), "Paris transit from Chatelet les Halles", "get_paris_metro_departures", "station", "Chatelet"},
 	}
 
 	for _, tt := range tests {
@@ -197,6 +223,37 @@ func TestNormalizeAliasesAndArguments(t *testing.T) {
 			args := argsOf(t, got)
 			if value, _ := args[tt.wantKey].(string); value != tt.wantValue {
 				t.Fatalf("%s = %q, want %q", tt.wantKey, value, tt.wantValue)
+			}
+			if tt.name == "status by mode typo fix" {
+				if _, exists := args["lines"]; exists {
+					t.Fatalf("lines should be removed for get_status_by_mode: %#v", args)
+				}
+			}
+			if tt.name == "strip accidental first selector" {
+				if _, exists := args["selection"]; exists {
+					t.Fatalf("selection should be removed unless explicitly requested: %#v", args)
+				}
+				value, _ := args["fromDateTime"].(string)
+				if value == "" || !strings.Contains(value, "T") {
+					t.Fatalf("fromDateTime should be set to a current timestamp for immediate queries: %#v", args)
+				}
+			}
+			if tt.name == "take train from paris now" {
+				if _, exists := args["to"]; exists {
+					t.Fatalf("to should be removed when no explicit destination was requested: %#v", args)
+				}
+				value, _ := args["fromDateTime"].(string)
+				if value == "" || !strings.Contains(value, "T") || strings.HasSuffix(value, "T00:00:00Z") {
+					t.Fatalf("fromDateTime should be set close to now for immediate queries: %#v", args)
+				}
+			}
+			if tt.name == "paris station normalization" {
+				if _, exists := args["from"]; exists {
+					t.Fatalf("from should be normalized away for get_paris_metro_departures: %#v", args)
+				}
+				if value, _ := args["count"].(float64); value != 20 {
+					t.Fatalf("count should be clamped to 20, got %#v", args["count"])
+				}
 			}
 		})
 	}

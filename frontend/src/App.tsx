@@ -22,6 +22,8 @@ import { EurostarCommandCenter } from "./components/EurostarCommandCenter"
 import { TflCommandCenter } from "./components/TflCommandCenter"
 import { SNCFCommandCenter } from "./components/SNCFCommandCenter"
 import { NationalRailCommandCenter } from "./components/NationalRailCommandCenter"
+import { ParisRERCommandCenter } from "./components/ParisRERCommandCenter"
+import { OperationsWall } from "./components/OperationsWall"
 import { DashboardMenu } from "./components/DashboardMenu"
 import { EurostarDisplayMenu, EurostarDisplayStyles, useEurostarDisplay } from "./components/EurostarDisplay"
 import { getSessionId, resetSessionId } from "./lib/session"
@@ -243,6 +245,8 @@ export default function App() {
   const [tflCommandCenterOpen, setTflCommandCenterOpen]     = useState(false)
   const [sncfCommandCenterOpen, setSncfCommandCenterOpen]   = useState(false)
   const [nationalRailCommandCenterOpen, setNationalRailCommandCenterOpen] = useState(false)
+  const [parisCommandCenterOpen, setParisCommandCenterOpen] = useState(false)
+  const [operationsWallOpen, setOperationsWallOpen] = useState(false)
   const [memoryCleared, setMemoryCleared]       = useState(false)
   const activeConvIdRef                   = useRef<string>(crypto.randomUUID())
   const [activeConvId, setActiveConvId] = useState(activeConvIdRef.current)
@@ -524,10 +528,12 @@ export default function App() {
             </button>
 
             <DashboardMenu
+              onOperationsWall={() => setOperationsWallOpen(true)}
               onEurostar={() => setCommandCenterOpen(true)}
               onTfl={() => setTflCommandCenterOpen(true)}
               onSncf={() => setSncfCommandCenterOpen(true)}
               onNationalRail={() => setNationalRailCommandCenterOpen(true)}
+              onParis={() => setParisCommandCenterOpen(true)}
             />
 
             <EurostarDisplayMenu inverted />
@@ -583,21 +589,21 @@ export default function App() {
               id="tools"
               label="Tools"
               icon={<Zap style={{ width: 13, height: 13 }} />}
-              active={page === "tools"}
+              active={false}
               onClick={() => { globalThis.location.hash = "#tools"; setPage("tools") }}
             />
             <NavTab
               id="logs"
               label="Logs"
               icon={<Terminal style={{ width: 13, height: 13 }} />}
-              active={page === "logs"}
+              active={false}
               onClick={() => { globalThis.location.hash = "#logs"; setPage("logs") }}
             />
             <NavTab
               id="config"
               label="Config"
               icon={<Settings style={{ width: 13, height: 13 }} />}
-              active={page === "config"}
+              active={false}
               onClick={() => { globalThis.location.hash = "#config"; setPage("config") }}
             />
           </div>
@@ -653,6 +659,15 @@ export default function App() {
       )}
 
       <AnimatePresence>
+        {operationsWallOpen && (
+          <OperationsWall
+            onClose={() => setOperationsWallOpen(false)}
+            onAsk={sendMessage}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {commandCenterOpen && (
           <EurostarCommandCenter
             onClose={() => setCommandCenterOpen(false)}
@@ -682,6 +697,15 @@ export default function App() {
       <AnimatePresence>
         {nationalRailCommandCenterOpen && (
           <NationalRailCommandCenter onClose={() => setNationalRailCommandCenterOpen(false)} onAsk={sendMessage} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {parisCommandCenterOpen && (
+          <ParisRERCommandCenter
+            onClose={() => setParisCommandCenterOpen(false)}
+            onAsk={sendMessage}
+          />
         )}
       </AnimatePresence>
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -447,6 +448,13 @@ func (h *Handler) Chat(c *gin.Context) {
 		}
 	}
 
+	selectionMeta, _ := json.Marshal(gin.H{
+		"network":    selectionNetworkLabel(req.Message),
+		"candidates": selectedToolNameSlice(tools),
+		"source":     "live MCP tools",
+	})
+	sendEvent("selection", string(selectionMeta))
+
 	reply, finalMessages, err := h.runAgentLoop(ctx, messages, tools, req.Message, func(token string) {
 		b, _ := json.Marshal(token)
 		sendEvent("token", string(b))
@@ -554,6 +562,101 @@ func cleanJourneyResult(s string) string {
 	return strings.TrimSpace(s)
 }
 
+func cleanStructuredResult(s string) string {
+	if idx := strings.LastIndex(s, "HINT:"); idx != -1 {
+		return strings.TrimSpace(s[:idx])
+	}
+	return strings.TrimSpace(s)
+}
+
+func summarizeRoadsResult(s string) string {
+	clean := cleanStructuredResult(s)
+	for _, line := range strings.Split(clean, "\n") {
+		if !strings.HasPrefix(line, "ROADS_START:") {
+			continue
+		}
+		parts := strings.Split(strings.TrimPrefix(line, "ROADS_START:"), "|")
+		if len(parts) < 3 {
+			break
+		}
+		total, errTotal := strconv.Atoi(parts[0])
+		good, errGood := strconv.Atoi(parts[1])
+		issues, errIssues := strconv.Atoi(parts[2])
+		if errTotal != nil || errGood != nil || errIssues != nil {
+			break
+		}
+		if issues == 0 {
+			return fmt.Sprintf("TfL is reporting %d managed roads and all %d are currently clear.", total, good)
+		}
+		return fmt.Sprintf("TfL is reporting %d managed roads, with %d clear and %d currently showing issues.", total, good, issues)
+	}
+	return clean
+}
+
+func summarizeRoadDisruptionsResult(s string) string {
+	clean := cleanStructuredResult(s)
+	for _, line := range strings.Split(clean, "\n") {
+		if !strings.HasPrefix(line, "ROAD_DISRUPTIONS_START:") {
+			continue
+		}
+		parts := strings.Split(strings.TrimPrefix(line, "ROAD_DISRUPTIONS_START:"), "|")
+		if len(parts) < 4 {
+			break
+		}
+		roadName := parts[1]
+		total, errTotal := strconv.Atoi(parts[2])
+		closures, errClosures := strconv.Atoi(parts[3])
+		if errTotal != nil || errClosures != nil {
+			break
+		}
+		if total == 0 {
+			return fmt.Sprintf("%s is currently clear with no active disruptions.", roadName)
+		}
+		if closures > 0 {
+			label := "issues"
+			if closures == 1 {
+				label = "issue"
+			}
+			return fmt.Sprintf("%s currently has %d active disruptions, including %d closure-related %s.", roadName, total, closures, label)
+		}
+		return fmt.Sprintf("%s currently has %d active disruptions and no full closures reported.", roadName, total)
+	}
+	return clean
+}
+
+func summarizeImmediateEurostarPlans(raw string) string {
+	type planSummary struct {
+		service string
+		status  string
+		dep     string
+		arr     string
+	}
+	var plans []planSummary
+	for _, line := range strings.Split(raw, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "PLAN_START:") {
+			continue
+		}
+		parts := strings.Split(strings.TrimPrefix(strings.TrimSpace(line), "PLAN_START:"), "|")
+		if len(parts) < 6 {
+			continue
+		}
+		plans = append(plans, planSummary{
+			service: parts[2],
+			status:  parts[3],
+			dep:     parts[4],
+			arr:     parts[5],
+		})
+	}
+	if len(plans) == 0 {
+		return ""
+	}
+	next := plans[0]
+	if len(plans) == 1 {
+		return fmt.Sprintf("The next matching Eurostar I found is service %s, departing at %s and arriving at %s.", next.service, next.dep, next.arr)
+	}
+	return fmt.Sprintf("I found %d matching Eurostar services from now. The next one is service %s, departing at %s and arriving at %s.", len(plans), next.service, next.dep, next.arr)
+}
+
 // validToolNames builds a set of available tool names from the tools slice.
 func validToolNames(tools []llm.Tool) map[string]bool {
 	names := make(map[string]bool, len(tools))
@@ -584,6 +687,9 @@ func (h *Handler) runAgentLoop(
 	sendEvent func(string, string),
 ) (string, []llm.Message, error) {
 	var journeyResult string // last structured journey tool result
+	var roadsResult string
+	var roadDisruptionsResult string
+	var eurostarPlansResult string
 	valid := validToolNames(tools)
 
 	for range maxToolRounds {
@@ -595,25 +701,71 @@ func (h *Handler) runAgentLoop(
 		messages = append(messages, *msg)
 
 		if len(msg.ToolCalls) == 0 {
-			logger.Info(logger.TagLLM, fmt.Sprintf("final reply %.120s", msg.Content), fmt.Sprintf("len=%d", len(msg.Content)))
-			return h.resolveFinalReply(msg.Content, journeyResult), messages, nil
+			if recovered, ok := recoverJSONToolCall(msg.Content, valid); ok {
+				logger.Warn(logger.TagLLM, fmt.Sprintf("recovered JSON tool call %s from assistant content", recovered.Function.Name), "")
+				msg.ToolCalls = []llm.ToolCall{recovered}
+				messages[len(messages)-1] = *msg
+			} else {
+				logger.Info(logger.TagLLM, fmt.Sprintf("final reply %.120s", msg.Content), fmt.Sprintf("len=%d", len(msg.Content)))
+				return h.resolveFinalReply(msg.Content, journeyResult, roadsResult, roadDisruptionsResult, eurostarPlansResult, userMessage), messages, nil
+			}
 		}
 		logger.Debug(logger.TagLLM, fmt.Sprintf("tool calls requested: %d", len(msg.ToolCalls)), "")
 
 		var updated []llm.Message
-		updated, journeyResult = h.executeToolCalls(ctx, msg.ToolCalls, journeyResult, valid, tools, userMessage, sendEvent)
+		updated, journeyResult, roadsResult, roadDisruptionsResult, eurostarPlansResult = h.executeToolCalls(
+			ctx, msg.ToolCalls, journeyResult, roadsResult, roadDisruptionsResult, eurostarPlansResult, valid, tools, userMessage, sendEvent,
+		)
 		messages = append(messages, updated...)
 	}
 	return "", nil, fmt.Errorf("exceeded %d tool rounds without a final answer", maxToolRounds)
 }
 
+func recoverJSONToolCall(content string, valid map[string]bool) (llm.ToolCall, bool) {
+	type payload struct {
+		Name       string         `json:"name"`
+		Parameters map[string]any `json:"parameters"`
+	}
+
+	var parsed payload
+	if err := json.Unmarshal([]byte(strings.TrimSpace(content)), &parsed); err != nil {
+		return llm.ToolCall{}, false
+	}
+	if parsed.Name == "" || !valid[parsed.Name] {
+		return llm.ToolCall{}, false
+	}
+	args, err := json.Marshal(parsed.Parameters)
+	if err != nil {
+		return llm.ToolCall{}, false
+	}
+	return llm.ToolCall{
+		ID:   "recovered-json-call",
+		Type: "function",
+		Function: llm.FunctionCall{
+			Name:      parsed.Name,
+			Arguments: string(args),
+		},
+	}, true
+}
+
 // resolveFinalReply returns the LLM content, or the saved journey result when
 // the LLM failed to reproduce the structured Option format.
-func (h *Handler) resolveFinalReply(llmContent, journeyResult string) string {
+func (h *Handler) resolveFinalReply(llmContent, journeyResult, roadsResult, roadDisruptionsResult, eurostarPlansResult, userMessage string) string {
 	if journeyResult != "" && !containsJourneyFormat(llmContent) {
 		log.Printf("[journey] LLM produced prose — overriding with structured tool result")
 		logger.Warn(logger.TagLLM, "LLM produced prose — overriding with structured journey result", "")
 		return journeyResult
+	}
+	if roadsResult != "" {
+		return summarizeRoadsResult(roadsResult)
+	}
+	if roadDisruptionsResult != "" {
+		return summarizeRoadDisruptionsResult(roadDisruptionsResult)
+	}
+	if eurostarPlansResult != "" && wantsImmediateEurostarOption(strings.ToLower(userMessage)) {
+		if summary := summarizeImmediateEurostarPlans(eurostarPlansResult); summary != "" {
+			return summary
+		}
 	}
 	return llmContent
 }
@@ -624,18 +776,21 @@ func (h *Handler) executeToolCalls(
 	ctx context.Context,
 	calls []llm.ToolCall,
 	journeyResult string,
+	roadsResult string,
+	roadDisruptionsResult string,
+	eurostarPlansResult string,
 	valid map[string]bool,
 	tools []llm.Tool,
 	userMessage string,
 	sendEvent func(string, string),
-) ([]llm.Message, string) {
+) ([]llm.Message, string, string, string, string) {
 	msgs := make([]llm.Message, 0, len(calls)+1)
 	journeyToolCalled := false
 	for _, rawCall := range calls {
 		tc := normalizeToolCall(rawCall, userMessage)
 		log.Printf("[tool] call  name=%s args=%s", tc.Function.Name, tc.Function.Arguments)
 		logger.Info(logger.TagTool, fmt.Sprintf("call  %s", tc.Function.Name), tc.Function.Arguments)
-		sendEvent("tool_call", fmt.Sprintf(`{"name":%q}`, tc.Function.Name))
+		sendEvent("tool_call", fmt.Sprintf(`{"name":%q,"arguments":%q,"source":"live MCP tool"}`, tc.Function.Name, tc.Function.Arguments))
 
 		// Guard: reject hallucinated tool names before hitting the MCP server.
 		var result string
@@ -660,6 +815,15 @@ func (h *Handler) executeToolCalls(
 			journeyResult = cleanJourneyResult(result)
 			journeyToolCalled = true
 		}
+		if tc.Function.Name == "get_tfl_roads" && strings.Contains(result, "ROADS_START:") {
+			roadsResult = cleanStructuredResult(result)
+		}
+		if tc.Function.Name == "get_road_disruptions" && strings.Contains(result, "ROAD_DISRUPTIONS_START:") {
+			roadDisruptionsResult = cleanStructuredResult(result)
+		}
+		if tc.Function.Name == "get_euromap_plans" && strings.Contains(result, "PLAN_START:") {
+			eurostarPlansResult = cleanStructuredResult(result)
+		}
 
 		log.Printf("[tool] result name=%s result=%.200s", tc.Function.Name, result)
 		logger.Info(logger.TagTool, fmt.Sprintf("result %s", tc.Function.Name), fmt.Sprintf("%.300s", result))
@@ -677,7 +841,7 @@ func (h *Handler) executeToolCalls(
 	if journeyToolCalled {
 		msgs = append(msgs, llm.Message{Role: "system", Content: journeyFormatReminder})
 	}
-	return msgs, journeyResult
+	return msgs, journeyResult, roadsResult, roadDisruptionsResult, eurostarPlansResult
 }
 
 // extractCrewArgs parses get_euromap_plan_by_id arguments and returns the

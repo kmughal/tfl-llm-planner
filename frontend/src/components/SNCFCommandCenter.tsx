@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AnimatePresence, motion } from "framer-motion"
+import { motion } from "framer-motion"
 import {
-  AlertTriangle, ArrowRight, Clock3, MapPin, RefreshCw, Search,
+  AlertTriangle, ArrowRight, Clock3, RefreshCw, Search,
   TrainFront, X, Zap,
 } from "lucide-react"
 import { EurostarDisplayMenu, EurostarDisplayStyles, eurostarDisplayClass, useEurostarDisplay } from "./EurostarDisplay"
@@ -29,6 +29,34 @@ function shortStation(name: string): string {
     .replace(/^Paris\s*-?\s*/i, "")
     .replace(/\s*-\s*Hall.*$/i, "")
     .replace(/Saint-/g, "St-")
+}
+
+function cleanPlace(name: string): string {
+  return name.replace(/\s*\([^)]*\)\s*$/, "").trim()
+}
+
+function extractTrainNumber(service: Service): string {
+  const sources = [service.number, service.direction]
+  for (const source of sources) {
+    const match = source.match(/\b\d{3,6}\b/)
+    if (match) return match[0]
+  }
+  return ""
+}
+
+function serviceQuery(station: string, service: Service): string {
+  const trainNumber = extractTrainNumber(service)
+  if (trainNumber) {
+    return `Show the full SNCF schedule for train ${trainNumber}`
+  }
+
+  const origin = cleanPlace(station)
+  const destination = cleanPlace(service.direction)
+  if (destination && destination.toLowerCase() !== origin.toLowerCase()) {
+    return `Plan an SNCF journey from ${origin} to ${destination}`
+  }
+
+  return `Show SNCF departures from ${station} around ${service.time}`
 }
 
 export function SNCFCommandCenter({ onClose, onAsk }: { readonly onClose: () => void; readonly onAsk?: (query: string) => void }) {
@@ -142,7 +170,7 @@ export function SNCFCommandCenter({ onClose, onAsk }: { readonly onClose: () => 
             </div>
             <div className={`grid ${compact ? "grid-cols-3" : "grid-cols-2"} gap-2 max-md:grid-cols-1`}>
               {board?.services.map((service, index) => (
-                <motion.button key={`${service.number}-${service.time}-${index}`} type="button" onClick={() => ask(`Show SNCF departures from ${board.station}`)} className="es-adaptive-muted flex min-h-24 items-center gap-3 rounded-lg border p-3 text-left" style={{ borderColor: service.delay ? "#f59e0b" : "var(--es-border)" }} initial={{ opacity:0,y:8 }} animate={{opacity:1,y:0}} transition={{delay:index*.04}} whileHover={{y:-2}}>
+                <motion.button key={`${service.number}-${service.time}-${index}`} type="button" onClick={() => ask(serviceQuery(board.station, service))} className="es-adaptive-muted flex min-h-24 items-center gap-3 rounded-lg border p-3 text-left" style={{ borderColor: service.delay ? "#f59e0b" : "var(--es-border)" }} initial={{ opacity:0,y:8 }} animate={{opacity:1,y:0}} transition={{delay:index*.04}} whileHover={{y:-2}}>
                   <div className="w-14 shrink-0"><div className="es-adaptive-text text-xl font-black tabular-nums">{service.time}</div>{service.delay > 0 && <div className="text-[10px] font-bold text-amber-600">+{service.delay} min</div>}</div>
                   <div className="min-w-0 flex-1"><div className="mb-1 flex items-center gap-1.5"><span className="rounded px-1.5 py-0.5 text-[9px] font-black text-white" style={{background:modeColor(service.mode)}}>{service.mode || "TRAIN"}</span><span className="es-adaptive-subtle text-[10px] font-mono">{service.number}</span></div><div className="es-adaptive-text truncate text-xs font-bold">{service.direction}</div></div>
                   <ArrowRight className="es-adaptive-subtle" size={14}/>

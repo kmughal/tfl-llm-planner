@@ -16,6 +16,7 @@ func GetRATPhDeparturesTool() mcp.Tool {
 		mcp.WithDescription(`Show live Paris RER and Transilien departures from a Paris mainline station.
 
 Data source: SNCF Navitia API (sncf coverage). Returns RER B, RER D, RER E, Transilien lines.
+This is a live departures board tool, not a full point-to-point metro route planner.
 
 Use this tool when the user asks:
   - "How do I get from Gare du Nord into Paris?"
@@ -32,7 +33,8 @@ SUPPORTED STATIONS — pass exactly one of these names:
   - 'Gare de l''Est' — Transilien P, inter-city east
   - 'Chatelet'       — RER A/B/C/D/E interchange hub
 
-Pass station name as 'station' parameter. count defaults to 10.`),
+Pass station name as 'station' parameter. count defaults to 10.
+Prefer this tool over SNCF mainline departures when the user is asking about Paris urban connections, RER, Transilien, or getting into central Paris from a mainline station.`),
 		mcp.WithString("station",
 			mcp.Required(),
 			mcp.Description("Paris station name — MUST be one of: 'Gare du Nord', 'Gare de Lyon', 'Montparnasse', 'Saint-Lazare', 'Gare de l\\'Est', 'Chatelet'. These are the only supported stations."),

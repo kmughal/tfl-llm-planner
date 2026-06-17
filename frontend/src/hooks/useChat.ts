@@ -126,14 +126,26 @@ function applyEvent(
   if (!event || !data) return false
 
   switch (event) {
+    case "selection": {
+      const payload = JSON.parse(data) as { network?: string; candidates?: string[]; source?: string }
+      const ev: ToolEvent = {
+        type: "selection",
+        name: "__selection__",
+        network: payload.network,
+        candidates: payload.candidates ?? [],
+        source: payload.source,
+      }
+      patch(m => ({ ...m, toolEvents: [...(m.toolEvents ?? []), ev] }))
+      break
+    }
     case "token": {
       const token = JSON.parse(data) as string
       patch(m => ({ ...m, content: m.content + token }))
       break
     }
     case "tool_call": {
-      const { name } = JSON.parse(data) as { name: string }
-      const ev: ToolEvent = { type: "tool_call", name }
+      const { name, arguments: args, source } = JSON.parse(data) as { name: string; arguments?: string; source?: string }
+      const ev: ToolEvent = { type: "tool_call", name, arguments: args, source }
       patch(m => ({ ...m, toolEvents: [...(m.toolEvents ?? []), ev] }))
       break
     }

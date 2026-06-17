@@ -1,6 +1,7 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import type { FormEvent } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { AlertCircle, ArrowRight, Bus, Check, ChevronRight, Clock3, MapPin, Navigation, RefreshCw, Route, Search, TrainFront, X } from "lucide-react"
+import { AlertCircle, ArrowRight, Bus, ChevronRight, Clock3, MapPin, Navigation, RefreshCw, Route, Search, TrainFront, X } from "lucide-react"
 
 const API = (import.meta.env.VITE_API_URL as string | undefined) ?? ""
 const BLUE = "#003688"

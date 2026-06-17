@@ -3,7 +3,6 @@ import { AnimatePresence, motion } from "framer-motion"
 import {
   Activity,
   AlertTriangle,
-  ArrowRight,
   BadgeCheck,
   CalendarDays,
   ChevronDown,

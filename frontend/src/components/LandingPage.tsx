@@ -90,7 +90,7 @@ const NETWORKS: {
       { text: "RER B departures from Gare du Nord",         tool: "get_paris_metro_departures" },
       { text: "Next trains from Gare de Lyon",              tool: "get_paris_metro_departures" },
       { text: "Paris transit from Chatelet les Halles",     tool: "get_paris_metro_departures" },
-      { text: "Metro from {station}",                       tool: "get_paris_metro_departures", template: true },
+      { text: "RER from {station}",                         tool: "get_paris_metro_departures", template: true },
     ],
   },
   {

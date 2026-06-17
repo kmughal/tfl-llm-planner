@@ -175,6 +175,8 @@ export function ParisMetroCard({ result }: { readonly result: string }) {
 
   const { station, entries } = parsed
   const clock = useLiveClock()
+  const delayedCount = entries.filter(entry => entry.delayMins > 0).length
+  const lineCount = new Set(entries.map(entry => `${entry.mode}:${entry.label}`).filter(Boolean)).size
 
   return (
     <motion.div
@@ -200,13 +202,22 @@ export function ParisMetroCard({ result }: { readonly result: string }) {
           <div>
             <div className="text-white font-bold text-[13px] leading-tight">{station}</div>
             <div className="text-green-200/70 text-[9px] font-semibold uppercase tracking-[0.18em]">
-              Paris Transit · RATP
+              Paris RER · Transilien
             </div>
           </div>
           <div className="ml-auto flex items-center gap-1.5 rounded-full px-2.5 py-1" style={{ backgroundColor: "rgba(0,0,0,0.25)" }}>
             <Clock className="w-3 h-3 text-white/70" />
             <span className="text-white font-mono font-bold text-[13px] tabular-nums">{clock}</span>
           </div>
+        </div>
+        <div className="relative mt-3 flex items-center gap-2 text-[10px] font-semibold text-white/70">
+          <span>{lineCount} lines shown</span>
+          <span className="text-white/25">•</span>
+          <span>{entries.length} departures</span>
+          <span className="text-white/25">•</span>
+          <span style={{ color: delayedCount > 0 ? "#fcd34d" : "#86efac" }}>
+            {delayedCount > 0 ? `${delayedCount} delayed` : "all on time"}
+          </span>
         </div>
       </div>
 
@@ -241,7 +252,7 @@ export function ParisMetroCard({ result }: { readonly result: string }) {
             animate={{ opacity: [1, 0.25, 1] }}
             transition={{ duration: 2.2, repeat: Infinity }}
           />
-          <span className="text-[9px] font-mono text-white/22">RATP Live · Navitia</span>
+          <span className="text-[9px] font-mono text-white/22">Paris RER live · Navitia</span>
         </div>
         <span className="text-[9px] font-mono text-white/18">{entries.length} départs</span>
       </div>

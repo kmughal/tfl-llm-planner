@@ -35,7 +35,7 @@ func GetStatusByModeTool() mcp.Tool {
 
 func HandleGetStatusByMode(client *tfl.Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		modes := req.GetString("modes", "tube")
+		modes := normalizeModes(req.GetString("modes", "tube"))
 
 		statuses, err := client.GetLineStatusByMode(modes)
 		if err != nil {
@@ -61,4 +61,34 @@ func HandleGetStatusByMode(client *tfl.Client) func(context.Context, mcp.CallToo
 		}
 		return mcp.NewToolResultText(sb.String()), nil
 	}
+}
+
+func normalizeModes(modes string) string {
+	replacer := strings.NewReplacer(
+		"underground", "tube",
+		"tube lines", "tube",
+		"london overground", "overground",
+		"elizabeth line", "elizabeth-line",
+		"elizabeth", "elizabeth-line",
+		"national rail", "national-rail",
+		"dler", "dlr",
+	)
+	allowed := map[string]bool{}
+	for _, mode := range knownModes {
+		allowed[mode] = true
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(knownModes))
+	for _, raw := range strings.Split(strings.ToLower(modes), ",") {
+		mode := strings.TrimSpace(replacer.Replace(raw))
+		mode = strings.Trim(mode, "[]\"' ")
+		if allowed[mode] && !seen[mode] {
+			seen[mode] = true
+			out = append(out, mode)
+		}
+	}
+	if len(out) == 0 {
+		return "tube,dlr,overground,elizabeth-line"
+	}
+	return strings.Join(out, ",")
 }

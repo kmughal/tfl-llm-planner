@@ -38,8 +38,8 @@ const TOOL_META: Record<string, ToolMeta> = {
   get_national_rail_departures:     { label: "Fetching National Rail trains",    network: "nrail" },
   get_national_rail_arrivals:       { label: "Fetching National Rail arrivals",  network: "nrail" },
   get_national_rail_dashboard:      { label: "Loading National Rail dashboard",  network: "nrail" },
-  // Paris Metro / RATP
-  get_paris_metro_departures:       { label: "Fetching Paris Metro departures",  network: "ratp" },
+  // Paris RER / RATP
+  get_paris_metro_departures:       { label: "Fetching Paris RER departures",    network: "ratp" },
 }
 
 const NETWORK_STYLES: Record<string, { dot: string; bg: string; border: string; text: string; tag: string }> = {
@@ -48,7 +48,7 @@ const NETWORK_STYLES: Record<string, { dot: string; bg: string; border: string; 
   eurostar: { dot: "#003366", bg: "#eff6ff", border: "#93c5fd", text: "#1e3a8a", tag: "Eurostar"     },
   weather:  { dot: "#0284c7", bg: "#f0f9ff", border: "#bae6fd", text: "#0c4a6e", tag: "Weather"      },
   nrail:    { dot: "#003C71", bg: "#f0f4ff", border: "#c7d2fe", text: "#1e3a8a", tag: "Nat Rail"     },
-  ratp:     { dot: "#009A44", bg: "#f0fdf4", border: "#bbf7d0", text: "#14532d", tag: "Paris Metro"  },
+  ratp:     { dot: "#009A44", bg: "#f0fdf4", border: "#bbf7d0", text: "#14532d", tag: "Paris RER"    },
   default:  { dot: "#9ca3af", bg: "#f9fafb", border: "#e5e7eb", text: "#374151", tag: ""             },
 }
 

@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"tfl-backend/llm"
 )
@@ -76,6 +77,9 @@ func selectToolsForMessage(message string, tools []llm.Tool) []llm.Tool {
 	if len(families) == 0 {
 		return tools
 	}
+	if isParisOnwardConnectionIntent(message, families) {
+		return selectParisOnwardTools(tools)
+	}
 	if families[familyEurostar] {
 		return selectEurostarTools(message, tools)
 	}
@@ -84,6 +88,9 @@ func selectToolsForMessage(message string, tools []llm.Tool) []llm.Tool {
 	}
 	if families[familyNRail] {
 		return selectNationalRailTools(message, tools)
+	}
+	if families[familyParis] {
+		return selectParisTools(message, tools)
 	}
 	if families[familyTFL] {
 		return selectTFLTools(message, tools)
@@ -102,12 +109,51 @@ func selectToolsForMessage(message string, tools []llm.Tool) []llm.Tool {
 	return selected
 }
 
+func isParisOnwardConnectionIntent(message string, families map[toolFamily]bool) bool {
+	q := strings.ToLower(message)
+	if !families[familyEurostar] {
+		return false
+	}
+	if !(families[familyParis] || families[familySNCF]) {
+		return false
+	}
+	return containsAny(q,
+		"onward option", "onward options", "onward movement", "onward travel",
+		"connection", "connections", "connect onward", "best onward", "into paris",
+	)
+}
+
+func selectParisOnwardTools(tools []llm.Tool) []llm.Tool {
+	wanted := map[string]bool{
+		"get_paris_metro_departures": true,
+		"get_sncf_departures":        true,
+		"get_sncf_disruptions":       true,
+	}
+	selected := make([]llm.Tool, 0, len(wanted))
+	for _, tool := range tools {
+		if wanted[tool.Function.Name] {
+			selected = append(selected, tool)
+		}
+	}
+	if len(selected) == 0 {
+		return tools
+	}
+	return selected
+}
+
 func selectTFLTools(message string, tools []llm.Tool) []llm.Tool {
 	q := strings.ToLower(message)
 	wanted := map[string]bool{}
 
 	switch {
-	case containsAny(q, "road status", "road condition", "road conditions", "road update", "roads update", "traffic status", "traffic conditions", "tfl roads", "road network", "all roads", "managed roads"):
+	case containsAny(q, "all tube", "tube status", "underground status", "overground status", "dlr status", "elizabeth line status", "status by mode"):
+		wanted["get_status_by_mode"] = true
+	case containsAny(q,
+		"road status", "road condition", "road conditions", "road update", "roads update",
+		"traffic status", "traffic conditions", "tfl roads", "road network", "all roads",
+		"managed roads", "how are the roads", "what are the roads like", "roads looking",
+		"roads looking like",
+	):
 		wanted["get_tfl_roads"] = true
 	case containsAny(q, "road disruption", "road disruptions", "road closure", "road closures", "roadworks", "road works", "traffic problem", "traffic problems"):
 		wanted["get_road_disruptions"] = true
@@ -119,8 +165,6 @@ func selectTFLTools(message string, tools []llm.Tool) []llm.Tool {
 		wanted["search_stops"] = true
 	case containsAny(q, "line status", "status of the", "central line", "victoria line", "jubilee line", "northern line", "district line", "piccadilly line", "bakerloo line", "circle line", "metropolitan line", "waterloo & city", "hammersmith & city"):
 		wanted["get_line_status"] = true
-	case containsAny(q, "all tube", "tube status", "underground status", "overground status", "dlr status", "elizabeth line status", "status by mode"):
-		wanted["get_status_by_mode"] = true
 	case containsAny(q, " from ", " to ", "journey", "route", "travel", "get to", "directions"):
 		wanted["plan_journey"] = true
 	default:
@@ -152,6 +196,19 @@ func selectNationalRailTools(message string, tools []llm.Tool) []llm.Tool {
 	selected := make([]llm.Tool, 0, 1)
 	for _, tool := range tools {
 		if tool.Function.Name == wanted {
+			selected = append(selected, tool)
+		}
+	}
+	if len(selected) == 0 {
+		return tools
+	}
+	return selected
+}
+
+func selectParisTools(message string, tools []llm.Tool) []llm.Tool {
+	selected := make([]llm.Tool, 0, 1)
+	for _, tool := range tools {
+		if tool.Function.Name == "get_paris_metro_departures" {
 			selected = append(selected, tool)
 		}
 	}
@@ -265,7 +322,9 @@ func detectToolFamilies(message string) map[toolFamily]bool {
 		(!containsAny(q, "tfl", "tube", "underground") && containsAny(q, "king's cross", "kings cross", "st pancras", "paddington", "waterloo", "victoria", "euston", "london bridge", "liverpool street", "ebbsfleet", "ashford international", "birmingham new street", "manchester piccadilly", "edinburgh waverley")) {
 		families[familyNRail] = true
 	}
-	if containsAny(q, "paris metro", "paris rer", "rer b", "rer d", "transilien") {
+	if containsAny(q, "paris metro", "paris rer", "paris transit", "rer a", "rer b", "rer c", "rer d", "rer e", "transilien", "into paris", "connecting transit") ||
+		(containsAny(q, "gare du nord", "gare de lyon", "montparnasse", "saint-lazare", "saint lazare", "gare de l'est", "gare de l est", "chatelet", "châtelet") &&
+			containsAny(q, "next train", "next trains", "rer", "metro", "transit", "into paris", "connection")) {
 		families[familyParis] = true
 	}
 	if asksForWeather(q) {
@@ -276,6 +335,31 @@ func detectToolFamilies(message string) map[toolFamily]bool {
 
 func asksForWeather(message string) bool {
 	return weatherIntent.MatchString(message)
+}
+
+func wantsImmediateEurostarOption(message string) bool {
+	return containsAny(message,
+		"next eurostar", "next train", "find a train", "find me a train",
+		"train for me", "a train for me", "available train", "available eurostar",
+		"take a train", "take eurostar",
+	)
+}
+
+func hasExplicitRouteDestination(message string) bool {
+	return containsAny(message,
+		" to paris", " to london", " to brussels", " to amsterdam", " to rotterdam",
+		" to lille", " to ashford", " to ebbsfleet", " towards paris", " towards london",
+		" towards brussels", " towards amsterdam", " towards rotterdam",
+	)
+}
+
+func looksLikeParisDestination(value string) bool {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "PNO", "PARIS":
+		return true
+	default:
+		return false
+	}
 }
 
 func containsAny(value string, needles ...string) bool {
@@ -308,9 +392,16 @@ func normalizeToolCall(call llm.ToolCall, userMessage string) llm.ToolCall {
 			args["lines"] = normalizeLineIDs(lines)
 		}
 	case "get_status_by_mode":
+		if mode, ok := args["mode"].(string); ok && strings.TrimSpace(mode) != "" {
+			args["modes"] = mode
+			delete(args, "mode")
+		}
 		if modes, ok := args["modes"].(string); !ok || strings.TrimSpace(modes) == "" || strings.EqualFold(modes, "all") {
 			args["modes"] = "tube,dlr,overground,elizabeth-line"
+		} else {
+			args["modes"] = normalizeTfLModes(modes)
 		}
+		delete(args, "lines")
 	case "get_euromap_plan_by_id", "get_euromap_technical_plan_by_id":
 		if date, ok := args["date"].(string); ok {
 			args["date"] = strings.ReplaceAll(strings.TrimSpace(date), "-", "")
@@ -328,10 +419,14 @@ func normalizeToolCall(call llm.ToolCall, userMessage string) llm.ToolCall {
 		}
 		if call.Function.Name == "get_euromap_plans" {
 			q := strings.ToLower(userMessage)
-			if containsAny(q, "last eurostar", "last train", "last departure", "last service") {
+			explicitLast := containsAny(q, "last eurostar", "last train", "last departure", "last service")
+			explicitFirst := containsAny(q, "first eurostar", "first train", "first departure", "first service")
+			if explicitLast {
 				args["selection"] = "last"
-			} else if containsAny(q, "first eurostar", "first train", "first departure", "first service") {
+			} else if explicitFirst {
 				args["selection"] = "first"
+			} else {
+				delete(args, "selection")
 			}
 			switch {
 			case strings.Contains(q, "from paris"):
@@ -343,8 +438,16 @@ func normalizeToolCall(call llm.ToolCall, userMessage string) llm.ToolCall {
 			case strings.Contains(q, "from amsterdam"):
 				args["from"] = "Amsterdam"
 			}
-			if strings.Contains(q, " from ") && !strings.Contains(q, " to ") {
+			if strings.Contains(q, " from ") && !hasExplicitRouteDestination(q) {
 				delete(args, "to")
+			}
+			if from, ok := args["from"].(string); ok && strings.EqualFold(strings.TrimSpace(from), "Paris") && !hasExplicitRouteDestination(q) {
+				if to, ok := args["to"].(string); ok && looksLikeParisDestination(to) {
+					delete(args, "to")
+				}
+			}
+			if wantsImmediateEurostarOption(q) {
+				args["fromDateTime"] = time.Now().UTC().Format(time.RFC3339)
 			}
 		}
 	case "get_crew_activities":
@@ -375,6 +478,24 @@ func normalizeToolCall(call llm.ToolCall, userMessage string) llm.ToolCall {
 		if _, ok := args["train_number"]; !ok {
 			if match := sncfTrainNumber.FindStringSubmatch(userMessage); len(match) == 2 {
 				args["train_number"] = match[1]
+			}
+		}
+	case "get_paris_metro_departures":
+		for _, key := range []string{"station", "from", "origin", "location", "name"} {
+			if value, ok := args[key].(string); ok && strings.TrimSpace(value) != "" {
+				args["station"] = normalizeParisStation(value)
+				break
+			}
+		}
+		delete(args, "from")
+		delete(args, "origin")
+		delete(args, "location")
+		delete(args, "name")
+		if count, ok := args["count"].(float64); ok {
+			if count < 1 {
+				args["count"] = 10
+			} else if count > 20 {
+				args["count"] = 20
 			}
 		}
 	case "get_sncf_departures", "get_sncf_arrivals":
@@ -445,6 +566,74 @@ func normalizeLineIDs(lines string) string {
 	return strings.Join(parts, ",")
 }
 
+func normalizeTfLModes(modes string) string {
+	replacer := strings.NewReplacer(
+		"underground", "tube",
+		"tubes", "tube",
+		"tube lines", "tube",
+		"overgrounds", "overground",
+		"london overground", "overground",
+		"elizabeth line", "elizabeth-line",
+		"elizabeth", "elizabeth-line",
+		"rail", "national-rail",
+		"national rail", "national-rail",
+		"dler", "dlr",
+		"dlr.", "dlr",
+	)
+	allowed := map[string]bool{
+		"tube": true, "dlr": true, "overground": true, "elizabeth-line": true,
+		"bus": true, "national-rail": true, "tram": true, "cable-car": true,
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(allowed))
+	for _, raw := range strings.Split(strings.ToLower(modes), ",") {
+		mode := strings.TrimSpace(replacer.Replace(raw))
+		mode = strings.Trim(mode, "[]\"' ")
+		if allowed[mode] && !seen[mode] {
+			seen[mode] = true
+			out = append(out, mode)
+		}
+	}
+	if len(out) == 0 {
+		return "tube,dlr,overground,elizabeth-line"
+	}
+	return strings.Join(out, ",")
+}
+
+func normalizeParisStation(station string) string {
+	key := strings.ToLower(strings.TrimSpace(station))
+	key = strings.NewReplacer(
+		"châtelet", "chatelet",
+		"gare de l’est", "gare de l'est",
+		"gare de l est", "gare de l'est",
+		"saint lazare", "saint-lazare",
+		"paris nord", "gare du nord",
+		"paris gare de lyon", "gare de lyon",
+		"paris montparnasse", "montparnasse",
+		"paris saint-lazare", "saint-lazare",
+		"paris saint lazare", "saint-lazare",
+		"paris est", "gare de l'est",
+		"chatelet les halles", "chatelet",
+	).Replace(key)
+
+	switch key {
+	case "gare du nord", "nord":
+		return "Gare du Nord"
+	case "gare de lyon", "lyon":
+		return "Gare de Lyon"
+	case "montparnasse":
+		return "Montparnasse"
+	case "saint-lazare":
+		return "Saint-Lazare"
+	case "gare de l'est", "est":
+		return "Gare de l'Est"
+	case "chatelet":
+		return "Chatelet"
+	default:
+		return station
+	}
+}
+
 func selectedToolNames(tools []llm.Tool) string {
 	names := make([]string, 0, len(tools))
 	for _, tool := range tools {
@@ -452,4 +641,36 @@ func selectedToolNames(tools []llm.Tool) string {
 	}
 	sort.Strings(names)
 	return strings.Join(names, ",")
+}
+
+func selectedToolNameSlice(tools []llm.Tool) []string {
+	names := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		names = append(names, tool.Function.Name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func selectionNetworkLabel(message string) string {
+	families := detectToolFamilies(message)
+	if isParisOnwardConnectionIntent(message, families) {
+		return "Cross-network"
+	}
+	switch {
+	case families[familyEurostar]:
+		return "Eurostar"
+	case families[familySNCF]:
+		return "SNCF"
+	case families[familyNRail]:
+		return "National Rail"
+	case families[familyParis]:
+		return "Paris RER"
+	case families[familyTFL]:
+		return "TfL"
+	case families[familyWeather]:
+		return "Weather"
+	default:
+		return "General"
+	}
 }

@@ -9,9 +9,13 @@ export interface ChatMessage {
 }
 
 export interface ToolEvent {
-  type: "tool_call" | "tool_result"
+  type: "selection" | "tool_call" | "tool_result"
   name: string
   result?: string
+  arguments?: string
+  source?: string
+  network?: string
+  candidates?: string[]
 }
 
 // Wire-format message sent to / received from the backend LLM loop.

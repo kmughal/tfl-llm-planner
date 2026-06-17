@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo } from "react"
 import { motion, AnimatePresence, useSpring, useTransform } from "framer-motion"
 import {
   X, Zap, Train, Bus, Cloud, Navigation, Map, Users,
-  Radio, AlertCircle, CheckCircle2, Clock, Activity,
+  Radio, AlertCircle, Activity,
   ChevronRight, Search, Layers,
 } from "lucide-react"
 
@@ -21,7 +21,7 @@ const PROVIDERS: { id: string; label: string; color: string; bg: string; border:
   { id: "tfl",      label: "TFL London",   color: "#f87171", bg: "#1c0505", border: "#7f1d1d",  icon: <Bus     className="w-4 h-4" /> },
   { id: "sncf",     label: "SNCF France",  color: "#fb923c", bg: "#1c0a00", border: "#7c2d12",  icon: <Train   className="w-4 h-4" /> },
   { id: "nrail",    label: "National Rail",color: "#a78bfa", bg: "#0d0020", border: "#4c1d95",  icon: <Navigation className="w-4 h-4" /> },
-  { id: "ratp",     label: "Paris Metro",  color: "#34d399", bg: "#001c10", border: "#064e3b",  icon: <Map     className="w-4 h-4" /> },
+  { id: "ratp",     label: "Paris RER",    color: "#34d399", bg: "#001c10", border: "#064e3b",  icon: <Map     className="w-4 h-4" /> },
   { id: "weather",  label: "Weather",      color: "#67e8f9", bg: "#001418", border: "#164e63",  icon: <Cloud   className="w-4 h-4" /> },
   { id: "traveler", label: "Traveler",     color: "#f472b6", bg: "#1a001a", border: "#701a75",  icon: <Activity className="w-4 h-4" /> },
 ]
@@ -58,8 +58,8 @@ const TOOL_DEFS: ToolDef[] = [
   { name: "get_national_rail_departures",   label: "Departures",            desc: "Live departure board for UK mainline stations",        provider: "nrail",    icon: <Radio   className="w-3.5 h-3.5" /> },
   { name: "get_national_rail_arrivals",     label: "Arrivals",              desc: "Live arrival board with origin and expected time",     provider: "nrail",    icon: <Radio   className="w-3.5 h-3.5" /> },
   { name: "get_national_rail_dashboard",    label: "Network Dashboard",     desc: "Major London terminals, delays and station notices",   provider: "nrail",    icon: <Train   className="w-3.5 h-3.5" /> },
-  // Paris Metro
-  { name: "get_paris_metro_departures",     label: "Metro Departures",      desc: "RER/Metro departures from Paris stations",            provider: "ratp",     icon: <Map     className="w-3.5 h-3.5" /> },
+  // Paris RER / Transilien
+  { name: "get_paris_metro_departures",     label: "RER Departures",        desc: "RER/Transilien departures from key Paris stations",  provider: "ratp",     icon: <Map     className="w-3.5 h-3.5" /> },
   // Weather
   { name: "get_weather",                    label: "Forecast",              desc: "Current weather & forecast for any city",             provider: "weather",  icon: <Cloud   className="w-3.5 h-3.5" /> },
   // Traveler
@@ -110,7 +110,7 @@ function detectTool(entry: LogEntry, names: string[]): string | null {
 
 // ── Health dot ────────────────────────────────────────────────────────────────
 const HEALTH_COLORS = {
-  idle:    { dot: "#374151", ring: "#374151", label: "Idle",    text: "#6b7280" },
+  idle:    { dot: "#64748b", ring: "#64748b", label: "Idle",    text: "#cbd5e1" },
   healthy: { dot: "#10b981", ring: "#10b981", label: "Healthy", text: "#34d399" },
   warning: { dot: "#f59e0b", ring: "#f59e0b", label: "Warning", text: "#fbbf24" },
   error:   { dot: "#ef4444", ring: "#ef4444", label: "Error",   text: "#f87171" },
@@ -267,8 +267,8 @@ function DetailPanel({
     [logs, tool.name],
   )
 
-  const LEVEL_DOT: Record<string, string> = { info: "#60a5fa", warn: "#fbbf24", error: "#f87171", debug: "#4b5563" }
-  const LEVEL_TEXT: Record<string, string> = { info: "#93c5fd", warn: "#fbbf24", error: "#fca5a5", debug: "#6b7280" }
+  const LEVEL_DOT: Record<string, string> = { info: "#60a5fa", warn: "#fbbf24", error: "#f87171", debug: "#94a3b8" }
+  const LEVEL_TEXT: Record<string, string> = { info: "#bfdbfe", warn: "#fde68a", error: "#fecaca", debug: "#cbd5e1" }
 
   return (
     <motion.div
@@ -321,8 +321,8 @@ function DetailPanel({
         <div className="flex items-center gap-4 mt-4">
           {[
             { label: "Total calls", val: state.calls.toString(), color: provider.color },
-            { label: "Errors",      val: state.errors.toString(), color: state.errors > 0 ? "#f87171" : "#374151" },
-            { label: "Last call",   val: state.lastCall ?? "—",   color: "rgba(255,255,255,0.4)" },
+            { label: "Errors",      val: state.errors.toString(), color: state.errors > 0 ? "#f87171" : "#cbd5e1" },
+            { label: "Last call",   val: state.lastCall ?? "—",   color: "rgba(255,255,255,0.72)" },
           ].map(({ label, val, color }) => (
             <div key={label}>
               <div className="text-[9px] uppercase tracking-widest mb-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>{label}</div>
@@ -364,12 +364,12 @@ function DetailPanel({
             >
               📡
             </motion.div>
-            <p className="text-[11px] font-mono" style={{ color: "#374151" }}>
+            <p className="text-[11px] font-mono" style={{ color: "#cbd5e1" }}>
               No log entries yet for this tool
             </p>
           </div>
         ) : (
-          <div className="flex flex-col divide-y" style={{ divideColor: "rgba(255,255,255,0.04)" }}>
+          <div className="flex flex-col divide-y divide-white/5">
             {relevantLogs.map((e, i) => (
               <motion.div
                 key={e.id}
@@ -378,7 +378,7 @@ function DetailPanel({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.02, duration: 0.2 }}
               >
-                <span className="shrink-0 tabular-nums" style={{ color: "#374151", minWidth: 64 }}>{e.ts}</span>
+                <span className="shrink-0 tabular-nums" style={{ color: "#94a3b8", minWidth: 64 }}>{e.ts}</span>
                 <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: LEVEL_DOT[e.level] ?? "#4b5563" }} />
                 <span className="flex-1 leading-relaxed break-all" style={{ color: LEVEL_TEXT[e.level] ?? "#6b7280" }}>
                   {e.msg}
@@ -599,7 +599,7 @@ export function ToolsPage({ onClose }: { readonly onClose: () => void }) {
         <StatPill label="Total tools"  value={totalTools}   color="#7eaaff" delay={0}    />
         <StatPill label="Healthy"      value={healthyCount} color="#10b981" delay={0.06} />
         <StatPill label="Errors"       value={errorCount}   color="#ef4444" delay={0.12} />
-        <StatPill label="Idle"         value={idleCount}    color="#6b7280" delay={0.18} />
+        <StatPill label="Idle"         value={idleCount}    color="#cbd5e1" delay={0.18} />
         <StatPill label="Total calls"  value={totalCalls}   color="#a78bfa" delay={0.24} />
 
         {/* Provider legend */}
@@ -686,14 +686,14 @@ export function ToolsPage({ onClose }: { readonly onClose: () => void }) {
       {/* ── Status bar ── */}
       <div
         className="flex items-center gap-4 px-5 py-1.5 shrink-0 font-mono text-[9px]"
-        style={{ borderTop: "1px solid rgba(255,255,255,0.05)", background: "rgba(0,0,0,0.4)", color: "#374151" }}
+        style={{ borderTop: "1px solid rgba(255,255,255,0.05)", background: "rgba(0,0,0,0.4)", color: "#94a3b8" }}
       >
         {PROVIDERS.map(p => {
           const calls = filteredTools
             .filter(t => t.provider === p.id)
             .reduce((a, t) => a + (toolStates[t.name]?.calls ?? 0), 0)
           return (
-            <span key={p.id} style={{ color: calls > 0 ? p.color : "#374151" }}>
+            <span key={p.id} style={{ color: calls > 0 ? p.color : "#94a3b8" }}>
               {p.id}: {calls}
             </span>
           )

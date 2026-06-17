@@ -149,27 +149,6 @@ function parseStatusSummary(raw: string): StatusSummary | null {
   return null
 }
 
-// ── SVG route helpers for mission-control PlanCard ───────────────────────────
-function mcStationPts(count: number, w: number, h: number): { x: number; y: number }[] {
-  const pad = 52
-  const uw  = w - pad * 2
-  const cy  = h * 0.52
-  return Array.from({ length: count }, (_, i) => {
-    const t = count > 1 ? i / (count - 1) : 0.5
-    return { x: pad + t * uw, y: cy + Math.sin(t * Math.PI * 1.6 - 0.4) * h * 0.22 }
-  })
-}
-
-function mcRoutePath(pts: { x: number; y: number }[]): string {
-  if (pts.length < 2) return `M ${pts[0].x} ${pts[0].y}`
-  let d = `M ${pts[0].x} ${pts[0].y}`
-  for (let i = 0; i < pts.length - 1; i++) {
-    const dx = (pts[i + 1].x - pts[i].x) * 0.45
-    d += ` C ${pts[i].x + dx},${pts[i].y} ${pts[i + 1].x - dx},${pts[i + 1].y} ${pts[i + 1].x},${pts[i + 1].y}`
-  }
-  return d
-}
-
 // ── Status summary card sub-components ───────────────────────────────────────
 // ── Animated counter ──────────────────────────────────────────────────────────
 function CountUp({ to, inView, delay = 0 }: { readonly to: number; readonly inView: boolean; readonly delay?: number }) {

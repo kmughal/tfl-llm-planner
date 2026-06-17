@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -51,8 +50,8 @@ func eclient() *euromapHTTPClient {
 }
 
 type oauthPayload struct {
-	AccessToken string `json:"access_token"`
-	ExpiresIn   string `json:"expires_in"`
+	AccessToken string      `json:"access_token"`
+	ExpiresIn   oauthExpiry `json:"expires_in"`
 }
 
 func (c *euromapHTTPClient) bearer() (string, error) {
@@ -79,7 +78,7 @@ func (c *euromapHTTPClient) bearer() (string, error) {
 	if err := json.Unmarshal(body, &t); err != nil {
 		return "", fmt.Errorf("decode token: %w", err)
 	}
-	exp, _ := strconv.Atoi(t.ExpiresIn)
+	exp := int(t.ExpiresIn)
 	if exp <= 0 {
 		exp = 3600
 	}

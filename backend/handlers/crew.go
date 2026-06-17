@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -47,8 +48,33 @@ func sotclient() *sotHTTPClient {
 }
 
 type sotTokenResp struct {
-	AccessToken string `json:"access_token"`
-	ExpiresIn   int64  `json:"expires_in"`
+	AccessToken string      `json:"access_token"`
+	ExpiresIn   oauthExpiry `json:"expires_in"`
+}
+
+type oauthExpiry int64
+
+func (e *oauthExpiry) UnmarshalJSON(data []byte) error {
+	var numeric int64
+	if err := json.Unmarshal(data, &numeric); err == nil {
+		*e = oauthExpiry(numeric)
+		return nil
+	}
+
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return err
+	}
+	if text == "" {
+		*e = 0
+		return nil
+	}
+	numeric, err := strconv.ParseInt(text, 10, 64)
+	if err != nil {
+		return err
+	}
+	*e = oauthExpiry(numeric)
+	return nil
 }
 
 func (c *sotHTTPClient) bearer() (string, error) {
@@ -75,7 +101,7 @@ func (c *sotHTTPClient) bearer() (string, error) {
 	if err := json.Unmarshal(body, &t); err != nil {
 		return "", fmt.Errorf("sot decode token: %w", err)
 	}
-	exp := t.ExpiresIn
+	exp := int64(t.ExpiresIn)
 	if exp <= 0 {
 		exp = 7200
 	}

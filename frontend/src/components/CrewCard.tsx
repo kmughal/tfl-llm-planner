@@ -1,6 +1,6 @@
 import { useRef } from "react"
 import { motion, useInView } from "framer-motion"
-import { Users, Train, Clock, Calendar, MapPin } from "lucide-react"
+import { Users, Train, Clock, MapPin } from "lucide-react"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -244,7 +244,6 @@ function DayCrewCard({ data }: { readonly data: DayData }) {
       {serviceOrder.map((svc, si) => {
         const members = byService[svc]
         const first = members[0]
-        const allStops = [...new Set(members.map(m => m.origin))].join("/") + " → " + [...new Set(members.map(m => m.destination))].join("/")
         const svcOrigin = first.origin, svcDest = first.destination, svcDep = first.dep, svcArr = first.arr
         return (
           <div key={svc} style={{ borderBottom: si < serviceOrder.length - 1 ? "4px solid #f1f5f9" : "none" }}>

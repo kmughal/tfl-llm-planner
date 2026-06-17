@@ -21,7 +21,7 @@ import { NationalRailDashboardCard } from "./NationalRailDashboardCard"
 import { ParisMetroCard } from "./ParisMetroCard"
 import { CrewCard } from "./CrewCard"
 import { TflStatusCard } from "./TflStatusCard"
-import { Train, Bus, MapPin, Clock, ArrowRight, Volume2, VolumeX, RefreshCw, Map as MapIcon, Radio } from "lucide-react"
+import { Train, Bus, MapPin, Clock, ArrowRight, Volume2, VolumeX, RefreshCw, Map as MapIcon, Radio, Cpu, Route, Wrench, ChevronDown } from "lucide-react"
 
 const DASHBOARD_TOOL      = "get_eurostar_dashboard"
 const LIVEMAP_TOOL        = "get_eurostar_live_map"
@@ -69,6 +69,105 @@ function ToolTag({ name }: { readonly name: string }) {
       >
         {name}
       </span>
+    </motion.div>
+  )
+}
+
+function prettyJson(value?: string) {
+  if (!value) return ""
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2)
+  } catch {
+    return value
+  }
+}
+
+function ObservabilityPanel({ toolEvents }: { readonly toolEvents: ToolEvent[] }) {
+  const selection = toolEvents.find(ev => ev.type === "selection")
+  const toolCall = toolEvents.find(ev => ev.type === "tool_call" && !!ev.name)
+  const [open, setOpen] = useState(false)
+  if (!selection && !toolCall) return null
+
+  const candidates = selection?.candidates ?? []
+  const args = prettyJson(toolCall?.arguments)
+  const chosenTool = toolCall?.name ?? "Waiting..."
+  const detectedNetwork = selection?.network ?? "Unknown"
+
+  return (
+    <motion.div
+      className="overflow-hidden rounded-2xl border"
+      style={{ background: "#0b1220", borderColor: "rgba(148,163,184,0.22)" }}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.22 }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen(value => !value)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.03]"
+      >
+        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/5">
+          <Cpu size={14} style={{ color: "#60a5fa" }} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-black uppercase tracking-[0.16em]" style={{ color: "#cbd5e1" }}>
+            Agent Observability
+          </div>
+          <div className="mt-0.5 truncate text-xs" style={{ color: "#94a3b8" }}>
+            {detectedNetwork} · {chosenTool}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-[11px] font-semibold" style={{ color: "#93c5fd" }}>
+          <span>{open ? "Hide details" : "Show details"}</span>
+          <motion.div animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.2 }}>
+            <ChevronDown size={14} />
+          </motion.div>
+        </div>
+      </button>
+
+      <motion.div
+        initial={false}
+        animate={{
+          height: open ? "auto" : 0,
+          opacity: open ? 1 : 0,
+        }}
+        transition={{ duration: 0.24, ease: "easeOut" }}
+        className="overflow-hidden"
+      >
+        <div className="grid gap-3 border-t px-4 py-3 md:grid-cols-2" style={{ borderColor: "rgba(148,163,184,0.16)" }}>
+          <div className="rounded-xl border px-3 py-2.5" style={{ borderColor: "rgba(148,163,184,0.14)", background: "rgba(15,23,42,0.7)" }}>
+            <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: "#94a3b8" }}>
+              <Route size={12} /> Selection
+            </div>
+            <div className="text-xs" style={{ color: "#e2e8f0" }}>
+              <div><span style={{ color: "#94a3b8" }}>Detected network:</span> {detectedNetwork}</div>
+              <div className="mt-1"><span style={{ color: "#94a3b8" }}>Source:</span> {toolCall?.source ?? selection?.source ?? "live MCP tools"}</div>
+            </div>
+            {candidates.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {candidates.map(candidate => (
+                  <span key={candidate} className="rounded-full border px-2 py-0.5 text-[10px] font-semibold" style={{ borderColor: "rgba(96,165,250,0.2)", color: "#bfdbfe", background: "rgba(37,99,235,0.12)" }}>
+                    {candidate}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="rounded-xl border px-3 py-2.5" style={{ borderColor: "rgba(148,163,184,0.14)", background: "rgba(15,23,42,0.7)" }}>
+            <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: "#94a3b8" }}>
+              <Wrench size={12} /> Tool Call
+            </div>
+            <div className="text-xs" style={{ color: "#e2e8f0" }}>
+              <div><span style={{ color: "#94a3b8" }}>Chosen tool:</span> {chosenTool}</div>
+            </div>
+            {args && (
+              <pre className="mt-2 overflow-x-auto rounded-lg border p-2 text-[10px]" style={{ borderColor: "rgba(148,163,184,0.12)", background: "rgba(2,6,23,0.7)", color: "#cbd5e1" }}>
+                {args}
+              </pre>
+            )}
+          </div>
+        </div>
+      </motion.div>
     </motion.div>
   )
 }
@@ -483,24 +582,6 @@ function HorizontalRoute({ stops, color }: { readonly stops: Stop[]; readonly co
       </div>
     </div>
   )
-}
-
-function ConnectionDots({ connections, color }: { readonly connections: number; readonly color: string }) {
-  const count = Math.min(connections, 3)
-  const positions = ["25%", "50%", "75%"] as const
-  return (
-    <>
-      {count >= 1 && <div className="absolute top-1/2 w-2 h-2 rounded-full bg-white border-2" style={{ borderColor: color, left: positions[0], transform: "translate(-50%, -50%)" }} />}
-      {count >= 2 && <div className="absolute top-1/2 w-2 h-2 rounded-full bg-white border-2" style={{ borderColor: color, left: positions[1], transform: "translate(-50%, -50%)" }} />}
-      {count >= 3 && <div className="absolute top-1/2 w-2 h-2 rounded-full bg-white border-2" style={{ borderColor: color, left: positions[2], transform: "translate(-50%, -50%)" }} />}
-    </>
-  )
-}
-
-// Detect network label from step text like "Elizabeth line (elizabeth-line, 12 min)"
-function stepNetworkLabel(step: string): string {
-  const m = /\(([^,)]+),/.exec(step)
-  return m ? m[1].trim() : ""
 }
 
 function JourneyCard({ block, color }: { readonly block: Block & { kind: "journey" }; readonly color: string }) {
@@ -1118,7 +1199,6 @@ function SpeakButton({ content }: { readonly content: string }) {
 export function MessageBubble({ message }: { readonly message: ChatMessage }) {
   const isUser = message.role === "user"
   const toolEvents: ToolEvent[] = message.toolEvents ?? []
-  const hasVerifiedBoundarySelection = toolEvents.some(ev => ev.type === "tool_result" && ev.result?.includes("SELECTION_CONTEXT:"))
 
   return (
     <motion.div
@@ -1129,11 +1209,13 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
     >
       {!isUser && toolEvents.length > 0 && (
         <div className="flex flex-col gap-2 w-full">
+          <ObservabilityPanel toolEvents={toolEvents} />
           {toolEvents.some(ev => ev.name === LIVEMAP_TOOL && ev.type === "tool_call") &&
             !toolEvents.some(ev => ev.name === LIVEMAP_TOOL && ev.type === "tool_result") && <EurostarMapLoading />}
           {/* Regular tool badges (and euromap tool_call pending badges) */}
           <div className="flex flex-wrap gap-1.5 px-1">
             {toolEvents
+              .filter(ev => ev.type !== "selection")
               .filter(ev => (((!EUROMAP_TOOLS.has(ev.name) && !SNCF_RICH_TOOLS.has(ev.name) && !TFL_ROAD_TOOLS.has(ev.name) && !CREW_TOOLS.has(ev.name) && !TFL_STATUS_TOOLS.has(ev.name) && ev.name !== TRAVELER_TOOL && ev.name !== BUS_ARRIVALS_TOOL && ev.name !== BUS_LINES_TOOL && ev.name !== WEATHER_TOOL && !NRAIL_TOOLS.has(ev.name) && ev.name !== PARIS_METRO_TOOL) || ev.type === "tool_call") && !(ev.name === LIVEMAP_TOOL && ev.type === "tool_call")))
               .filter(ev => !(ev.type === "tool_call" && toolEvents.some(result => result.type === "tool_result" && result.name === ev.name)))
               .map((ev) => (
@@ -1209,7 +1291,7 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
             })}
         </div>
       )}
-      {(isUser || !hasVerifiedBoundarySelection) && <div
+      <div
         className={cn("px-4 py-3 text-sm leading-relaxed", isUser ? "rounded-3xl rounded-br-md max-w-[75%]" : "app-assistant-bubble rounded-3xl rounded-bl-md max-w-[90%]")}
         style={
           isUser
@@ -1231,7 +1313,7 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
         {!isUser && message.content && !message.streaming && (
           <SpeakButton content={message.content} />
         )}
-      </div>}
+      </div>
     </motion.div>
   )
 }

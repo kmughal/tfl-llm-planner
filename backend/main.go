@@ -55,6 +55,8 @@ func main() {
 		api.GET("/tfl/command-center", h.GetTFLCommandCenter)
 		api.GET("/sncf/command-center", h.GetSNCFCommandCenter)
 		api.GET("/national-rail/command-center", h.GetNationalRailCommandCenter)
+		api.GET("/paris/command-center", h.GetParisCommandCenter)
+		api.GET("/operations/wall", h.GetOperationsWall)
 		api.DELETE("/memory/:sessionId", mh.FlushMemory)
 		api.GET("/eurostar/trains", handlers.GetEurostarTrains)
 		api.GET("/eurostar/trains/:planID", handlers.GetEurostarTrainByID)
