@@ -25,10 +25,11 @@ import {
   Users,
   Eye,
   X,
+  Bell,
 } from "lucide-react"
 import { useEurostarDisplay } from "./EurostarDisplay"
 
-const API = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080"
+const API = (import.meta.env.VITE_API_URL as string | undefined) ?? ""
 
 const EUROSTAR_BLUE = "#003366"
 const EUROSTAR_GOLD = "#C89A0C"
@@ -89,10 +90,41 @@ type TravelerSummary = {
   items: TravelerService[]
 }
 
+type EurostarWatchlistItem = {
+  planID: string
+  serviceCode: string
+  market: string
+  origin: string
+  destination: string
+  status: string
+  severity: "good" | "warning" | "critical"
+  departureDateTime: string
+  arrivalDateTime: string
+  active: boolean
+  cancelled: boolean
+  crewLinked: boolean
+  crewCount: number
+  passengerLoad: number
+  leadClass: string
+  riskScore: number
+  reasons: string[]
+  recommendedAsk: string
+}
+
+type EurostarWatchlist = {
+  date: string
+  services: number
+  watched: number
+  highestRisk: number
+  generatedAt: string
+  items: EurostarWatchlistItem[]
+}
+
 type HubData = {
   trains: EuromapPlan[]
   crew: EnrichedCrew[]
   traveler: TravelerSummary | null
+  watchlist: EurostarWatchlist | null
   fetchedAt: Date
   issues: string[]
 }
@@ -432,16 +464,18 @@ function TravelerMixChart({ traveler }: { readonly traveler: TravelerService }) 
 }
 
 async function fetchHubData(date: string): Promise<HubData> {
-  const [trainsRes, crewRes, travelerRes] = await Promise.allSettled([
+  const [trainsRes, crewRes, travelerRes, watchlistRes] = await Promise.allSettled([
     fetch(`${API}/api/eurostar/trains?date=${date}`),
     fetch(`${API}/api/crew/activities?date=${date}`),
     fetch(`${API}/api/eurostar/traveler-summary?date=${date}`),
+    fetch(`${API}/api/eurostar/watchlist?date=${date}`),
   ])
 
   const issues: string[] = []
   let trains: EuromapPlan[] = []
   let crew: EnrichedCrew[] = []
   let traveler: TravelerSummary | null = null
+  let watchlist: EurostarWatchlist | null = null
 
   if (trainsRes.status === "fulfilled" && trainsRes.value.ok) {
     trains = (await trainsRes.value.json()) as EuromapPlan[]
@@ -461,7 +495,13 @@ async function fetchHubData(date: string): Promise<HubData> {
     issues.push("Traveler summary is unavailable. The board is showing services without passenger load.")
   }
 
-  return { trains, crew, traveler, fetchedAt: new Date(), issues }
+  if (watchlistRes.status === "fulfilled" && watchlistRes.value.ok) {
+    watchlist = (await watchlistRes.value.json()) as EurostarWatchlist
+  } else {
+    issues.push("Operational watchlist is unavailable. Attention scoring is temporarily offline.")
+  }
+
+  return { trains, crew, traveler, watchlist, fetchedAt: new Date(), issues }
 }
 
 function metricLabel(value: number | string, label: string, sub: string, accent: string) {
@@ -590,11 +630,52 @@ function HeroMetric({
   )
 }
 
+function serviceAlertMeta(watchItem?: EurostarWatchlistItem) {
+  if (!watchItem) {
+    return {
+      border: "#eaecf0",
+      glow: "none",
+      bg: "white",
+      hover: "#f8fbff",
+      ribbon: CHANNEL_BLUE,
+      bannerBg: "",
+      bannerBorder: "",
+      bannerText: "",
+      label: "",
+    }
+  }
+  if (watchItem.severity === "critical") {
+    return {
+      border: "#fca5a5",
+      glow: "0 0 0 3px rgba(239,68,68,0.12)",
+      bg: "linear-gradient(180deg, rgba(255,247,247,0.98), rgba(255,255,255,0.96))",
+      hover: "#fff1f2",
+      ribbon: "#ef4444",
+      bannerBg: "#fff1f2",
+      bannerBorder: "#fecdd3",
+      bannerText: "#991b1b",
+      label: "Critical service",
+    }
+  }
+  return {
+    border: "#fdba74",
+    glow: "0 0 0 3px rgba(245,158,11,0.12)",
+    bg: "linear-gradient(180deg, rgba(255,251,235,0.98), rgba(255,255,255,0.96))",
+    hover: "#fff7ed",
+    ribbon: "#f59e0b",
+    bannerBg: "#fff7ed",
+    bannerBorder: "#fed7aa",
+    bannerText: "#9a3412",
+    label: "Attention service",
+  }
+}
+
 function ServiceRow({
   plan,
   hasCrew,
   traveler,
   active,
+  watchItem,
   selected,
   onSelect,
 }: {
@@ -602,10 +683,12 @@ function ServiceRow({
   readonly hasCrew: boolean
   readonly traveler?: TravelerService
   readonly active: boolean
+  readonly watchItem?: EurostarWatchlistItem
   readonly selected: boolean
   readonly onSelect: () => void
 }) {
   const tone = statusTone(plan.status)
+  const alert = serviceAlertMeta(watchItem)
   const stops = plan.stations.length
   const leadClass = traveler ? travelerLeadClass(traveler.classes) : ""
 
@@ -615,14 +698,16 @@ function ServiceRow({
       layout
       className="eurostar-service-card group relative flex min-h-[176px] w-full flex-col overflow-hidden rounded-lg border bg-white p-4 text-left transition"
       style={{
-        borderColor: selected ? CHANNEL_BLUE : active ? "#7dd3fc" : "#eaecf0",
+        borderColor: selected ? CHANNEL_BLUE : watchItem ? alert.border : active ? "#7dd3fc" : "#eaecf0",
+        background: watchItem ? alert.bg : "white",
         boxShadow: selected
           ? "0 0 0 3px rgba(0,114,206,0.16)"
+          : watchItem ? alert.glow
           : active ? "0 0 0 3px rgba(0,114,206,0.09)" : "none",
       }}
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -1, borderColor: CHANNEL_BLUE, backgroundColor: "#f8fbff" }}
+      whileHover={{ y: -1, borderColor: watchItem ? alert.ribbon : CHANNEL_BLUE, backgroundColor: watchItem ? alert.hover : "#f8fbff" }}
       whileTap={{ scale: 0.995 }}
       transition={{ duration: 0.18 }}
       onClick={onSelect}
@@ -630,8 +715,8 @@ function ServiceRow({
     >
       <motion.span
         className="absolute inset-x-0 top-0 h-1"
-        style={{ background: active ? CHANNEL_BLUE : tone.dot }}
-        animate={active ? { opacity: [0.45, 1, 0.45] } : undefined}
+        style={{ background: watchItem ? alert.ribbon : active ? CHANNEL_BLUE : tone.dot }}
+        animate={active || watchItem ? { opacity: [0.45, 1, 0.45] } : undefined}
         transition={{ duration: 1.5, repeat: Infinity }}
       />
 
@@ -652,12 +737,23 @@ function ServiceRow({
           </div>
           <span className="text-[10px] font-black uppercase tracking-wide" style={{ color: "#667085" }}>{directionLabel(plan)}</span>
         </div>
-        <div
-          className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black"
-          style={{ background: tone.bg, borderColor: tone.border, color: tone.text }}
-        >
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: tone.dot }} />
-          {statusLabel(plan.status)}
+        <div className="flex items-center gap-2">
+          {watchItem && (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em]"
+              style={{ background: alert.bannerBg, borderColor: alert.bannerBorder, color: alert.bannerText }}
+            >
+              <AlertTriangle size={11} />
+              {alert.label}
+            </span>
+          )}
+          <div
+            className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black"
+            style={{ background: tone.bg, borderColor: tone.border, color: tone.text }}
+          >
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: tone.dot }} />
+            {statusLabel(plan.status)}
+          </div>
         </div>
       </div>
 
@@ -702,6 +798,15 @@ function ServiceRow({
           <ChevronDown size={14} />
         </motion.span>
       </div>
+
+      {watchItem && watchItem.reasons.length > 0 && (
+        <div
+          className="mt-3 rounded-md border px-3 py-2 text-[11px] font-semibold"
+          style={{ background: alert.bannerBg, borderColor: alert.bannerBorder, color: alert.bannerText }}
+        >
+          {watchItem.reasons[0]}
+        </div>
+      )}
     </motion.button>
   )
 }
@@ -748,11 +853,13 @@ function ServiceDetailPanel({
   crewMembers,
   traveler,
   onAsk,
+  onClose,
 }: {
   readonly plan: EuromapPlan
   readonly crewMembers: EnrichedCrew[]
   readonly traveler?: TravelerService
   readonly onAsk?: (query: string) => void
+  readonly onClose: () => void
 }) {
   const tone = statusTone(plan.status)
   const stopCount = plan.stations.length
@@ -767,23 +874,39 @@ function ServiceDetailPanel({
       animate={{ opacity: 1, height: "auto", y: 0 }}
       exit={{ opacity: 0, height: 0, y: -4 }}
       transition={{ duration: 0.24, ease: "easeOut" }}
+      onClick={onClose}
     >
       <div className="grid grid-cols-[minmax(0,1fr)_260px] gap-4 p-4 max-lg:grid-cols-1">
         <div className="min-w-0">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="text-lg font-black tabular-nums" style={{ color: INK }}>
-              {plan.serviceCode}
-            </span>
-            <span className="text-sm font-bold" style={{ color: "#475467" }}>
-              {stationName(originCode(plan))} to {stationName(destCode(plan))}
-            </span>
-            <span
-              className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-black"
-              style={{ background: tone.bg, borderColor: tone.border, color: tone.text }}
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="text-lg font-black tabular-nums" style={{ color: INK }}>
+                {plan.serviceCode}
+              </span>
+              <span className="text-sm font-bold" style={{ color: "#475467" }}>
+                {stationName(originCode(plan))} to {stationName(destCode(plan))}
+              </span>
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-black"
+                style={{ background: tone.bg, borderColor: tone.border, color: tone.text }}
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: tone.dot }} />
+                {statusLabel(plan.status)}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={event => {
+                event.stopPropagation()
+                onClose()
+              }}
+              className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-black"
+              style={{ borderColor: "#d0d5dd", background: "white", color: "#475467" }}
+              aria-label={`Close detail for Eurostar service ${plan.serviceCode}`}
             >
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: tone.dot }} />
-              {statusLabel(plan.status)}
-            </span>
+              <X size={12} />
+              Close
+            </button>
           </div>
 
           <div className="mb-4 grid grid-cols-4 gap-2 max-md:grid-cols-2">
@@ -871,7 +994,7 @@ function ServiceDetailPanel({
             <div className="mb-2 text-xs font-black uppercase tracking-wide" style={{ color: INK }}>
               Actions
             </div>
-            <div className="grid grid-cols-1 gap-2">
+            <div className="grid grid-cols-1 gap-2" onClick={event => event.stopPropagation()}>
               <CommandButton
                 icon={<Route size={14} />}
                 label="Ask for stop detail"
@@ -906,10 +1029,12 @@ export function EurostarCommandCenter({
   onClose,
   onAsk,
   onLoadAnalytics,
+  onNotifications,
 }: {
   readonly onClose: () => void
   readonly onAsk?: (query: string) => void
   readonly onLoadAnalytics?: () => void
+  readonly onNotifications?: () => void
 }) {
   const date = todayDate()
 
@@ -971,6 +1096,7 @@ export function EurostarCommandCenter({
   const trains = data?.trains ?? []
   const crew = data?.crew ?? []
   const traveler = data?.traveler ?? null
+  const watchlist = data?.watchlist ?? null
 
   const crewByService = useMemo(() => {
     const grouped: Record<string, EnrichedCrew[]> = {}
@@ -992,6 +1118,14 @@ export function EurostarCommandCenter({
     }
     return grouped
   }, [traveler])
+
+  const watchByPlanID = useMemo(() => {
+    const grouped: Record<string, EurostarWatchlistItem> = {}
+    for (const item of watchlist?.items ?? []) {
+      grouped[item.planID] = item
+    }
+    return grouped
+  }, [watchlist])
 
   const routeEntries = useMemo(() => {
     const counts = new Map<string, number>()
@@ -1031,7 +1165,6 @@ export function EurostarCommandCenter({
       return true
     })
   const selectedPlan = trains.find(train => train.planID === selectedPlanID)
-
   const refreshOpt = REFRESH_OPTIONS.find(o => o.seconds === refreshSecs) ?? REFRESH_OPTIONS[1]
   const lastUpdate = data ? fmtClock(data.fetchedAt) : "--:--:--"
   const commandAsk = onAsk
@@ -1405,7 +1538,7 @@ export function EurostarCommandCenter({
               <HeroMetric value={loading && !data ? "..." : activeTrains.length} label="running now" tone="#67e8f9" />
               <HeroMetric value={loading && !data ? "..." : crew.length} label="crew records" tone="#c4b5fd" />
               <HeroMetric
-                value={loading && !data ? "..." : traveler ? traveler.totalPassengers.toLocaleString("en-GB") : watchTrains.length}
+                value={loading && !data ? "..." : traveler ? traveler.totalPassengers.toLocaleString("en-GB") : watchlist?.watched ?? watchTrains.length}
                 label={traveler ? "passengers today" : "watchlist services"}
                 tone={traveler ? "#f9a8d4" : "#fde68a"}
               />
@@ -1417,10 +1550,14 @@ export function EurostarCommandCenter({
             {metricLabel(stationEntries.length, "Stations", "covered in today's plans", CHANNEL_BLUE)}
             {metricLabel(crewedServices.size, "Crewed", "services with roster data", "#10b981")}
             {metricLabel(
-              traveler?.peakLoad ?? uncrewedTrains.length,
-              traveler ? "Peak load" : "Gaps",
-              traveler ? `${traveler.busiestService || "top service"} busiest traveler service` : "services without crew link",
-              traveler ? "#ec4899" : "#f97316",
+              watchlist?.highestRisk ?? traveler?.peakLoad ?? uncrewedTrains.length,
+              watchlist ? "Risk ceiling" : traveler ? "Peak load" : "Gaps",
+              watchlist
+                ? `${watchlist.watched} services on the live operational watchlist`
+                : traveler
+                  ? `${traveler.busiestService || "top service"} busiest traveler service`
+                  : "services without crew link",
+              watchlist ? "#ef4444" : traveler ? "#ec4899" : "#f97316",
             )}
           </div>
         </section>
@@ -1430,6 +1567,17 @@ export function EurostarCommandCenter({
           <CommandButton icon={<Activity size={15} />} label="Live dashboard" query="Show me the Eurostar live dashboard" onAsk={commandAsk} />
           <CommandButton icon={<AlertTriangle size={15} />} label="Disruptions" query="Are there any Eurostar or SNCF disruptions today?" onAsk={commandAsk} />
           <CommandButton icon={<CalendarDays size={15} />} label="Next Paris" query="When is the next Eurostar from London to Paris?" onAsk={commandAsk} />
+          {onNotifications && (
+            <button
+              type="button"
+              onClick={onNotifications}
+              className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-left text-xs font-bold transition"
+              style={{ borderColor: "#d0d5dd", color: INK }}
+            >
+              <Bell size={15} style={{ color: EUROSTAR_BLUE }} />
+              <span className="truncate">Notifications</span>
+            </button>
+          )}
           {onLoadAnalytics && (
             <button
               type="button"
@@ -1504,6 +1652,38 @@ export function EurostarCommandCenter({
                 </div>
               </div>
 
+              {(watchlist?.items?.length ?? 0) > 0 && (
+                <div
+                  className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3"
+                  style={{ borderColor: "#fed7aa", background: "linear-gradient(90deg, rgba(255,247,237,0.98), rgba(255,255,255,0.96))", color: "#9a3412" }}
+                >
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle size={16} />
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-[0.16em]">Attention on the board</div>
+                      <div className="text-sm font-semibold">
+                        {watchlist?.watched ?? watchTrains.length} service{(watchlist?.watched ?? watchTrains.length) === 1 ? "" : "s"} currently need attention.
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full border px-3 py-1 text-[11px] font-black" style={{ borderColor: "#fdba74", background: "#fff7ed", color: "#9a3412" }}>
+                      Peak risk {watchlist?.highestRisk ?? 0}
+                    </span>
+                    {commandAsk && watchlist?.items?.[0] && (
+                      <button
+                        type="button"
+                        className="rounded-full border px-3 py-1.5 text-[11px] font-black"
+                        style={{ borderColor: "#fdba74", background: "#fff7ed", color: "#9a3412" }}
+                        onClick={() => commandAsk(watchlist.items[0].recommendedAsk)}
+                      >
+                        Ask top alert
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <AnimatePresence initial={false}>
                 {selectedPlan && (
                   <div className="mb-3">
@@ -1512,6 +1692,7 @@ export function EurostarCommandCenter({
                       crewMembers={crewByService[normalizeServiceCode(selectedPlan.serviceCode)] ?? []}
                       traveler={travelerByService[normalizeServiceCode(selectedPlan.serviceCode)]}
                       onAsk={commandAsk}
+                      onClose={() => setSelectedPlanID(null)}
                     />
                   </div>
                 )}
@@ -1536,6 +1717,7 @@ export function EurostarCommandCenter({
                       active={isTrainActive(plan, now)}
                       hasCrew={crewedServices.has(normalizeServiceCode(plan.serviceCode))}
                       traveler={travelerByService[normalizeServiceCode(plan.serviceCode)]}
+                      watchItem={watchByPlanID[plan.planID]}
                       selected={selected}
                       onSelect={() => setSelectedPlanID(current => current === plan.planID ? null : plan.planID)}
                     />

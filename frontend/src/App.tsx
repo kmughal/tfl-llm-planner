@@ -21,7 +21,9 @@ import { EurostarHub } from "./components/EurostarHub"
 import { EurostarSchedule } from "./components/EurostarSchedule"
 import { EurostarCommandCenter } from "./components/EurostarCommandCenter"
 import { EurostarLoadAnalytics } from "./components/EurostarLoadAnalytics"
+import { EurostarNotifications } from "./components/EurostarNotifications"
 import { TflCommandCenter } from "./components/TflCommandCenter"
+import { TflHub } from "./components/TflHub"
 import { SNCFCommandCenter } from "./components/SNCFCommandCenter"
 import { NationalRailCommandCenter } from "./components/NationalRailCommandCenter"
 import { ParisRERCommandCenter } from "./components/ParisRERCommandCenter"
@@ -35,6 +37,7 @@ import "./index.css"
 const TFL_TOOLS      = new Set(["plan_journey", "get_line_status", "get_status_by_mode", "search_stops"])
 const SNCF_TOOLS     = new Set(["plan_sncf_journey", "search_sncf_stations", "get_sncf_disruptions", "get_sncf_departures", "get_sncf_arrivals", "get_sncf_train", "get_sncf_dashboard"])
 const EUROSTAR_TOOLS = new Set(["get_euromap_plans", "get_euromap_technical_plans", "get_euromap_plan_by_id", "get_euromap_technical_plan_by_id", "get_eurostar_dashboard", "get_eurostar_live_map", "get_traveler_summary", "get_crew_activities", "get_crew_monthly_schedule"])
+const EUROSTAR_CATALOG_STORAGE_KEY = "eurostar-train-catalog-v1"
 
 // ── Nav tab button with animated active indicator ─────────────────────────────
 const NAV_TAB_COLORS: Record<string, { text: string; bg: string; border: string; glow: string }> = {
@@ -246,7 +249,9 @@ export default function App() {
   const [eurostarHubOpen, setEurostarHubOpen]               = useState(false)
   const [eurostarScheduleOpen, setEurostarScheduleOpen]     = useState(false)
   const [eurostarLoadAnalyticsOpen, setEurostarLoadAnalyticsOpen] = useState(false)
+  const [eurostarNotificationsOpen, setEurostarNotificationsOpen] = useState(false)
   const [commandCenterOpen, setCommandCenterOpen]           = useState(false)
+  const [tflHubOpen, setTflHubOpen]                         = useState(false)
   const [tflCommandCenterOpen, setTflCommandCenterOpen]     = useState(false)
   const [sncfCommandCenterOpen, setSncfCommandCenterOpen]   = useState(false)
   const [nationalRailCommandCenterOpen, setNationalRailCommandCenterOpen] = useState(false)
@@ -303,6 +308,30 @@ export default function App() {
     }
     globalThis.addEventListener("hashchange", onHash)
     return () => globalThis.removeEventListener("hashchange", onHash)
+  }, [])
+
+  useEffect(() => {
+    const date = new Date().toISOString().slice(0, 10)
+    try {
+      const raw = window.localStorage.getItem(EUROSTAR_CATALOG_STORAGE_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as { date?: string; fetchedAt?: string }
+        const age = parsed?.fetchedAt ? Date.now() - new Date(parsed.fetchedAt).getTime() : Number.POSITIVE_INFINITY
+        if (parsed?.date === date && Number.isFinite(age) && age < 24 * 60 * 60 * 1000) return
+      }
+    } catch {
+      // Ignore stale local cache parse issues and fetch again.
+    }
+
+    void fetch(`/api/eurostar/catalog?date=${date}`)
+      .then(response => response.ok ? response.json() : null)
+      .then(payload => {
+        if (!payload) return
+        window.localStorage.setItem(EUROSTAR_CATALOG_STORAGE_KEY, JSON.stringify(payload))
+      })
+      .catch(() => {
+        // Silent preload failure; target screens will retry on demand.
+      })
   }, [])
 
   const isEmpty = messages.length === 0
@@ -540,9 +569,12 @@ export default function App() {
               </button>
             )}
 
-            {/* Eurostar Hub */}
-            <button
-              onClick={() => setEurostarHubOpen(true)}
+          {/* Eurostar Hub */}
+          <button
+            onClick={() => setEurostarHubOpen(value => {
+              if (!value) setTflHubOpen(false)
+              return !value
+            })}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
               style={eurostarBtnStyle(eurostarHubOpen)}
               aria-label="Open Eurostar hub"
@@ -551,32 +583,64 @@ export default function App() {
               <span className="hidden sm:inline">Eurostar</span>
             </button>
 
+            <button
+              onClick={() => setTflHubOpen(value => {
+                if (!value) setEurostarHubOpen(false)
+                return !value
+              })}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
+              style={{
+                backgroundColor: tflHubOpen ? "rgba(227,32,23,0.18)" : "transparent",
+                color:           tflHubOpen ? "#ffb4a8" : "rgba(255,255,255,0.45)",
+                border:          tflHubOpen ? "1px solid rgba(227,32,23,0.35)" : "1px solid transparent",
+              }}
+              aria-label="Open TfL hub"
+            >
+              <Bus style={{ width: 13, height: 13 }} />
+              <span className="hidden sm:inline">TfL</span>
+            </button>
+
             <DashboardMenu
               onOperationsWall={() => setOperationsWallOpen(true)}
-              onEurostar={() => setCommandCenterOpen(true)}
-              onEurostarLoad={() => setEurostarLoadAnalyticsOpen(true)}
-              onTfl={() => setTflCommandCenterOpen(true)}
               onSncf={() => setSncfCommandCenterOpen(true)}
               onNationalRail={() => setNationalRailCommandCenterOpen(true)}
               onParis={() => setParisCommandCenterOpen(true)}
             />
 
-            <EurostarDisplayMenu inverted />
-
-            {/* Bus explorer */}
-            <button
-              onClick={() => setBusExplorerOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
+            <motion.button
+              type="button"
+              onClick={() => { globalThis.location.hash = "#system"; setPage("system") }}
+              className="relative overflow-hidden rounded-lg px-3 py-1.5 text-[11px] font-black"
               style={{
-                backgroundColor: busExplorerOpen ? "rgba(225,37,27,0.18)" : "transparent",
-                color:           busExplorerOpen ? "#fca5a5" : "rgba(255,255,255,0.45)",
-                border:          busExplorerOpen ? "1px solid rgba(225,37,27,0.35)" : "1px solid transparent",
+                color: "#a5f3fc",
+                background: "linear-gradient(135deg, rgba(8,47,73,0.72), rgba(37,99,235,0.22))",
+                border: "1px solid rgba(34,211,238,0.34)",
+                boxShadow: "0 0 0 1px rgba(34,211,238,0.08), 0 0 16px rgba(34,211,238,0.18)",
               }}
-              aria-label="Browse London bus lines"
+              whileHover={{ y: -1, boxShadow: "0 0 0 1px rgba(34,211,238,0.18), 0 0 24px rgba(34,211,238,0.32)" }}
+              whileTap={{ scale: 0.98 }}
+              aria-label="See how the system works"
             >
-              <Bus style={{ width: 13, height: 13 }} />
-              <span className="hidden sm:inline">Buses</span>
-            </button>
+              <motion.span
+                className="pointer-events-none absolute inset-y-0 -left-10 w-10 skew-x-[-24deg]"
+                style={{ background: "linear-gradient(90deg, transparent, rgba(125,211,252,0.95), transparent)" }}
+                animate={{ x: ["0%", "380%"] }}
+                transition={{ duration: 2.2, repeat: Infinity, ease: "linear" }}
+              />
+              <motion.span
+                className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full"
+                style={{ background: "#67e8f9" }}
+                animate={{ opacity: [1, 0.3, 1], scale: [1, 1.65, 1] }}
+                transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <span className="relative flex items-center gap-1.5">
+                <Network style={{ width: 13, height: 13 }} />
+                <span className="hidden sm:inline">How It Works</span>
+                <span className="sm:hidden">System</span>
+              </span>
+            </motion.button>
+
+            <EurostarDisplayMenu inverted />
 
             {/* Memory timer badge */}
             <AnimatePresence>
@@ -618,13 +682,6 @@ export default function App() {
               onClick={() => { globalThis.location.hash = "#tools"; setPage("tools") }}
             />
             <NavTab
-              id="system"
-              label="System"
-              icon={<Network style={{ width: 13, height: 13 }} />}
-              active={false}
-              onClick={() => { globalThis.location.hash = "#system"; setPage("system") }}
-            />
-            <NavTab
               id="logs"
               label="Logs"
               icon={<Terminal style={{ width: 13, height: 13 }} />}
@@ -651,8 +708,6 @@ export default function App() {
             <LandingPage
               onSend={sendMessage}
               onTemplate={setPrefill}
-              onEurostarLoad={() => setEurostarLoadAnalyticsOpen(true)}
-              onSystem={() => { globalThis.location.hash = "#system"; setPage("system") }}
             />
           ) : (
             <div className="max-w-[1180px] mx-auto w-full px-4 py-6 flex flex-col gap-4">
@@ -692,6 +747,17 @@ export default function App() {
           onSend={sendMessage}
           onSchedule={() => { setEurostarHubOpen(false); setEurostarScheduleOpen(true) }}
           onCommandCenter={() => setCommandCenterOpen(true)}
+          onLoadAnalytics={() => setEurostarLoadAnalyticsOpen(true)}
+          onNotifications={() => setEurostarNotificationsOpen(true)}
+        />
+      )}
+
+      {tflHubOpen && (
+        <TflHub
+          onClose={() => setTflHubOpen(false)}
+          onCommandCenter={() => { setTflHubOpen(false); setTflCommandCenterOpen(true) }}
+          onBusExplorer={() => { setTflHubOpen(false); setBusExplorerOpen(true) }}
+          onSend={sendMessage}
         />
       )}
 
@@ -710,6 +776,7 @@ export default function App() {
             onClose={() => setCommandCenterOpen(false)}
             onAsk={sendMessage}
             onLoadAnalytics={() => { setCommandCenterOpen(false); setEurostarLoadAnalyticsOpen(true) }}
+            onNotifications={() => { setCommandCenterOpen(false); setEurostarNotificationsOpen(true) }}
           />
         )}
       </AnimatePresence>
@@ -718,6 +785,15 @@ export default function App() {
         {eurostarLoadAnalyticsOpen && (
           <EurostarLoadAnalytics
             onClose={() => setEurostarLoadAnalyticsOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {eurostarNotificationsOpen && (
+          <EurostarNotifications
+            onClose={() => setEurostarNotificationsOpen(false)}
+            onAsk={sendMessage}
           />
         )}
       </AnimatePresence>

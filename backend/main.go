@@ -60,8 +60,10 @@ func main() {
 		api.GET("/operations/wall", h.GetOperationsWall)
 		api.DELETE("/memory/:sessionId", mh.FlushMemory)
 		api.GET("/eurostar/trains", handlers.GetEurostarTrains)
+		api.GET("/eurostar/catalog", handlers.GetEurostarCatalog)
 		api.GET("/eurostar/trains/:planID", handlers.GetEurostarTrainByID)
 		api.GET("/eurostar/traveler-summary", h.GetEurostarTravelerSummary)
+		api.GET("/eurostar/watchlist", h.GetEurostarWatchlist)
 		api.GET("/crew/activities", handlers.GetCrewActivities)
 	}
 

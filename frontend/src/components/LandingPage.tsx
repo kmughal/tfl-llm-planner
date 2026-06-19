@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence, useMotionValue, useSpring } from "framer-motion";
-import { Pencil, ArrowRight, BarChart3, Network } from "lucide-react";
+import { Pencil, ArrowRight } from "lucide-react";
 
 // ── Brand colours ─────────────────────────────────────────────────────────────
 const GOLD   = "#c9a227";
@@ -516,13 +516,9 @@ function DepartureTicker() {
 export function LandingPage({
   onSend,
   onTemplate,
-  onEurostarLoad,
-  onSystem,
 }: {
   readonly onSend: (msg: string) => void;
   readonly onTemplate: (t: string) => void;
-  readonly onEurostarLoad?: () => void;
-  readonly onSystem?: () => void;
 }) {
   const [selected, setSelected] = useState<NetworkKey>("EUROSTAR");
   const net = NETWORKS.find(n => n.key === selected)!;
@@ -615,66 +611,6 @@ export function LandingPage({
         <div style={{ width: "100%" }}>
           <ExampleCards net={net} onSend={onSend} onTemplate={onTemplate} />
         </div>
-
-        {selected === "EUROSTAR" && onEurostarLoad && (
-          <motion.button
-            type="button"
-            onClick={onEurostarLoad}
-            style={{
-              marginTop: 22,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "12px 16px",
-              borderRadius: 16,
-              border: "1px solid rgba(201,162,39,0.28)",
-              background: "linear-gradient(135deg, rgba(201,162,39,0.18), rgba(0,51,102,0.16))",
-              color: "white",
-              fontSize: 13,
-              fontWeight: 800,
-              boxShadow: "0 14px 40px rgba(0,0,0,0.16)",
-            }}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1.2, duration: 0.45 }}
-          >
-            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 10, background: "rgba(255,255,255,0.1)" }}>
-              <BarChart3 size={16} />
-            </span>
-            <span>Open Eurostar Load Analytics</span>
-            <ArrowRight size={15} />
-          </motion.button>
-        )}
-
-        {onSystem && (
-          <motion.button
-            type="button"
-            onClick={onSystem}
-            style={{
-              marginTop: 14,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "11px 15px",
-              borderRadius: 16,
-              border: "1px solid rgba(34,211,238,0.24)",
-              background: "linear-gradient(135deg, rgba(34,211,238,0.12), rgba(99,102,241,0.1))",
-              color: "white",
-              fontSize: 13,
-              fontWeight: 800,
-              boxShadow: "0 12px 34px rgba(0,0,0,0.14)",
-            }}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1.28, duration: 0.45 }}
-          >
-            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 10, background: "rgba(255,255,255,0.1)" }}>
-              <Network size={16} />
-            </span>
-            <span>See how the system works</span>
-            <ArrowRight size={15} />
-          </motion.button>
-        )}
 
         {/* ── Bottom hint ── */}
         <motion.p

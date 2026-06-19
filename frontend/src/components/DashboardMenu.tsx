@@ -1,14 +1,11 @@
 import { useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { BarChart3, ChevronDown, Globe2, LayoutDashboard, TrainFront } from "lucide-react"
+import { ChevronDown, Globe2, LayoutDashboard, TrainFront } from "lucide-react"
 
-export function DashboardMenu({ onOperationsWall, onEurostar, onEurostarLoad, onTfl, onSncf, onNationalRail, onParis }: { readonly onOperationsWall: () => void; readonly onEurostar: () => void; readonly onEurostarLoad: () => void; readonly onTfl: () => void; readonly onSncf: () => void; readonly onNationalRail: () => void; readonly onParis: () => void }) {
+export function DashboardMenu({ onOperationsWall, onSncf, onNationalRail, onParis }: { readonly onOperationsWall: () => void; readonly onSncf: () => void; readonly onNationalRail: () => void; readonly onParis: () => void }) {
   const [open, setOpen] = useState(false)
   const items = [
     { id: "wall", label: "Operations Wall", detail: "Cross-border live picture", color: "#3b82f6", icon: <Globe2 size={15} />, action: onOperationsWall },
-    { id: "eurostar", label: "Eurostar", detail: "Cross-channel operations", color: "#0072ce", action: onEurostar },
-    { id: "eurostar-load", label: "Eurostar Load", detail: "Passenger analytics view", color: "#c89a0c", icon: <BarChart3 size={15} />, action: onEurostarLoad },
-    { id: "tfl", label: "TfL", detail: "London network", color: "#e32017", action: onTfl },
     { id: "sncf", label: "SNCF", detail: "French national rail", color: "#e2001a", action: onSncf },
     { id: "national-rail", label: "National Rail", detail: "UK mainline operations", color: "#17365d", action: onNationalRail },
     { id: "paris", label: "Paris RER", detail: "RER and Transilien hubs", color: "#009a44", action: onParis },

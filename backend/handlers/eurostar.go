@@ -22,6 +22,15 @@ const (
 
 var planIDRe = regexp.MustCompile(`^\d{8}-\d+$`)
 
+type eurostarCatalogCache struct {
+	mu       sync.RWMutex
+	date     string
+	fetched  time.Time
+	services []EurostarCatalogItem
+}
+
+var eurostarCatalog = &eurostarCatalogCache{}
+
 // ── OAuth-cached HTTP client ──────────────────────────────────────────────────
 
 type euromapHTTPClient struct {
@@ -140,6 +149,135 @@ type EuromapPlan struct {
 	Stations          []EuromapStation `json:"stations"`
 }
 
+type EurostarCatalogItem struct {
+	PlanID            string `json:"planID"`
+	ServiceCode       string `json:"serviceCode"`
+	Status            string `json:"status"`
+	DepartureDateTime string `json:"departureDateTime"`
+	ArrivalDateTime   string `json:"arrivalDateTime"`
+	OriginCode        string `json:"originCode"`
+	OriginName        string `json:"originName"`
+	DestinationCode   string `json:"destinationCode"`
+	DestinationName   string `json:"destinationName"`
+	RouteKey          string `json:"routeKey"`
+}
+
+type EurostarCatalogResponse struct {
+	Date       string                `json:"date"`
+	Cached     bool                  `json:"cached"`
+	FetchedAt  string                `json:"fetchedAt"`
+	Count      int                   `json:"count"`
+	Services   []EurostarCatalogItem `json:"services"`
+	RouteCount int                   `json:"routeCount"`
+}
+
+func stationNameForCode(code string) string {
+	switch strings.ToUpper(code) {
+	case "SPX":
+		return "London St Pancras"
+	case "PNO":
+		return "Paris Gare du Nord"
+	case "BXL", "BRU":
+		return "Brussels-Midi"
+	case "LIL":
+		return "Lille Europe"
+	case "AMS", "ASD":
+		return "Amsterdam Centraal"
+	case "RTD", "RDM":
+		return "Rotterdam Centraal"
+	case "EBF":
+		return "Ebbsfleet International"
+	case "ASH":
+		return "Ashford International"
+	default:
+		return code
+	}
+}
+
+func originStop(plan EuromapPlan) string {
+	for _, stop := range plan.Stations {
+		if strings.EqualFold(stop.StopType, "origin") {
+			return stop.ShortCode
+		}
+	}
+	if len(plan.Stations) > 0 {
+		return plan.Stations[0].ShortCode
+	}
+	return ""
+}
+
+func destinationStop(plan EuromapPlan) string {
+	for _, stop := range plan.Stations {
+		if strings.EqualFold(stop.StopType, "destination") {
+			return stop.ShortCode
+		}
+	}
+	if len(plan.Stations) > 0 {
+		return plan.Stations[len(plan.Stations)-1].ShortCode
+	}
+	return ""
+}
+
+func buildEurostarCatalog(plans []EuromapPlan) []EurostarCatalogItem {
+	items := make([]EurostarCatalogItem, 0, len(plans))
+	for _, plan := range plans {
+		originCode := originStop(plan)
+		destinationCode := destinationStop(plan)
+		originName := stationNameForCode(originCode)
+		destinationName := stationNameForCode(destinationCode)
+		items = append(items, EurostarCatalogItem{
+			PlanID:            plan.PlanID,
+			ServiceCode:       plan.ServiceCode,
+			Status:            plan.Status,
+			DepartureDateTime: plan.DepartureDatetime,
+			ArrivalDateTime:   plan.ArrivalDatetime,
+			OriginCode:        originCode,
+			OriginName:        originName,
+			DestinationCode:   destinationCode,
+			DestinationName:   destinationName,
+			RouteKey:          originName + "|||" + destinationName,
+		})
+	}
+	return items
+}
+
+func getCachedEurostarCatalog(date string) ([]EurostarCatalogItem, bool, time.Time, error) {
+	now := time.Now().UTC()
+
+	eurostarCatalog.mu.RLock()
+	if eurostarCatalog.date == date && now.Sub(eurostarCatalog.fetched) < 24*time.Hour && len(eurostarCatalog.services) > 0 {
+		services := append([]EurostarCatalogItem(nil), eurostarCatalog.services...)
+		fetched := eurostarCatalog.fetched
+		eurostarCatalog.mu.RUnlock()
+		return services, true, fetched, nil
+	}
+	eurostarCatalog.mu.RUnlock()
+
+	params := url.Values{}
+	params.Set("fromDateTime", date+"T00:00:00Z")
+	params.Set("range", "thalys,channel")
+
+	body, err := eclient().get("/v1/plans", params)
+	if err != nil {
+		return nil, false, time.Time{}, err
+	}
+
+	var plans []EuromapPlan
+	if err := json.Unmarshal(body, &plans); err != nil {
+		return nil, false, time.Time{}, fmt.Errorf("decode error")
+	}
+
+	services := buildEurostarCatalog(plans)
+
+	eurostarCatalog.mu.Lock()
+	eurostarCatalog.date = date
+	eurostarCatalog.fetched = now
+	eurostarCatalog.services = append([]EurostarCatalogItem(nil), services...)
+	eurostarCatalog.mu.Unlock()
+
+	return services, false, now, nil
+}
+
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 // GetEurostarTrains handles GET /api/eurostar/trains?date=YYYY-MM-DD
@@ -191,4 +329,36 @@ func GetEurostarTrainByID(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, plan)
+}
+
+// GetEurostarCatalog handles GET /api/eurostar/catalog?date=YYYY-MM-DD
+func GetEurostarCatalog(c *gin.Context) {
+	date := c.Query("date")
+	if date == "" {
+		date = time.Now().Format("2006-01-02")
+	}
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date, use YYYY-MM-DD"})
+		return
+	}
+
+	services, cached, fetchedAt, err := getCachedEurostarCatalog(date)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+
+	routes := map[string]struct{}{}
+	for _, item := range services {
+		routes[item.RouteKey] = struct{}{}
+	}
+
+	c.JSON(http.StatusOK, EurostarCatalogResponse{
+		Date:       date,
+		Cached:     cached,
+		FetchedAt:  fetchedAt.Format(time.RFC3339),
+		Count:      len(services),
+		Services:   services,
+		RouteCount: len(routes),
+	})
 }

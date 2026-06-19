@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion"
-import { X, LayoutDashboard, Map, Users, Cloud, Train, Zap, Globe, CalendarRange, Cpu } from "lucide-react"
+import { X, LayoutDashboard, Map, Users, Cloud, Train, Zap, Globe, CalendarRange, Cpu, Bell } from "lucide-react"
 import { EurostarDisplayMenu, EurostarDisplayStyles, eurostarDisplayClass, useEurostarDisplay } from "./EurostarDisplay"
 
 const NAVY = "#003366"
@@ -77,11 +77,15 @@ export function EurostarHub({
   onSend,
   onSchedule,
   onCommandCenter,
+  onLoadAnalytics,
+  onNotifications,
 }: {
   readonly onClose:          () => void
   readonly onSend:           (msg: string) => void
   readonly onSchedule:       () => void
   readonly onCommandCenter?: () => void
+  readonly onLoadAnalytics?: () => void
+  readonly onNotifications?: () => void
 }) {
   const { theme, compact } = useEurostarDisplay()
   function handleAction(query: string) {
@@ -225,6 +229,78 @@ export function EurostarHub({
                 Live →
               </div>
             </motion.button>
+
+            {onLoadAnalytics && (
+              <motion.button
+                type="button"
+                onClick={() => { onClose(); onLoadAnalytics() }}
+                className="es-preserve-inverse w-full flex items-center gap-4 p-4 rounded-lg text-left"
+                style={{
+                  background: "linear-gradient(135deg, rgba(56,33,0,0.68) 0%, rgba(200,154,12,0.22) 100%)",
+                  border: "1px solid rgba(200,154,12,0.35)",
+                }}
+                whileHover={{ scale: 1.015, borderColor: "rgba(214,170,40,0.5)" }}
+                whileTap={{ scale: 0.985 }}
+                transition={{ duration: 0.15 }}
+              >
+                <div
+                  className="flex items-center justify-center w-12 h-12 rounded-xl shrink-0"
+                  style={{ background: "rgba(200,154,12,0.18)", border: "1px solid rgba(200,154,12,0.24)" }}
+                >
+                  <LayoutDashboard style={{ width: 22, height: 22, color: "#facc15" }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm" style={{ color: "rgba(255,255,255,0.95)" }}>
+                    Open Eurostar Load Analytics
+                  </p>
+                  <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
+                    Date-based passenger curves, busiest services and load patterns
+                  </p>
+                </div>
+                <div
+                  className="text-xs font-semibold px-2.5 py-1 rounded-full shrink-0"
+                  style={{ background: "rgba(200,154,12,0.18)", color: "#facc15", border: "1px solid rgba(200,154,12,0.28)" }}
+                >
+                  Open →
+                </div>
+              </motion.button>
+            )}
+
+            {onNotifications && (
+              <motion.button
+                type="button"
+                onClick={() => { onClose(); onNotifications() }}
+                className="es-preserve-inverse w-full flex items-center gap-4 p-4 rounded-lg text-left"
+                style={{
+                  background: "linear-gradient(135deg, rgba(62,18,18,0.68) 0%, rgba(239,68,68,0.18) 100%)",
+                  border: "1px solid rgba(248,113,113,0.28)",
+                }}
+                whileHover={{ scale: 1.015, borderColor: "rgba(248,113,113,0.46)" }}
+                whileTap={{ scale: 0.985 }}
+                transition={{ duration: 0.15 }}
+              >
+                <div
+                  className="flex items-center justify-center w-12 h-12 rounded-xl shrink-0"
+                  style={{ background: "rgba(248,113,113,0.14)", border: "1px solid rgba(248,113,113,0.22)" }}
+                >
+                  <Bell style={{ width: 22, height: 22, color: "#fca5a5" }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm" style={{ color: "rgba(255,255,255,0.95)" }}>
+                    Notification Center
+                  </p>
+                  <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
+                    Live departures, disruptions, high load and last-train alerts
+                  </p>
+                </div>
+                <div
+                  className="text-xs font-semibold px-2.5 py-1 rounded-full shrink-0"
+                  style={{ background: "rgba(248,113,113,0.12)", color: "#fca5a5", border: "1px solid rgba(248,113,113,0.2)" }}
+                >
+                  Open →
+                </div>
+              </motion.button>
+            )}
 
             {/* ── Regular action grid ── */}
             <div className="es-density-list grid grid-cols-1 sm:grid-cols-3 gap-2.5">

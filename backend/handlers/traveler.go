@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -119,14 +118,11 @@ func (h *Handler) GetEurostarTravelerSummary(c *gin.Context) {
 		return
 	}
 
-	args, _ := json.Marshal(map[string]string{"travelDate": date})
-	result, err := h.mcp.CallTool(context.Background(), "get_traveler_summary", string(args))
+	summary, err := h.fetchTravelerSummaryForDate(context.Background(), date)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
-
-	summary := parseTravelerSummaryText(result)
 	if summary == nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "traveler summary unavailable"})
 		return

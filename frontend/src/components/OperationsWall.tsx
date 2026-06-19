@@ -4,7 +4,7 @@ import { motion } from "framer-motion"
 import { Activity, AlertTriangle, ArrowRight, GitBranch, Globe2, Link2, Network, RefreshCw, Shield, TrainFront, Waves, X } from "lucide-react"
 import { EurostarDisplayMenu, EurostarDisplayStyles, eurostarDisplayClass, useEurostarDisplay } from "./EurostarDisplay"
 
-const API = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080"
+const API = (import.meta.env.VITE_API_URL as string | undefined) ?? ""
 
 type EuromapStation = { shortCode: string; stopType: string; departureDateTime?: string; arrivalDatetime?: string; country?: string }
 type EuromapPlan = { serviceCode: string; status: string; departureDateTime: string; arrivalDateTime: string; stations: EuromapStation[] }
