@@ -71,9 +71,28 @@ type EnrichedCrew = {
   arrival: string
 }
 
+type TravelerService = {
+  serviceCode: string
+  totalCount: number
+  origin: string
+  destination: string
+  classes: Record<string, number>
+  types: Record<string, number>
+}
+
+type TravelerSummary = {
+  date: string
+  services: number
+  totalPassengers: number
+  busiestService: string
+  peakLoad: number
+  items: TravelerService[]
+}
+
 type HubData = {
   trains: EuromapPlan[]
   crew: EnrichedCrew[]
+  traveler: TravelerSummary | null
   fetchedAt: Date
   issues: string[]
 }
@@ -226,15 +245,203 @@ function crewRoleLabel(crewType: string): string {
   }
 }
 
+function normalizeServiceCode(value: string): string {
+  return value.replaceAll(/\D/g, "").replace(/^0+/, "").slice(-4)
+}
+
+function travelerLeadClass(classes: Record<string, number>): string {
+  let winner = ""
+  let max = 0
+  for (const [key, value] of Object.entries(classes)) {
+    if (value > max) {
+      winner = key
+      max = value
+    }
+  }
+  return winner
+}
+
+const TRAVELER_CLASS_META: Record<string, { label: string; color: string; glow: string }> = {
+  standard: { label: "Standard", color: "#0ea5e9", glow: "rgba(14,165,233,0.18)" },
+  comfort: { label: "Comfort", color: "#f59e0b", glow: "rgba(245,158,11,0.18)" },
+  premium: { label: "Premium", color: "#1d4ed8", glow: "rgba(29,78,216,0.18)" },
+}
+
+const TRAVELER_TYPE_META: Record<string, { label: string; color: string }> = {
+  normal: { label: "Adult", color: "#334155" },
+  youth: { label: "Youth", color: "#b45309" },
+  senior: { label: "Senior", color: "#047857" },
+  kid: { label: "Child", color: "#7c3aed" },
+  group: { label: "Group", color: "#2563eb" },
+  vip: { label: "VIP", color: "#be185d" },
+  pmr: { label: "PMR", color: "#1d4ed8" },
+}
+
+function travelerClassMeta(key: string) {
+  return TRAVELER_CLASS_META[key] ?? { label: key.replace(/-/g, " "), color: "#64748b", glow: "rgba(100,116,139,0.18)" }
+}
+
+function travelerTypeMeta(key: string) {
+  return TRAVELER_TYPE_META[key] ?? { label: key.replace(/-/g, " "), color: "#64748b" }
+}
+
+function TravelerLoadProfile({
+  classEntries,
+  totalCount,
+}: {
+  readonly classEntries: Array<[string, number]>
+  readonly totalCount: number
+}) {
+  const graphEntries = classEntries.map(([key, value]) => ({
+    key,
+    value,
+    share: totalCount > 0 ? Math.round((value / totalCount) * 100) : 0,
+    meta: travelerClassMeta(key),
+  }))
+  const width = 320
+  const height = 120
+  const maxShare = Math.max(...graphEntries.map(entry => entry.share), 1)
+  const step = graphEntries.length > 1 ? width / (graphEntries.length - 1) : width
+  const points = graphEntries.map((entry, index) => {
+    const x = index * step
+    const y = height - (entry.share / maxShare) * 74 - 18
+    return { x, y, entry }
+  })
+  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ")
+  const area = `${path} L ${width} ${height} L 0 ${height} Z`
+
+  return (
+    <div className="rounded-[22px] border px-4 py-4" style={{ borderColor: "#dbe7f3", background: "linear-gradient(180deg, rgba(247,250,255,0.98), rgba(255,255,255,0.96))" }}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="text-[11px] font-black uppercase tracking-[0.18em]" style={{ color: "#667085" }}>
+          Load profile
+        </div>
+        <div className="text-[11px] font-semibold" style={{ color: "#667085" }}>
+          Share by cabin
+        </div>
+      </div>
+
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-36 w-full overflow-visible">
+        <defs>
+          <linearGradient id="traveler-load-area" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#0ea5e9" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.03" />
+          </linearGradient>
+        </defs>
+        <path d={area} fill="url(#traveler-load-area)" />
+        <path d={path} fill="none" stroke="#0f172a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        {points.map((point, index) => (
+          <motion.g
+            key={point.entry.key}
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.28, delay: 0.1 + index * 0.08 }}
+          >
+            <circle cx={point.x} cy={point.y} r="7" fill="white" stroke={point.entry.meta.color} strokeWidth="3" />
+            <text x={point.x} y={point.y - 14} textAnchor="middle" fontSize="10" fontWeight="800" fill={point.entry.meta.color}>
+              {point.entry.share}%
+            </text>
+            <text x={point.x} y={height - 2} textAnchor="middle" fontSize="10" fontWeight="700" fill="#667085">
+              {point.entry.meta.label}
+            </text>
+          </motion.g>
+        ))}
+      </svg>
+
+      <div className="mt-4 grid gap-2 md:grid-cols-3">
+        {graphEntries.map((entry, index) => (
+          <motion.div
+            key={entry.key}
+            className="rounded-2xl border bg-white px-3 py-2.5"
+            style={{ borderColor: "#e2e8f0" }}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.24, delay: 0.18 + index * 0.08 }}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: entry.meta.color }} />
+                <span className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "#475467" }}>
+                  {entry.meta.label}
+                </span>
+              </div>
+              <span className="text-lg font-black tabular-nums" style={{ color: INK }}>{entry.value}</span>
+            </div>
+            <div className="mt-1 text-[11px] font-semibold" style={{ color: "#667085" }}>{entry.share}% of onboard load</div>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function TravelerMixChart({ traveler }: { readonly traveler: TravelerService }) {
+  const classEntries = Object.entries(traveler.classes).sort((a, b) => b[1] - a[1])
+  const typeEntries = Object.entries(traveler.types).sort((a, b) => b[1] - a[1]).slice(0, 4)
+  const leadClass = classEntries[0]?.[0]
+
+  return (
+    <div className="rounded-[20px] border px-4 py-4" style={{ borderColor: "#dbe7f3", background: "linear-gradient(180deg, rgba(248,251,255,0.96), rgba(255,255,255,0.94))" }}>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-[0.18em]" style={{ color: "#667085" }}>
+            Passenger load
+          </div>
+          <div className="mt-1 flex items-end gap-2">
+            <span className="text-3xl font-black tabular-nums" style={{ color: INK }}>{traveler.totalCount}</span>
+            <span className="pb-1 text-sm" style={{ color: "#667085" }}>on board</span>
+          </div>
+        </div>
+        <div className="rounded-full border px-3 py-1 text-[11px] font-bold" style={{ borderColor: "#dbe7f3", background: "white", color: "#475467" }}>
+          Cabin leader <span className="ml-1 font-black" style={{ color: travelerClassMeta(leadClass ?? "standard").color }}>{travelerClassMeta(leadClass ?? "standard").label}</span>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <TravelerLoadProfile classEntries={classEntries} totalCount={traveler.totalCount} />
+      </div>
+
+      {typeEntries.length > 0 && (
+        <div className="mt-4 border-t pt-3" style={{ borderColor: "#e2e8f0" }}>
+          <div className="mb-2 text-[11px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>
+            Traveler profile
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {typeEntries.map(([key, value], index) => {
+              const meta = travelerTypeMeta(key)
+              return (
+                <motion.div
+                  key={key}
+                  className="inline-flex items-center gap-2 rounded-full border bg-white px-3 py-1.5 text-[11px] font-bold"
+                  style={{ borderColor: "#e2e8f0", color: "#475467" }}
+                  initial={{ opacity: 0, scale: 0.96 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.22, delay: 0.28 + index * 0.06 }}
+                >
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: meta.color }} />
+                  <span>{meta.label}</span>
+                  <span className="font-black tabular-nums" style={{ color: INK }}>{value}</span>
+                </motion.div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 async function fetchHubData(date: string): Promise<HubData> {
-  const [trainsRes, crewRes] = await Promise.allSettled([
+  const [trainsRes, crewRes, travelerRes] = await Promise.allSettled([
     fetch(`${API}/api/eurostar/trains?date=${date}`),
     fetch(`${API}/api/crew/activities?date=${date}`),
+    fetch(`${API}/api/eurostar/traveler-summary?date=${date}`),
   ])
 
   const issues: string[] = []
   let trains: EuromapPlan[] = []
   let crew: EnrichedCrew[] = []
+  let traveler: TravelerSummary | null = null
 
   if (trainsRes.status === "fulfilled" && trainsRes.value.ok) {
     trains = (await trainsRes.value.json()) as EuromapPlan[]
@@ -248,7 +455,13 @@ async function fetchHubData(date: string): Promise<HubData> {
     issues.push("Start-on-Time crew activity is unavailable. Service plans can still be used without crew coverage.")
   }
 
-  return { trains, crew, fetchedAt: new Date(), issues }
+  if (travelerRes.status === "fulfilled" && travelerRes.value.ok) {
+    traveler = (await travelerRes.value.json()) as TravelerSummary
+  } else {
+    issues.push("Traveler summary is unavailable. The board is showing services without passenger load.")
+  }
+
+  return { trains, crew, traveler, fetchedAt: new Date(), issues }
 }
 
 function metricLabel(value: number | string, label: string, sub: string, accent: string) {
@@ -380,18 +593,21 @@ function HeroMetric({
 function ServiceRow({
   plan,
   hasCrew,
+  traveler,
   active,
   selected,
   onSelect,
 }: {
   readonly plan: EuromapPlan
   readonly hasCrew: boolean
+  readonly traveler?: TravelerService
   readonly active: boolean
   readonly selected: boolean
   readonly onSelect: () => void
 }) {
   const tone = statusTone(plan.status)
   const stops = plan.stations.length
+  const leadClass = traveler ? travelerLeadClass(traveler.classes) : ""
 
   return (
     <motion.button
@@ -473,6 +689,11 @@ function ServiceRow({
       <div className="mt-auto flex items-center gap-3 border-t pt-3 text-[11px] font-bold" style={{ borderColor: "#f2f4f7", color: "#667085" }}>
         <span>{fmtDuration(plan.departureDateTime, plan.arrivalDateTime)}</span>
         <span>{stops} stops</span>
+        {traveler && (
+          <span style={{ color: "#0369a1" }}>
+            {traveler.totalCount} pax{leadClass ? ` · ${leadClass}` : ""}
+          </span>
+        )}
         <span className="ml-auto flex items-center gap-1.5" style={{ color: hasCrew ? "#047857" : "#9a3412" }}>
           {hasCrew ? <BadgeCheck size={13} /> : <AlertTriangle size={13} />}
           {hasCrew ? "Crew linked" : "Crew gap"}
@@ -525,10 +746,12 @@ function CrewCoverage({
 function ServiceDetailPanel({
   plan,
   crewMembers,
+  traveler,
   onAsk,
 }: {
   readonly plan: EuromapPlan
   readonly crewMembers: EnrichedCrew[]
+  readonly traveler?: TravelerService
   readonly onAsk?: (query: string) => void
 }) {
   const tone = statusTone(plan.status)
@@ -610,6 +833,12 @@ function ServiceDetailPanel({
               })}
             </div>
           </div>
+
+          {traveler && (
+            <div className="mt-4">
+              <TravelerMixChart traveler={traveler} />
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-3">
@@ -661,6 +890,12 @@ function ServiceDetailPanel({
           <div className="rounded-lg border px-3 py-2 text-[11px]" style={{ borderColor: "#eaecf0", color: "#667085" }}>
             Plan ID <span className="font-bold tabular-nums" style={{ color: INK }}>{plan.planID}</span>
           </div>
+
+          {!traveler && (
+            <div className="rounded-lg border bg-white px-3 py-2 text-xs" style={{ borderColor: "#eaecf0", color: "#667085" }}>
+              Traveler load is not available for this service yet.
+            </div>
+          )}
         </div>
       </div>
     </motion.div>
@@ -670,9 +905,11 @@ function ServiceDetailPanel({
 export function EurostarCommandCenter({
   onClose,
   onAsk,
+  onLoadAnalytics,
 }: {
   readonly onClose: () => void
   readonly onAsk?: (query: string) => void
+  readonly onLoadAnalytics?: () => void
 }) {
   const date = todayDate()
 
@@ -733,17 +970,28 @@ export function EurostarCommandCenter({
 
   const trains = data?.trains ?? []
   const crew = data?.crew ?? []
+  const traveler = data?.traveler ?? null
 
   const crewByService = useMemo(() => {
     const grouped: Record<string, EnrichedCrew[]> = {}
     for (const member of crew) {
-      const serviceCode = member.serviceCode.replaceAll(/\D/g, "").replace(/^0+/, "").slice(-4)
+      const serviceCode = normalizeServiceCode(member.serviceCode)
       if (!serviceCode) continue
       if (!grouped[serviceCode]) grouped[serviceCode] = []
       grouped[serviceCode].push(member)
     }
     return grouped
   }, [crew])
+
+  const travelerByService = useMemo(() => {
+    const grouped: Record<string, TravelerService> = {}
+    for (const item of traveler?.items ?? []) {
+      const serviceCode = normalizeServiceCode(item.serviceCode)
+      if (!serviceCode) continue
+      grouped[serviceCode] = item
+    }
+    return grouped
+  }, [traveler])
 
   const routeEntries = useMemo(() => {
     const counts = new Map<string, number>()
@@ -768,7 +1016,7 @@ export function EurostarCommandCenter({
   const activeTrains = trains.filter(t => isTrainActive(t, now))
   const watchTrains = trains.filter(t => isWatchStatus(t.status))
   const crewedServices = new Set(Object.keys(crewByService))
-  const uncrewedTrains = trains.filter(t => !crewedServices.has(t.serviceCode.replaceAll(/\D/g, "").replace(/^0+/, "").slice(-4)))
+  const uncrewedTrains = trains.filter(t => !crewedServices.has(normalizeServiceCode(t.serviceCode)))
   const nextDeparture = trains
     .filter(t => new Date(t.departureDateTime).getTime() >= now)
     .sort((a, b) => a.departureDateTime.localeCompare(b.departureDateTime))[0]
@@ -828,6 +1076,14 @@ export function EurostarCommandCenter({
       label: "Crew link",
       value: `${crewedServices.size} crewed services, ${uncrewedTrains.length} still without roster match`,
       tone: "#c4b5fd",
+    },
+    {
+      icon: <Users size={14} />,
+      label: "Passenger load",
+      value: traveler
+        ? `${traveler.totalPassengers.toLocaleString("en-GB")} passengers across ${traveler.services} services`
+        : "Traveler summary is waiting for the passenger feed",
+      tone: "#f9a8d4",
     },
     {
       icon: <TrendingUp size={14} />,
@@ -1086,8 +1342,8 @@ export function EurostarCommandCenter({
                   </motion.h2>
                 </AnimatePresence>
                 <p className="mt-2 max-w-2xl text-sm leading-6" style={{ color: "rgba(255,255,255,0.72)" }}>
-                  Combining Euromap train plans with Start-on-Time crew activity for a single view of services,
-                  stations, routes, active operations and coverage gaps.
+                  Combining Euromap train plans with Start-on-Time crew activity and traveler summary for a single view
+                  of services, stations, routes, passenger load, active operations and coverage gaps.
                 </p>
                 <div className="mt-4 overflow-hidden rounded-lg border px-3 py-2" style={{ borderColor: "rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.08)" }}>
                   <AnimatePresence mode="wait">
@@ -1148,7 +1404,11 @@ export function EurostarCommandCenter({
               <HeroMetric value={loading && !data ? "..." : trains.length} label="scheduled services" tone="#bfdbfe" />
               <HeroMetric value={loading && !data ? "..." : activeTrains.length} label="running now" tone="#67e8f9" />
               <HeroMetric value={loading && !data ? "..." : crew.length} label="crew records" tone="#c4b5fd" />
-              <HeroMetric value={loading && !data ? "..." : watchTrains.length} label="watchlist services" tone="#fde68a" />
+              <HeroMetric
+                value={loading && !data ? "..." : traveler ? traveler.totalPassengers.toLocaleString("en-GB") : watchTrains.length}
+                label={traveler ? "passengers today" : "watchlist services"}
+                tone={traveler ? "#f9a8d4" : "#fde68a"}
+              />
             </div>
           </div>
 
@@ -1156,15 +1416,31 @@ export function EurostarCommandCenter({
             {metricLabel(routeEntries.length, "Markets", "unique origin/destination corridors", EUROSTAR_GOLD)}
             {metricLabel(stationEntries.length, "Stations", "covered in today's plans", CHANNEL_BLUE)}
             {metricLabel(crewedServices.size, "Crewed", "services with roster data", "#10b981")}
-            {metricLabel(uncrewedTrains.length, "Gaps", "services without crew link", "#f97316")}
+            {metricLabel(
+              traveler?.peakLoad ?? uncrewedTrains.length,
+              traveler ? "Peak load" : "Gaps",
+              traveler ? `${traveler.busiestService || "top service"} busiest traveler service` : "services without crew link",
+              traveler ? "#ec4899" : "#f97316",
+            )}
           </div>
         </section>
 
-        <section className="mb-5 grid grid-cols-5 gap-2 max-lg:grid-cols-2">
+        <section className="mb-5 grid grid-cols-6 gap-2 max-lg:grid-cols-2">
           <CommandButton icon={<MapIcon size={15} />} label="Live map" query="Show me the Eurostar live map" onAsk={commandAsk} />
           <CommandButton icon={<Activity size={15} />} label="Live dashboard" query="Show me the Eurostar live dashboard" onAsk={commandAsk} />
           <CommandButton icon={<AlertTriangle size={15} />} label="Disruptions" query="Are there any Eurostar or SNCF disruptions today?" onAsk={commandAsk} />
           <CommandButton icon={<CalendarDays size={15} />} label="Next Paris" query="When is the next Eurostar from London to Paris?" onAsk={commandAsk} />
+          {onLoadAnalytics && (
+            <button
+              type="button"
+              onClick={onLoadAnalytics}
+              className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-left text-xs font-bold transition"
+              style={{ borderColor: "#d0d5dd", color: INK }}
+            >
+              <TrendingUp size={15} style={{ color: EUROSTAR_BLUE }} />
+              <span className="truncate">Load analytics</span>
+            </button>
+          )}
           <CommandButton icon={<Globe2 size={15} />} label="Weather" query="What's the weather in London, Paris, Brussels and Amsterdam right now?" onAsk={commandAsk} />
         </section>
 
@@ -1208,7 +1484,7 @@ export function EurostarCommandCenter({
           <div className="min-w-0">
             <div className="rounded-lg border bg-white p-4" style={{ borderColor: "#eaecf0" }}>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <SectionHeader icon={<Train size={16} />} title="Service Board" detail="Train plans, route timings, status and crew coverage" />
+                <SectionHeader icon={<Train size={16} />} title="Service Board" detail="Train plans, route timings, status, crew coverage and passenger load" />
                 <div className="flex flex-wrap items-center gap-1.5">
                   {filters.map(filter => (
                     <button
@@ -1233,7 +1509,8 @@ export function EurostarCommandCenter({
                   <div className="mb-3">
                     <ServiceDetailPanel
                       plan={selectedPlan}
-                      crewMembers={crewByService[selectedPlan.serviceCode.replaceAll(/\D/g, "").replace(/^0+/, "").slice(-4)] ?? []}
+                      crewMembers={crewByService[normalizeServiceCode(selectedPlan.serviceCode)] ?? []}
+                      traveler={travelerByService[normalizeServiceCode(selectedPlan.serviceCode)]}
                       onAsk={commandAsk}
                     />
                   </div>
@@ -1257,7 +1534,8 @@ export function EurostarCommandCenter({
                       key={plan.planID}
                       plan={plan}
                       active={isTrainActive(plan, now)}
-                      hasCrew={crewedServices.has(plan.serviceCode)}
+                      hasCrew={crewedServices.has(normalizeServiceCode(plan.serviceCode))}
+                      traveler={travelerByService[normalizeServiceCode(plan.serviceCode)]}
                       selected={selected}
                       onSelect={() => setSelectedPlanID(current => current === plan.planID ? null : plan.planID)}
                     />

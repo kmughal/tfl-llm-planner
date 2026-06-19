@@ -53,6 +53,7 @@ func main() {
 		api.GET("/buses", handlers.GetBusLines)
 		api.GET("/buses/:lineID/arrivals", handlers.GetBusLineArrivals)
 		api.GET("/tfl/command-center", h.GetTFLCommandCenter)
+		api.GET("/tfl/lines/:lineID/crowding", h.GetTFLLineCrowding)
 		api.GET("/sncf/command-center", h.GetSNCFCommandCenter)
 		api.GET("/national-rail/command-center", h.GetNationalRailCommandCenter)
 		api.GET("/paris/command-center", h.GetParisCommandCenter)
@@ -60,6 +61,7 @@ func main() {
 		api.DELETE("/memory/:sessionId", mh.FlushMemory)
 		api.GET("/eurostar/trains", handlers.GetEurostarTrains)
 		api.GET("/eurostar/trains/:planID", handlers.GetEurostarTrainByID)
+		api.GET("/eurostar/traveler-summary", h.GetEurostarTravelerSummary)
 		api.GET("/crew/activities", handlers.GetCrewActivities)
 	}
 

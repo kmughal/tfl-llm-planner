@@ -384,9 +384,21 @@ func normalizeToolCall(call llm.ToolCall, userMessage string) llm.ToolCall {
 
 	switch call.Function.Name {
 	case "get_road_disruptions":
-		if roadID, ok := args["roadId"].(string); ok {
-			args["roadId"] = strings.ToLower(strings.Trim(roadID, "[] \"'"))
+		roadID := ""
+		if rawRoadID, ok := args["roadId"].(string); ok {
+			roadID = strings.ToLower(strings.Trim(rawRoadID, "[] \"'"))
 		}
+		if roadID == "" {
+			if match := tflRoadID.FindString(strings.ToLower(userMessage)); match != "" {
+				roadID = match
+			}
+		}
+		if roadID == "" {
+			call.Function.Name = "get_tfl_roads"
+			args = map[string]any{}
+			break
+		}
+		args["roadId"] = roadID
 	case "get_line_status":
 		if lines, ok := args["lines"].(string); ok {
 			args["lines"] = normalizeLineIDs(lines)
@@ -463,10 +475,23 @@ func normalizeToolCall(call llm.ToolCall, userMessage string) llm.ToolCall {
 			}
 		}
 	case "get_traveler_summary":
+		q := strings.ToLower(userMessage)
 		if date, ok := args["travelDate"].(string); ok {
 			date = strings.TrimSpace(date)
 			if len(date) == 8 && !strings.Contains(date, "-") {
 				args["travelDate"] = date[:4] + "-" + date[4:6] + "-" + date[6:]
+			}
+		}
+		switch {
+		case containsAny(q, "today", "tonight", "right now", "now"):
+			args["travelDate"] = time.Now().UTC().Format(dateFmt)
+		case containsAny(q, "tomorrow"):
+			args["travelDate"] = time.Now().UTC().AddDate(0, 0, 1).Format(dateFmt)
+		case containsAny(q, "yesterday"):
+			args["travelDate"] = time.Now().UTC().AddDate(0, 0, -1).Format(dateFmt)
+		default:
+			if _, ok := args["travelDate"]; !ok {
+				args["travelDate"] = time.Now().UTC().Format(dateFmt)
 			}
 		}
 		if _, ok := args["serviceCode"]; !ok {

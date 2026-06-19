@@ -21,6 +21,7 @@ import { NationalRailDashboardCard } from "./NationalRailDashboardCard"
 import { ParisMetroCard } from "./ParisMetroCard"
 import { CrewCard } from "./CrewCard"
 import { TflStatusCard } from "./TflStatusCard"
+import { OperationsWallCard } from "./OperationsWallCard"
 import { Train, Bus, MapPin, Clock, ArrowRight, Volume2, VolumeX, RefreshCw, Map as MapIcon, Radio, Cpu, Route, Wrench, ChevronDown } from "lucide-react"
 
 const DASHBOARD_TOOL      = "get_eurostar_dashboard"
@@ -36,6 +37,7 @@ const ROAD_DISRUPTIONS_TOOL = "get_road_disruptions"
 const BUS_ARRIVALS_TOOL     = "get_bus_arrivals"
 const BUS_LINES_TOOL        = "get_all_bus_lines"
 const WEATHER_TOOL          = "get_weather"
+const OPERATIONS_WALL_TOOL  = "operations_wall"
 const NRAIL_TOOLS           = new Set(["get_national_rail_departures", "get_national_rail_arrivals", "get_national_rail_dashboard"])
 const PARIS_METRO_TOOL      = "get_paris_metro_departures"
 const CREW_ACTIVITIES_TOOL  = "get_crew_activities"
@@ -90,7 +92,7 @@ function ObservabilityPanel({ toolEvents }: { readonly toolEvents: ToolEvent[] }
 
   const candidates = selection?.candidates ?? []
   const args = prettyJson(toolCall?.arguments)
-  const chosenTool = toolCall?.name ?? "Waiting..."
+  const chosenTool = toolCall?.name ?? (candidates.length === 1 ? candidates[0] : "Waiting...")
   const detectedNetwork = selection?.network ?? "Unknown"
 
   return (
@@ -1123,6 +1125,17 @@ function RichMessage({ text }: { readonly text: string }) {
   )
 }
 
+function isToolCallPayloadText(text: string): boolean {
+  const trimmed = text.trim()
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return false
+  try {
+    const parsed = JSON.parse(trimmed) as { name?: unknown; parameters?: unknown }
+    return typeof parsed.name === "string" && parsed.parameters !== undefined
+  } catch {
+    return false
+  }
+}
+
 // ── Message content — extracted to avoid nested ternary ───────────────────────
 function MessageContent({ message, isUser }: { readonly message: ChatMessage; readonly isUser: boolean }) {
   if (!message.content) {
@@ -1130,6 +1143,19 @@ function MessageContent({ message, isUser }: { readonly message: ChatMessage; re
     return null
   }
   if (isUser) return <span>{message.content}</span>
+  if (isToolCallPayloadText(message.content)) {
+    if (message.streaming) {
+      return (
+        <motion.span
+          className="inline-block w-0.5 h-3.5 rounded-sm ml-0.5 align-middle"
+          style={{ background: "#003688" }}
+          animate={{ opacity: [1, 0, 1] }}
+          transition={{ duration: 0.75, repeat: Infinity, ease: "easeInOut" }}
+        />
+      )
+    }
+    return null
+  }
   return (
     <>
       <RichMessage text={message.content} />
@@ -1216,12 +1242,16 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
           <div className="flex flex-wrap gap-1.5 px-1">
             {toolEvents
               .filter(ev => ev.type !== "selection")
-              .filter(ev => (((!EUROMAP_TOOLS.has(ev.name) && !SNCF_RICH_TOOLS.has(ev.name) && !TFL_ROAD_TOOLS.has(ev.name) && !CREW_TOOLS.has(ev.name) && !TFL_STATUS_TOOLS.has(ev.name) && ev.name !== TRAVELER_TOOL && ev.name !== BUS_ARRIVALS_TOOL && ev.name !== BUS_LINES_TOOL && ev.name !== WEATHER_TOOL && !NRAIL_TOOLS.has(ev.name) && ev.name !== PARIS_METRO_TOOL) || ev.type === "tool_call") && !(ev.name === LIVEMAP_TOOL && ev.type === "tool_call")))
+              .filter(ev => (((!EUROMAP_TOOLS.has(ev.name) && !SNCF_RICH_TOOLS.has(ev.name) && !TFL_ROAD_TOOLS.has(ev.name) && !CREW_TOOLS.has(ev.name) && !TFL_STATUS_TOOLS.has(ev.name) && ev.name !== TRAVELER_TOOL && ev.name !== BUS_ARRIVALS_TOOL && ev.name !== BUS_LINES_TOOL && ev.name !== WEATHER_TOOL && ev.name !== OPERATIONS_WALL_TOOL && !NRAIL_TOOLS.has(ev.name) && ev.name !== PARIS_METRO_TOOL) || ev.type === "tool_call") && !(ev.name === LIVEMAP_TOOL && ev.type === "tool_call")))
               .filter(ev => !(ev.type === "tool_call" && toolEvents.some(result => result.type === "tool_result" && result.name === ev.name)))
               .map((ev) => (
                 <ToolCallBadge key={`${ev.type}-${ev.name}`} event={ev} />
               ))}
           </div>
+          {/* Cross-border operations wall */}
+          {toolEvents
+            .filter(ev => ev.name === OPERATIONS_WALL_TOOL && ev.type === "tool_result" && !!ev.result)
+            .map(ev => withTag(ev.name, <OperationsWallCard key={`ops-wall-${ev.name}`} result={ev.result ?? ""} />))}
           {/* SNCF rich cards */}
           {toolEvents
             .filter(ev => SNCF_RICH_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)

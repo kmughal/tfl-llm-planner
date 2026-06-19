@@ -21,6 +21,53 @@ const maxToolRounds = 5 // prevent runaway agentic loops
 
 const dateFmt = "2006-01-02"
 
+func isCrossBorderOverviewIntent(message string) bool {
+	q := strings.ToLower(strings.TrimSpace(message))
+	return containsAny(q,
+		"cross-border operating picture",
+		"cross border operating picture",
+		"cross-border picture",
+		"cross border picture",
+		"cross-border operating overview",
+		"cross border operating overview",
+		"multi-network operations wall",
+		"multi network operations wall",
+		"current cross-border",
+		"current cross border",
+	)
+}
+
+func summarizeOperationsWall(response OperationsWallResponse) string {
+	parts := []string{
+		fmt.Sprintf(
+			"%s %d networks are live, %d active services are being tracked, %d services need attention, and there are %d network alerts across the cross-border picture.",
+			response.Overview.Narrative,
+			response.Overview.NetworksLive,
+			response.Overview.ActiveServices,
+			response.Overview.WatchedServices,
+			response.Overview.NetworkAlerts,
+		),
+		fmt.Sprintf(
+			"Eurostar is tracking %d services with %d active and %d watched; TfL has %d disrupted lines and %d road issues; SNCF is carrying %d incidents; National Rail is showing %d delayed services; Paris RER is showing %d delayed departures.",
+			response.Eurostar.ServicesToday,
+			response.Eurostar.Active,
+			response.Eurostar.Watched,
+			response.TFL.Disrupted,
+			response.TFL.RoadIssues,
+			len(response.SNCF.Incidents),
+			response.NationalRail.Delayed,
+			response.Paris.Delayed,
+		),
+	}
+	if len(response.Correlations) > 0 {
+		parts = append(parts, "Top correlation: "+response.Correlations[0].Headline+".")
+	}
+	if len(response.Propagations) > 0 {
+		parts = append(parts, "Primary propagation: "+response.Propagations[0].Title+".")
+	}
+	return strings.Join(parts, " ")
+}
+
 // nextWeekday returns the next occurrence of wd strictly after from.
 func nextWeekday(from time.Time, wd time.Weekday) time.Time {
 	d := from.AddDate(0, 0, 1)
@@ -415,6 +462,58 @@ func (h *Handler) Chat(c *gin.Context) {
 	logger.Info(logger.TagHTTP, "POST /api/chat", fmt.Sprintf("msg=%.120s history_len=%d session=%s", req.Message, len(req.History), req.SessionID))
 
 	ctx := c.Request.Context()
+
+	if isCrossBorderOverviewIntent(req.Message) {
+		response := h.buildOperationsWallResponse(ctx)
+		if response.Overview.NetworksLive == 0 {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "No live network feeds are currently available for the cross-border picture."})
+			return
+		}
+
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("Access-Control-Allow-Origin", "*")
+
+		flusher, canFlush := c.Writer.(http.Flusher)
+		sendEvent := func(event, data string) {
+			fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", event, data)
+			if canFlush {
+				flusher.Flush()
+			}
+		}
+
+		selectionMeta, _ := json.Marshal(gin.H{
+			"network":    "Cross-border",
+			"candidates": []string{"operations_wall"},
+			"source":     "live backend operations wall",
+		})
+		sendEvent("selection", string(selectionMeta))
+
+		toolCallMeta, _ := json.Marshal(gin.H{
+			"name":      "operations_wall",
+			"arguments": "{}",
+			"source":    "live backend operations wall",
+		})
+		sendEvent("tool_call", string(toolCallMeta))
+
+		resultBytes, _ := json.Marshal(response)
+		toolResultMeta, _ := json.Marshal(gin.H{
+			"name":   "operations_wall",
+			"result": string(resultBytes),
+		})
+		sendEvent("tool_result", string(toolResultMeta))
+
+		reply := "Here is the current cross-border operating picture."
+		finalMessages := []llm.Message{
+			{Role: "user", Content: req.Message},
+			{Role: "assistant", Content: reply},
+		}
+		h.saveMemory(ctx, req.SessionID, req.ConvID, finalMessages)
+		b, _ := json.Marshal(ChatResponse{Reply: reply, Messages: clientHistory(finalMessages)})
+		sendEvent("done", string(b))
+		return
+	}
 
 	tools, err := h.mcp.ListAsLLMTools(ctx)
 	if err != nil {

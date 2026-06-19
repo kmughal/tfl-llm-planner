@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence, useMotionValue, useSpring } from "framer-motion";
-import { Pencil, ArrowRight } from "lucide-react";
+import { Pencil, ArrowRight, BarChart3 } from "lucide-react";
 
 // ── Brand colours ─────────────────────────────────────────────────────────────
 const GOLD   = "#c9a227";
@@ -516,9 +516,11 @@ function DepartureTicker() {
 export function LandingPage({
   onSend,
   onTemplate,
+  onEurostarLoad,
 }: {
   readonly onSend: (msg: string) => void;
   readonly onTemplate: (t: string) => void;
+  readonly onEurostarLoad?: () => void;
 }) {
   const [selected, setSelected] = useState<NetworkKey>("EUROSTAR");
   const net = NETWORKS.find(n => n.key === selected)!;
@@ -611,6 +613,36 @@ export function LandingPage({
         <div style={{ width: "100%" }}>
           <ExampleCards net={net} onSend={onSend} onTemplate={onTemplate} />
         </div>
+
+        {selected === "EUROSTAR" && onEurostarLoad && (
+          <motion.button
+            type="button"
+            onClick={onEurostarLoad}
+            style={{
+              marginTop: 22,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "12px 16px",
+              borderRadius: 16,
+              border: "1px solid rgba(201,162,39,0.28)",
+              background: "linear-gradient(135deg, rgba(201,162,39,0.18), rgba(0,51,102,0.16))",
+              color: "white",
+              fontSize: 13,
+              fontWeight: 800,
+              boxShadow: "0 14px 40px rgba(0,0,0,0.16)",
+            }}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.2, duration: 0.45 }}
+          >
+            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 10, background: "rgba(255,255,255,0.1)" }}>
+              <BarChart3 size={16} />
+            </span>
+            <span>Open Eurostar Load Analytics</span>
+            <ArrowRight size={15} />
+          </motion.button>
+        )}
 
         {/* ── Bottom hint ── */}
         <motion.p

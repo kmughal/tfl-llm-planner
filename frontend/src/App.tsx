@@ -19,6 +19,7 @@ import { BusLinesExplorer } from "./components/BusLinesExplorer"
 import { EurostarHub } from "./components/EurostarHub"
 import { EurostarSchedule } from "./components/EurostarSchedule"
 import { EurostarCommandCenter } from "./components/EurostarCommandCenter"
+import { EurostarLoadAnalytics } from "./components/EurostarLoadAnalytics"
 import { TflCommandCenter } from "./components/TflCommandCenter"
 import { SNCFCommandCenter } from "./components/SNCFCommandCenter"
 import { NationalRailCommandCenter } from "./components/NationalRailCommandCenter"
@@ -241,6 +242,7 @@ export default function App() {
   const [busExplorerOpen, setBusExplorerOpen]   = useState(false)
   const [eurostarHubOpen, setEurostarHubOpen]               = useState(false)
   const [eurostarScheduleOpen, setEurostarScheduleOpen]     = useState(false)
+  const [eurostarLoadAnalyticsOpen, setEurostarLoadAnalyticsOpen] = useState(false)
   const [commandCenterOpen, setCommandCenterOpen]           = useState(false)
   const [tflCommandCenterOpen, setTflCommandCenterOpen]     = useState(false)
   const [sncfCommandCenterOpen, setSncfCommandCenterOpen]   = useState(false)
@@ -530,6 +532,7 @@ export default function App() {
             <DashboardMenu
               onOperationsWall={() => setOperationsWallOpen(true)}
               onEurostar={() => setCommandCenterOpen(true)}
+              onEurostarLoad={() => setEurostarLoadAnalyticsOpen(true)}
               onTfl={() => setTflCommandCenterOpen(true)}
               onSncf={() => setSncfCommandCenterOpen(true)}
               onNationalRail={() => setNationalRailCommandCenterOpen(true)}
@@ -616,7 +619,7 @@ export default function App() {
         {/* Messages */}
         <main className="flex-1 overflow-y-auto">
           {isEmpty ? (
-            <LandingPage onSend={sendMessage} onTemplate={setPrefill} />
+            <LandingPage onSend={sendMessage} onTemplate={setPrefill} onEurostarLoad={() => setEurostarLoadAnalyticsOpen(true)} />
           ) : (
             <div className="max-w-[1180px] mx-auto w-full px-4 py-6 flex flex-col gap-4">
               {messages.map(msg => (
@@ -672,6 +675,15 @@ export default function App() {
           <EurostarCommandCenter
             onClose={() => setCommandCenterOpen(false)}
             onAsk={sendMessage}
+            onLoadAnalytics={() => { setCommandCenterOpen(false); setEurostarLoadAnalyticsOpen(true) }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {eurostarLoadAnalyticsOpen && (
+          <EurostarLoadAnalytics
+            onClose={() => setEurostarLoadAnalyticsOpen(false)}
           />
         )}
       </AnimatePresence>

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"tfl-backend/llm"
 )
@@ -197,6 +198,8 @@ func TestNormalizeAliasesAndArguments(t *testing.T) {
 	}{
 		{"bus alias", call("get_bus_lines", `{}`), "show all buses", "get_all_bus_lines", "", ""},
 		{"road id", call("get_road_disruptions", `{"roadId":"[A40]"}`), "A40 closures", "get_road_disruptions", "roadId", "a40"},
+		{"road fallback to network view", call("get_road_disruptions", `{"roadId":""}`), "Road status update operated by TFL", "get_tfl_roads", "", ""},
+		{"road infer from message", call("get_road_disruptions", `{}`), "Any roadworks on the A40?", "get_road_disruptions", "roadId", "a40"},
 		{"line ids", call("get_line_status", `{"lines":"Elizabeth Line, Hammersmith & City"}`), "line status", "get_line_status", "lines", "elizabeth,hammersmith-city"},
 		{"bus number", call("get_bus_arrivals", `{"line_id":170}`), "when is the 170", "get_bus_arrivals", "line_id", "170"},
 		{"service extraction", call("get_euromap_plan_by_id", `{}`), "is Eurostar 9114 running?", "get_euromap_plan_by_id", "serviceCode", "9114"},
@@ -206,6 +209,7 @@ func TestNormalizeAliasesAndArguments(t *testing.T) {
 		{"strip accidental first selector", call("get_euromap_plans", `{"from":"Paris","selection":"first"}`), "Find a train for me from Paris using Eurostar", "get_euromap_plans", "from", "Paris"},
 		{"take train from paris now", call("get_euromap_plans", `{"from":"Paris","fromDateTime":"2026-06-17T00:00:00Z","to":"PNO"}`), "I want to take a train from Paris using Eurostar", "get_euromap_plans", "from", "Paris"},
 		{"traveler service extraction", call("get_traveler_summary", `{"travelDate":"20260613"}`), "load for Eurostar 9114", "get_traveler_summary", "serviceCode", "9114"},
+		{"traveler today override", call("get_traveler_summary", `{"travelDate":"2026-06-18"}`), "how is passenger load looking today on eurostar", "get_traveler_summary", "travelDate", time.Now().UTC().Format(dateFmt)},
 		{"status by mode typo fix", call("get_status_by_mode", `{"modes":"tube,dler,overground,elizabeth line","lines":"all"}`), "all tube line status right now", "get_status_by_mode", "modes", "tube,dlr,overground,elizabeth-line"},
 		{"status by mode singular alias", call("get_status_by_mode", `{"mode":"tube"}`), "all tube line status right now", "get_status_by_mode", "modes", "tube"},
 		{"paris station normalization", call("get_paris_metro_departures", `{"from":"chatelet les halles","count":99}`), "Paris transit from Chatelet les Halles", "get_paris_metro_departures", "station", "Chatelet"},

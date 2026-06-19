@@ -123,6 +123,15 @@ type OperationsCorrelation struct {
 
 func (h *Handler) GetOperationsWall(c *gin.Context) {
 	ctx := c.Request.Context()
+	response := h.buildOperationsWallResponse(ctx)
+	if response.Overview.NetworksLive == 0 {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "No live network feeds are currently available", "errors": response.Errors})
+		return
+	}
+	c.JSON(http.StatusOK, response)
+}
+
+func (h *Handler) buildOperationsWallResponse(ctx context.Context) OperationsWallResponse {
 	var (
 		response OperationsWallResponse
 		mu       sync.Mutex
@@ -185,12 +194,7 @@ func (h *Handler) GetOperationsWall(c *gin.Context) {
 	response.TransferMap = buildTransferMap(response.Eurostar, response.TFL, response.SNCF, response.NationalRail, response.Paris)
 	response.Overview = buildOverview(response.Eurostar, response.TFL, response.SNCF, response.NationalRail, response.Paris, response.Propagations)
 	response.FetchedAt = time.Now().UTC().Format(time.RFC3339)
-
-	if response.Overview.NetworksLive == 0 {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "No live network feeds are currently available", "errors": response.Errors})
-		return
-	}
-	c.JSON(http.StatusOK, response)
+	return response
 }
 
 func fetchEurostarWall(ctx context.Context) (OperationsEurostar, map[string]string) {

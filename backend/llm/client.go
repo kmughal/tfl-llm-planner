@@ -40,7 +40,7 @@ func NewClient(baseURL, model string) *Client {
 
 type Message struct {
 	Role       string     `json:"role"`
-	Content    string     `json:"content,omitempty"`
+	Content    string     `json:"content"`
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
 	Name       string     `json:"name,omitempty"`
@@ -156,7 +156,7 @@ func (s *streamState) toMessage() *Message {
 			Function: FunctionCall{Name: f.name, Arguments: f.arguments.String()},
 		}
 	}
-	return &Message{Role: "assistant", ToolCalls: calls}
+	return &Message{Role: "assistant", Content: "", ToolCalls: calls}
 }
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
@@ -205,7 +205,6 @@ func (c *Client) Chat(ctx context.Context, messages []Message, tools []Tool) (*M
 		return nil, fmt.Errorf("ollama returned no choices")
 	}
 	msg := cr.Choices[0].Message
-	fmt.Printf("Result returned is:", cr.Choices[0])
 	return &msg, nil
 }
 

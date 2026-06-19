@@ -32,6 +32,7 @@ const TOOL_META: Record<string, ToolMeta> = {
   get_eurostar_dashboard:           { label: "Loading Eurostar dashboard",       network: "eurostar" },
   get_eurostar_live_map:            { label: "Loading Eurostar live map",        network: "eurostar" },
   get_traveler_summary:             { label: "Fetching passenger load",          network: "eurostar" },
+  operations_wall:                  { label: "Building operations wall",         network: "default" },
   // Weather
   get_weather:                      { label: "Fetching weather",                 network: "weather" },
   // National Rail
