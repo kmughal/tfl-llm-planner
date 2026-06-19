@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Train, History, BookOpen, Terminal, Settings, House, Bus, Trash2, Zap } from "lucide-react"
+import { Train, History, BookOpen, Terminal, Settings, House, Bus, Trash2, Zap, Network } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useChat } from "./hooks/useChat"
 import { useMemoryTimer } from "./hooks/useMemoryTimer"
@@ -12,6 +12,7 @@ import { ExamplesPanel } from "./components/ExamplesPanel"
 import { LogsPage } from "./components/LogsPage"
 import { ConfigPage } from "./components/ConfigPage"
 import { ToolsPage } from "./components/ToolsPage"
+import { SystemFlowPage } from "./components/SystemFlowPage"
 import { NetworkBackground, type NetworkTheme } from "./components/NetworkBackground"
 import { ChatMeshGradient } from "./components/ChatMeshGradient"
 import { LoadingCounter } from "./components/LoadingCounter"
@@ -40,6 +41,7 @@ const NAV_TAB_COLORS: Record<string, { text: string; bg: string; border: string;
   tools:  { text: "#fbbf24", bg: "rgba(251,191,36,0.12)",  border: "rgba(251,191,36,0.35)",  glow: "rgba(251,191,36,0.25)" },
   logs:   { text: "#60a5fa", bg: "rgba(96,165,250,0.12)",  border: "rgba(96,165,250,0.35)",  glow: "rgba(96,165,250,0.25)" },
   config: { text: "#a78bfa", bg: "rgba(167,139,250,0.12)", border: "rgba(167,139,250,0.35)", glow: "rgba(167,139,250,0.25)" },
+  system: { text: "#22d3ee", bg: "rgba(34,211,238,0.12)", border: "rgba(34,211,238,0.35)", glow: "rgba(34,211,238,0.25)" },
 }
 
 function NavTab({
@@ -230,11 +232,12 @@ function MemoryTimerBadge({ secondsLeft }: { readonly secondsLeft: number }) {
 
 export default function App() {
   useEurostarDisplay()
-  const [page, setPage] = useState<"chat" | "logs" | "config" | "tools">(() => {
+  const [page, setPage] = useState<"chat" | "logs" | "config" | "tools" | "system">(() => {
     const h = globalThis.location.hash
     if (h === "#logs")   return "logs"
     if (h === "#config") return "config"
     if (h === "#tools")  return "tools"
+    if (h === "#system") return "system"
     return "chat"
   })
   const [sidebarOpen, setSidebarOpen]           = useState(false)
@@ -295,6 +298,7 @@ export default function App() {
       if (h === "#logs")        setPage("logs")
       else if (h === "#config") setPage("config")
       else if (h === "#tools")  setPage("tools")
+      else if (h === "#system") setPage("system")
       else setPage("chat")
     }
     globalThis.addEventListener("hashchange", onHash)
@@ -381,6 +385,24 @@ export default function App() {
           className="app-system-shell h-screen w-full"
         >
           <ToolsPage onClose={() => { globalThis.location.hash = ""; setPage("chat") }} />
+          <div className="fixed bottom-3 right-3 z-[90]"><EurostarDisplayMenu /></div>
+        </motion.div>
+      </AnimatePresence></>
+    )
+  }
+
+  if (page === "system") {
+    return (
+      <><EurostarDisplayStyles /><AnimatePresence mode="wait">
+        <motion.div
+          key="system"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -16 }}
+          transition={{ duration: 0.22, ease: "easeInOut" }}
+          className="app-system-shell h-screen w-full"
+        >
+          <SystemFlowPage onClose={() => { globalThis.location.hash = ""; setPage("chat") }} />
           <div className="fixed bottom-3 right-3 z-[90]"><EurostarDisplayMenu /></div>
         </motion.div>
       </AnimatePresence></>
@@ -596,6 +618,13 @@ export default function App() {
               onClick={() => { globalThis.location.hash = "#tools"; setPage("tools") }}
             />
             <NavTab
+              id="system"
+              label="System"
+              icon={<Network style={{ width: 13, height: 13 }} />}
+              active={false}
+              onClick={() => { globalThis.location.hash = "#system"; setPage("system") }}
+            />
+            <NavTab
               id="logs"
               label="Logs"
               icon={<Terminal style={{ width: 13, height: 13 }} />}
@@ -619,7 +648,12 @@ export default function App() {
         {/* Messages */}
         <main className="flex-1 overflow-y-auto">
           {isEmpty ? (
-            <LandingPage onSend={sendMessage} onTemplate={setPrefill} onEurostarLoad={() => setEurostarLoadAnalyticsOpen(true)} />
+            <LandingPage
+              onSend={sendMessage}
+              onTemplate={setPrefill}
+              onEurostarLoad={() => setEurostarLoadAnalyticsOpen(true)}
+              onSystem={() => { globalThis.location.hash = "#system"; setPage("system") }}
+            />
           ) : (
             <div className="max-w-[1180px] mx-auto w-full px-4 py-6 flex flex-col gap-4">
               {messages.map(msg => (

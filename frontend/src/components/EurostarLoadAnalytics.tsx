@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
-import { Activity, BarChart3, CalendarDays, RefreshCw, Train, TrendingUp, Users, X } from "lucide-react"
+import { Activity, AlertTriangle, BarChart3, CalendarDays, CheckCircle2, RefreshCw, Train, TrendingUp, Users, X } from "lucide-react"
 
 const API = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080"
 const EUROSTAR_BLUE = "#003366"
@@ -111,6 +111,19 @@ function statusKey(status?: string) {
 
 function statusLabel(status?: string) {
   return STATUS_META[statusKey(status)]?.label ?? "Other"
+}
+
+function StatusIcon({ status }: { readonly status?: string }) {
+  switch (statusKey(status)) {
+    case "active":
+      return <CheckCircle2 size={14} />
+    case "cancelled":
+      return <X size={14} />
+    case "delayed":
+      return <AlertTriangle size={14} />
+    default:
+      return <Activity size={14} />
+  }
 }
 
 async function loadAnalytics(date: string): Promise<AnalyticsData> {
@@ -234,7 +247,7 @@ export function EurostarLoadAnalytics({ onClose }: { readonly onClose: () => voi
 
   const timelineTickIndexes = useMemo(() => {
     if (timeline.rows.length === 0) return []
-    const desired = 10
+    const desired = 8
     const step = Math.max(1, Math.floor(timeline.rows.length / desired))
     const indexes: number[] = []
     for (let index = 0; index < timeline.rows.length; index += step) indexes.push(index)
@@ -342,20 +355,68 @@ export function EurostarLoadAnalytics({ onClose }: { readonly onClose: () => voi
               Service load bars
             </div>
             <div className="inline-flex items-center gap-2 rounded-2xl border bg-[#fbfdff] px-3 py-2 text-[11px] font-semibold" style={{ borderColor: "#e2e8f0", color: "#475467" }}>
-              <span className="h-4 w-3 rounded-sm border-2" style={{ borderColor: EUROSTAR_GOLD }} />
+              <span className="flex h-5 w-5 items-center justify-center rounded-full border-2" style={{ borderColor: EUROSTAR_GOLD, color: EUROSTAR_GOLD }}>
+                <Train size={11} />
+              </span>
               Selected service
             </div>
             <div className="inline-flex items-center gap-2 rounded-2xl border bg-[#fbfdff] px-3 py-2 text-[11px] font-semibold" style={{ borderColor: "#e2e8f0", color: "#475467" }}>
-              <span className="flex h-5 w-5 items-center justify-center rounded-full text-white" style={{ background: "#ef4444" }}>
-                <X size={11} />
+              <span className="flex items-center gap-1.5">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full" style={{ background: STATUS_META.active.bg, color: STATUS_META.active.color }}><CheckCircle2 size={11} /></span>
+                <span className="flex h-5 w-5 items-center justify-center rounded-full" style={{ background: STATUS_META.cancelled.bg, color: STATUS_META.cancelled.color }}><X size={11} /></span>
+                <span className="flex h-5 w-5 items-center justify-center rounded-full" style={{ background: STATUS_META.delayed.bg, color: STATUS_META.delayed.color }}><AlertTriangle size={11} /></span>
               </span>
-              Cancelled marker
+              Service states
             </div>
             <div className="inline-flex items-center gap-2 rounded-2xl border bg-[#fbfdff] px-3 py-2 text-[11px] font-semibold" style={{ borderColor: "#e2e8f0", color: "#475467" }}>
               <span className="text-[13px] font-black" style={{ color: "#94a3b8" }}>Hover</span>
               inspect · click to pin
             </div>
           </div>
+          {(hoveredTimelineRow || selectedTimelineRow) && (
+            <div className="mb-4 rounded-[24px] border bg-[#fbfdff] px-4 py-4" style={{ borderColor: "#e2e8f0" }}>
+              {(() => {
+                const focusRow = hoveredTimelineRow ?? selectedTimelineRow
+                if (!focusRow) return null
+                const focusStatus = statusKey(focusRow.train?.status)
+                const focusMeta = STATUS_META[focusStatus]
+                return (
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full" style={{ background: focusMeta.bg, color: focusMeta.color }}>
+                          <StatusIcon status={focusRow.train?.status} />
+                        </span>
+                        <span className="text-xl font-black tabular-nums" style={{ color: INK }}>{focusRow.item.serviceCode}</span>
+                        <span
+                          className="rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em]"
+                          style={{ color: focusMeta.color, background: focusMeta.bg }}
+                        >
+                          {statusLabel(focusRow.train?.status)}
+                        </span>
+                        {hoveredTimelineRow && (
+                          <span className="rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em]" style={{ borderColor: "#e2e8f0", color: "#667085" }}>
+                            Hover focus
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-sm font-semibold" style={{ color: "#475467" }}>
+                        <span className="inline-flex items-center gap-1.5"><Train size={13} style={{ color: EUROSTAR_BLUE }} /> {focusRow.train ? `${stationName(originCode(focusRow.train))} - ${stationName(destCode(focusRow.train))}` : `${focusRow.item.origin} - ${focusRow.item.destination}`}</span>
+                        <span style={{ color: "#98a2b3" }}>·</span>
+                        <span>{fmtTime(focusRow.train?.departureDateTime)} - {fmtTime(focusRow.train?.arrivalDateTime)}</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-3xl font-black tabular-nums" style={{ color: EUROSTAR_BLUE }}>
+                        {focusRow.item.totalCount}
+                      </div>
+                      <div className="text-xs" style={{ color: "#667085" }}>passengers on board</div>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+          )}
           <div className="grid gap-3 xl:grid-cols-[72px_minmax(0,1fr)]">
             <div className="hidden xl:flex xl:h-[320px] xl:flex-col xl:justify-between xl:pb-8">
               {[1, 0.75, 0.5, 0.25, 0].map(mark => (
@@ -377,25 +438,8 @@ export function EurostarLoadAnalytics({ onClose }: { readonly onClose: () => voi
                   {timeline.rows.map(({ row, status, heightPct }, index) => {
                     const meta = STATUS_META[status]
                     const selected = selectedServiceCode === row.item.serviceCode
-                    const hovered = hoveredServiceCode === row.item.serviceCode
                     return (
                       <div key={`${row.item.serviceCode}-${index}`} className="relative flex h-full w-4 shrink-0 items-end">
-                        {hovered && (
-                          <div
-                            className="absolute bottom-[calc(100%-244px)] left-1/2 z-10 w-48 -translate-x-1/2 rounded-2xl border px-3 py-2.5"
-                            style={{ background: "rgba(15,23,42,0.96)", borderColor: "rgba(148,163,184,0.3)" }}
-                          >
-                            <div className="text-[11px] font-black" style={{ color: "#f8fafc" }}>
-                              {row.item.serviceCode} · {statusLabel(row.train?.status)}
-                            </div>
-                            <div className="mt-1 text-[11px] font-bold" style={{ color: "#93c5fd" }}>
-                              {row.item.totalCount} passengers
-                            </div>
-                            <div className="mt-1 text-[10px] font-semibold leading-4" style={{ color: "#cbd5e1" }}>
-                              {fmtTime(row.train?.departureDateTime)} · {row.train ? `${stationName(originCode(row.train))} - ${stationName(destCode(row.train))}` : `${row.item.origin} - ${row.item.destination}`}
-                            </div>
-                          </div>
-                        )}
                         <motion.button
                           type="button"
                           className="relative w-full rounded-t-[10px] border-2 transition"
@@ -413,6 +457,9 @@ export function EurostarLoadAnalytics({ onClose }: { readonly onClose: () => voi
                           onMouseLeave={() => setHoveredServiceCode(current => current === row.item.serviceCode ? null : current)}
                           aria-label={`Service ${row.item.serviceCode} with ${row.item.totalCount} passengers`}
                         >
+                          <span className="pointer-events-none absolute -top-5 left-1/2 hidden -translate-x-1/2 text-[9px] font-black tabular-nums text-[#94a3b8] xl:block">
+                            {row.item.serviceCode}
+                          </span>
                           {status === "cancelled" && (
                             <span className="absolute left-1/2 top-1.5 -translate-x-1/2 text-[10px] font-black" style={{ color: "#ef4444" }}>
                               ×
@@ -460,11 +507,6 @@ export function EurostarLoadAnalytics({ onClose }: { readonly onClose: () => voi
                   <div className="text-xs" style={{ color: "#667085" }}>passengers on board</div>
                 </div>
               </div>
-              {hoveredTimelineRow && hoveredTimelineRow.item.serviceCode !== selectedTimelineRow.item.serviceCode && (
-                <div className="mt-3 rounded-2xl border bg-white px-3 py-2.5 text-xs" style={{ borderColor: "#e2e8f0", color: "#475467" }}>
-                  Hovering <span className="font-black" style={{ color: INK }}>{hoveredTimelineRow.item.serviceCode}</span> · {hoveredTimelineRow.item.totalCount} passengers · {statusLabel(hoveredTimelineRow.train?.status)}
-                </div>
-              )}
               <div className="mt-4 grid gap-3 md:grid-cols-4">
                 <div className="rounded-2xl bg-white px-3 py-2.5">
                   <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>Departs</div>
