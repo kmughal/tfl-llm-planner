@@ -171,6 +171,10 @@ type EnrichedCrew struct {
 
 // GetCrewActivities handles GET /api/crew/activities?date=YYYY-MM-DD&serviceCode=9113
 func GetCrewActivities(c *gin.Context) {
+	if !IsServiceEnabled("crew") {
+		serviceDisabledJSON(c, "crew")
+		return
+	}
 	date := c.Query("date")
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
@@ -179,15 +183,22 @@ func GetCrewActivities(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date, use YYYY-MM-DD"})
 		return
 	}
+	cacheKey := "crew/activities/" + date + "/" + c.Query("serviceCode")
 
 	// Fetch activities.
 	actBody, err := sotclient().get("/v1/activities?operationalDate=" + date)
 	if err != nil {
+		if respondWithCachedSnapshot(c, cacheKey, err.Error()) {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
 	var activities []CrewActivity
 	if err := json.Unmarshal(actBody, &activities); err != nil {
+		if respondWithCachedSnapshot(c, cacheKey, "decode activities") {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "decode activities"})
 		return
 	}
@@ -204,7 +215,7 @@ func GetCrewActivities(c *gin.Context) {
 	}
 
 	if len(activities) == 0 {
-		c.JSON(http.StatusOK, []EnrichedCrew{})
+		respondJSONAndCache(c, cacheKey, http.StatusOK, []EnrichedCrew{})
 		return
 	}
 
@@ -248,7 +259,7 @@ func GetCrewActivities(c *gin.Context) {
 			Arrival:     fmtSOTTime(a.ArrivalDatetime),
 		})
 	}
-	c.JSON(http.StatusOK, result)
+	respondJSONAndCache(c, cacheKey, http.StatusOK, result)
 }
 
 func fmtSOTTime(dt string) string {

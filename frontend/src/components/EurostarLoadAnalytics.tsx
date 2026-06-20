@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
 import { Activity, AlertTriangle, BarChart3, CalendarDays, CheckCircle2, RefreshCw, Train, TrendingUp, Users, X } from "lucide-react"
+import { readResponseState, staleLabel, type ResponseState } from "../lib/responseState"
 
 const API = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080"
 const EUROSTAR_BLUE = "#003366"
@@ -41,6 +42,7 @@ type TravelerSummary = {
 type AnalyticsData = {
   traveler: TravelerSummary
   trains: EuromapPlan[]
+  responseStates?: ResponseState[]
 }
 
 const STATION_NAMES: Record<string, string> = {
@@ -131,11 +133,18 @@ async function loadAnalytics(date: string): Promise<AnalyticsData> {
     fetch(`${API}/api/eurostar/traveler-summary?date=${date}`),
     fetch(`${API}/api/eurostar/trains?date=${date}`),
   ])
-  if (!travelerRes.ok) throw new Error("Eurostar passenger load is unavailable")
-  if (!trainsRes.ok) throw new Error("Eurostar trains are unavailable")
+  if (!travelerRes.ok) {
+    const body = await travelerRes.json().catch(() => ({}))
+    throw new Error(body.error || "Eurostar passenger load is unavailable")
+  }
+  if (!trainsRes.ok) {
+    const body = await trainsRes.json().catch(() => ({}))
+    throw new Error(body.error || "Eurostar trains are unavailable")
+  }
   return {
     traveler: await travelerRes.json(),
     trains: await trainsRes.json(),
+    responseStates: [readResponseState(travelerRes), readResponseState(trainsRes)],
   }
 }
 
@@ -312,6 +321,11 @@ export function EurostarLoadAnalytics({ onClose }: { readonly onClose: () => voi
         {error && (
           <div className="mb-4 rounded-2xl border px-4 py-3 text-sm font-semibold" style={{ background: "#fff1f3", borderColor: "#fecdd3", color: "#be123c" }}>
             {error}
+          </div>
+        )}
+        {data?.responseStates?.some(state => state.stale) && (
+          <div className="mb-4 rounded-2xl border px-4 py-3 text-sm font-semibold" style={{ background: "#fff7ed", borderColor: "#fed7aa", color: "#9a3412" }}>
+            {staleLabel(data.responseStates.find(state => state.stale))} is being shown because live Eurostar analytics could not refresh.
           </div>
         )}
 

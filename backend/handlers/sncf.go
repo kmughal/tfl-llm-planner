@@ -51,9 +51,14 @@ var sncfDashboardStations = []string{
 
 // GetSNCFCommandCenter combines existing MCP tools into one live operating view.
 func (h *Handler) GetSNCFCommandCenter(c *gin.Context) {
+	if !IsServiceEnabled("sncf") {
+		serviceDisabledJSON(c, "sncf")
+		return
+	}
 	ctx := c.Request.Context()
 	errs := make(map[string]string)
 	boards := make([]SNCFStationBoard, 0, len(sncfDashboardStations))
+	cacheKey := "sncf/command-center"
 
 	for _, station := range sncfDashboardStations {
 		args, _ := json.Marshal(map[string]any{"station": station, "count": 8})
@@ -74,11 +79,14 @@ func (h *Handler) GetSNCFCommandCenter(c *gin.Context) {
 	incidents := parseSNCFIncidents(disruptionsRaw)
 
 	if len(boards) == 0 && len(incidents) == 0 && len(errs) > 0 {
+		if respondWithCachedSnapshot(c, cacheKey, "SNCF MCP tools are unavailable") {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": "SNCF MCP tools are unavailable", "sections": errs})
 		return
 	}
 
-	c.JSON(http.StatusOK, SNCFCommandCenterResponse{
+	respondJSONAndCache(c, cacheKey, http.StatusOK, SNCFCommandCenterResponse{
 		Boards:      boards,
 		Incidents:   incidents,
 		FetchedAt:   time.Now().UTC().Format(time.RFC3339),

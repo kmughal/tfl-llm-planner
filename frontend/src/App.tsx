@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Train, History, BookOpen, Terminal, Settings, House, Bus, Trash2, Zap, Network } from "lucide-react"
+import { Train, History, BookOpen, Terminal, Settings, House, Bus, Trash2, Zap, Network, Activity } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useChat } from "./hooks/useChat"
 import { useMemoryTimer } from "./hooks/useMemoryTimer"
@@ -38,6 +38,15 @@ const TFL_TOOLS      = new Set(["plan_journey", "get_line_status", "get_status_b
 const SNCF_TOOLS     = new Set(["plan_sncf_journey", "search_sncf_stations", "get_sncf_disruptions", "get_sncf_departures", "get_sncf_arrivals", "get_sncf_train", "get_sncf_dashboard"])
 const EUROSTAR_TOOLS = new Set(["get_euromap_plans", "get_euromap_technical_plans", "get_euromap_plan_by_id", "get_euromap_technical_plan_by_id", "get_eurostar_dashboard", "get_eurostar_live_map", "get_traveler_summary", "get_crew_activities", "get_crew_monthly_schedule"])
 const EUROSTAR_CATALOG_STORAGE_KEY = "eurostar-train-catalog-v1"
+const API = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080"
+
+type ServiceState = {
+  id: string
+  label: string
+  description: string
+  enabled: boolean
+  updatedAt: string
+}
 
 // ── Nav tab button with animated active indicator ─────────────────────────────
 const NAV_TAB_COLORS: Record<string, { text: string; bg: string; border: string; glow: string }> = {
@@ -233,6 +242,129 @@ function MemoryTimerBadge({ secondsLeft }: { readonly secondsLeft: number }) {
   )
 }
 
+function ServiceStatusPill({ services }: { readonly services: ServiceState[] }) {
+  const liveCount = services.filter(service => service.enabled).length
+  const offCount = services.length - liveCount
+  const liveRatio = services.length ? liveCount / services.length : 0
+  const accent = offCount > 0 ? "#f59e0b" : "#22c55e"
+  const glow = offCount > 0 ? "rgba(245,158,11,0.24)" : "rgba(34,197,94,0.22)"
+  const [hovered, setHovered] = useState(false)
+
+  return (
+    <div
+      className="relative hidden xl:block"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <motion.div
+        className="relative flex items-center gap-2 overflow-hidden rounded-xl px-3 py-2"
+        style={{
+          border: `1px solid ${offCount > 0 ? "rgba(245,158,11,0.24)" : "rgba(34,197,94,0.22)"}`,
+          background: "linear-gradient(135deg, rgba(8,15,30,0.96), rgba(12,22,39,0.9))",
+          boxShadow: `0 0 0 1px rgba(255,255,255,0.02), 0 0 16px ${glow}`,
+        }}
+        whileHover={{ y: -1 }}
+      >
+        <motion.span
+          className="pointer-events-none absolute inset-y-0 -left-12 w-12 skew-x-[-20deg]"
+          style={{ background: `linear-gradient(90deg, transparent, ${glow}, transparent)` }}
+          animate={{ x: ["0%", "420%"] }}
+          transition={{ duration: 2.8, repeat: Infinity, ease: "linear" }}
+        />
+        <span className="relative flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: `${accent}20`, color: accent }}>
+          <Activity size={14} />
+          <motion.span
+            className="absolute h-2 w-2 rounded-full"
+            style={{ right: 3, top: 3, background: accent }}
+            animate={{ opacity: [1, 0.35, 1], scale: [1, 1.7, 1] }}
+            transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+          />
+        </span>
+        <div className="relative min-w-0">
+          <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: offCount > 0 ? "#fde68a" : "#bbf7d0" }}>
+            Service status
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+            <span style={{ color: "white" }}>{liveCount}/{services.length} live</span>
+            <span style={{ color: offCount > 0 ? "#fdba74" : "#86efac" }}>{offCount > 0 ? `${offCount} off` : "all on"}</span>
+          </div>
+        </div>
+        <div className="relative ml-1 h-1.5 w-16 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.09)" }}>
+          <motion.span
+            className="absolute inset-y-0 left-0 rounded-full"
+            style={{ background: `linear-gradient(90deg, ${accent}, ${offCount > 0 ? "#fcd34d" : "#86efac"})` }}
+            animate={{ width: `${Math.max(10, Math.round(liveRatio * 100))}%` }}
+            transition={{ duration: 0.35 }}
+          />
+        </div>
+      </motion.div>
+
+      <AnimatePresence>
+        {hovered && (
+          <motion.div
+            initial={{ opacity: 0, y: 8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="absolute right-0 top-full z-[80] mt-2 w-[320px] rounded-2xl border p-3 shadow-[0_20px_55px_rgba(0,0,0,.35)]"
+            style={{
+              borderColor: "rgba(255,255,255,0.1)",
+              background: "linear-gradient(180deg, rgba(7,11,24,0.98), rgba(10,18,32,0.96))",
+              backdropFilter: "blur(18px)",
+            }}
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <div>
+                <div className="text-[11px] font-black uppercase tracking-[0.16em]" style={{ color: "#cbd5e1" }}>Legend</div>
+                <div className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>Services currently on and off</div>
+              </div>
+              <div className="rounded-full px-2 py-1 text-[10px] font-black" style={{ background: `${accent}18`, color: accent }}>
+                {offCount > 0 ? `${offCount} off` : "All on"}
+              </div>
+            </div>
+            <div className="space-y-2">
+              {services.map(service => (
+                <div
+                  key={service.id}
+                  className="flex items-start gap-3 rounded-xl border px-3 py-2.5"
+                  style={{
+                    borderColor: service.enabled ? "rgba(34,197,94,0.14)" : "rgba(248,113,113,0.14)",
+                    background: service.enabled ? "rgba(20,83,45,0.16)" : "rgba(127,29,29,0.14)",
+                  }}
+                >
+                  <motion.span
+                    className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ background: service.enabled ? "#22c55e" : "#ef4444" }}
+                    animate={{ opacity: [1, 0.45, 1], scale: [1, 1.4, 1] }}
+                    transition={{ duration: service.enabled ? 1.8 : 1.2, repeat: Infinity, ease: "easeInOut" }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <div className="truncate text-[12px] font-black text-white">{service.label}</div>
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em]"
+                        style={{
+                          background: service.enabled ? "rgba(34,197,94,0.18)" : "rgba(239,68,68,0.18)",
+                          color: service.enabled ? "#bbf7d0" : "#fecaca",
+                        }}
+                      >
+                        {service.enabled ? "On" : "Off"}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[11px] leading-4" style={{ color: "rgba(255,255,255,0.5)" }}>
+                      {service.description}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 export default function App() {
   useEurostarDisplay()
   const [page, setPage] = useState<"chat" | "logs" | "config" | "tools" | "system">(() => {
@@ -261,6 +393,7 @@ export default function App() {
   const activeConvIdRef                   = useRef<string>(crypto.randomUUID())
   const [activeConvId, setActiveConvId] = useState(activeConvIdRef.current)
   const [prefill, setPrefill]           = useState("")
+  const [services, setServices]         = useState<ServiceState[]>([])
 
   const { conversations, upsert, remove } = useConversations()
 
@@ -308,6 +441,30 @@ export default function App() {
     }
     globalThis.addEventListener("hashchange", onHash)
     return () => globalThis.removeEventListener("hashchange", onHash)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadServices = async () => {
+      try {
+        const response = await fetch(`${API}/api/services/status`)
+        if (!response.ok) return
+        const body = await response.json() as { services?: ServiceState[] }
+        if (!cancelled) setServices(body.services ?? [])
+      } catch {
+        // Keep the shell usable even if service status cannot be loaded.
+      }
+    }
+
+    void loadServices()
+    const timer = window.setInterval(() => void loadServices(), 30000)
+    const handleUpdate = () => { void loadServices() }
+    window.addEventListener("service-status-updated", handleUpdate)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+      window.removeEventListener("service-status-updated", handleUpdate)
+    }
   }, [])
 
   useEffect(() => {
@@ -640,6 +797,8 @@ export default function App() {
               </span>
             </motion.button>
 
+            {services.length > 0 && <ServiceStatusPill services={services} />}
+
             <EurostarDisplayMenu inverted />
 
             {/* Memory timer badge */}
@@ -697,6 +856,7 @@ export default function App() {
             />
           </div>
         </div>
+
       </header>
 
       {/* Body — horizontal split when chat is active */}

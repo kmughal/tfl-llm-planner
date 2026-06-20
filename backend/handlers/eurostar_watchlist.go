@@ -43,6 +43,10 @@ type EurostarWatchlistResponse struct {
 }
 
 func (h *Handler) GetEurostarWatchlist(c *gin.Context) {
+	if !IsServiceEnabled("eurostar") {
+		serviceDisabledJSON(c, "eurostar")
+		return
+	}
 	date := strings.TrimSpace(c.Query("date"))
 	if date == "" {
 		date = time.Now().UTC().Format(dateFmt)
@@ -51,13 +55,17 @@ func (h *Handler) GetEurostarWatchlist(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date, use YYYY-MM-DD"})
 		return
 	}
+	cacheKey := "eurostar/watchlist/" + date
 
 	result, err := h.buildEurostarWatchlist(c.Request.Context(), date)
 	if err != nil {
+		if respondWithCachedSnapshot(c, cacheKey, err.Error()) {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, result)
+	respondJSONAndCache(c, cacheKey, http.StatusOK, result)
 }
 
 func (h *Handler) buildEurostarWatchlist(ctx context.Context, date string) (EurostarWatchlistResponse, error) {

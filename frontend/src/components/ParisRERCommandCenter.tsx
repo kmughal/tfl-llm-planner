@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
 import { ArrowRight, Clock3, RefreshCw, TrainFront, X } from "lucide-react"
 import { EurostarDisplayMenu, EurostarDisplayStyles, eurostarDisplayClass, useEurostarDisplay } from "./EurostarDisplay"
+import { readResponseState, responseSourceMeta, staleLabel, type ResponseState } from "../lib/responseState"
+import { DisabledServiceBanner, ServicePowerBadge } from "./ServicePowerBadge"
 
 const API = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080"
 const PARIS_GREEN = "#009a44"
@@ -9,7 +11,7 @@ const PARIS_MINT = "#34d399"
 
 type Service = { time: string; baseTime: string; delay: number; mode: string; line: string; direction: string; color: string; textColor: string }
 type Board = { station: string; services: Service[] }
-type Data = { boards: Board[]; fetchedAt: string; toolSources: string[]; errors?: Record<string, string> }
+type Data = { boards: Board[]; fetchedAt: string; toolSources: string[]; errors?: Record<string, string>; responseState?: ResponseState }
 
 async function readJsonOrThrow(response: Response): Promise<Data & { error?: string }> {
   const raw = await response.text()
@@ -76,8 +78,16 @@ export function ParisRERCommandCenter({ onClose, onAsk }: { readonly onClose: ()
     try {
       const response = await fetch(`${API}/api/paris/command-center`)
       const body = await readJsonOrThrow(response)
-      if (!response.ok) throw new Error(body.error || "Paris RER tools are unavailable")
-      setData(body)
+      const responseState = readResponseState(response, body)
+      if (!response.ok) {
+        if (responseState.disabled) {
+          setData({ boards: [], fetchedAt: new Date().toISOString(), toolSources: [], errors: {}, responseState })
+          setSelectedStation("")
+          return
+        }
+        throw new Error(body.error || "Paris RER tools are unavailable")
+      }
+      setData({ ...body, responseState })
       setSelectedStation(current => current || body.boards[0]?.station || "")
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to load Paris RER operations")
@@ -93,6 +103,8 @@ export function ParisRERCommandCenter({ onClose, onAsk }: { readonly onClose: ()
   const delayed = services.filter(service => service.delay > 0).length
   const lineCount = useMemo(() => new Set(services.map(service => service.line).filter(Boolean)).size, [services])
   const latestUpdate = data?.fetchedAt ? new Date(data.fetchedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--:--:--"
+  const sourceMeta = responseSourceMeta(data?.responseState)
+  const serviceEnabled = !data?.responseState?.disabled
 
   const ask = (query: string) => {
     if (!onAsk) return
@@ -114,10 +126,11 @@ export function ParisRERCommandCenter({ onClose, onAsk }: { readonly onClose: ()
           <TrainFront size={20} />
         </div>
         <div className="min-w-0">
-          <h1 className="es-adaptive-text text-base font-black">Paris RER Command Center</h1>
+          <div className="flex items-center gap-2"><h1 className="es-adaptive-text text-base font-black">Paris RER Command Center</h1><ServicePowerBadge enabled={serviceEnabled} label={serviceEnabled ? "Paris on" : "Paris off"} compact /></div>
           <p className="es-adaptive-subtle text-xs">RER and Transilien departures across the key Paris interchange hubs</p>
         </div>
         <div className="es-adaptive-subtle ml-auto hidden items-center gap-2 text-xs md:flex"><Clock3 size={13} /> Updated {latestUpdate}</div>
+        {data?.responseState && <div className="hidden items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-black md:flex" style={{ background: sourceMeta.bg, borderColor: sourceMeta.border, color: sourceMeta.text }}><span className="h-2 w-2 rounded-full" style={{ background: sourceMeta.dot }} />{sourceMeta.label}</div>}
         <EurostarDisplayMenu />
         <button type="button" onClick={() => void load()} className="es-themed-panel flex h-9 w-9 items-center justify-center rounded-lg border" aria-label="Refresh Paris RER data">
           <motion.span className="flex" animate={loading ? { rotate: 360 } : { rotate: 0 }} transition={{ repeat: loading ? Infinity : 0, duration: 0.8, ease: "linear" }}><RefreshCw size={15} /></motion.span>
@@ -126,6 +139,8 @@ export function ParisRERCommandCenter({ onClose, onAsk }: { readonly onClose: ()
       </header>
 
       <main className="flex-1 overflow-y-auto p-5">
+        {data?.responseState?.disabled && <DisabledServiceBanner message={data.responseState.error || "Paris RER has been disabled in Config > Services."} />}
+        {data?.responseState?.stale && <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">{staleLabel(data.responseState)} is being shown while Paris live boards are reconnecting.</div>}
         {error && <div className="mb-4 rounded-lg border border-red-400 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">{error}</div>}
 
         <section className="mb-4 grid grid-cols-[minmax(0,1.3fr)_minmax(280px,.7fr)] gap-4 max-xl:grid-cols-1">

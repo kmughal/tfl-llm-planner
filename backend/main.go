@@ -21,6 +21,8 @@ func main() {
 	mcpURL := envOr("MCP_URL", "http://localhost:8081/sse")
 	port := envOr("PORT", "8080")
 	memPath := envOr("MEMORY_FILE", "./memory.json")
+	serviceFlagsPath := envOr("SERVICE_FLAGS_FILE", "./service_flags.json")
+	responseCachePath := envOr("RESPONSE_CACHE_DIR", "./response_cache")
 
 	llmClient := llm.NewClient(ollamaURL, ollamaModel)
 
@@ -29,6 +31,13 @@ func main() {
 		log.Fatalf("Failed to open memory store at %s: %v", memPath, err)
 	}
 	defer memStore.Close()
+
+	if err := handlers.InitServiceRegistry(serviceFlagsPath); err != nil {
+		log.Fatalf("Failed to initialise service registry at %s: %v", serviceFlagsPath, err)
+	}
+	if err := handlers.InitResponseCache(responseCachePath); err != nil {
+		log.Fatalf("Failed to initialise response cache at %s: %v", responseCachePath, err)
+	}
 
 	// Connect to MCP server with retry (it may take a moment to start)
 	mcpClient := connectMCP(mcpURL)
@@ -50,6 +59,8 @@ func main() {
 		api.GET("/logs/stream", handlers.LogStream)
 		api.GET("/config", handlers.GetConfig(envFile))
 		api.POST("/config", handlers.UpdateConfig(envFile))
+		api.GET("/services/status", handlers.GetServiceStatus)
+		api.POST("/services/status", handlers.UpdateServiceStatus)
 		api.GET("/buses", handlers.GetBusLines)
 		api.GET("/buses/:lineID/arrivals", handlers.GetBusLineArrivals)
 		api.GET("/tfl/command-center", h.GetTFLCommandCenter)

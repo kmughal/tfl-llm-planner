@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { motion } from "framer-motion"
 import { AlertTriangle, Bell, CheckCircle2, ChevronDown, Check, Clock3, Plus, RefreshCw, Search, Siren, Train, Users, X } from "lucide-react"
+import { readResponseState, staleLabel, type ResponseState } from "../lib/responseState"
 
 const API = (import.meta.env.VITE_API_URL as string | undefined) ?? ""
 const EUROSTAR_BLUE = "#003366"
@@ -82,6 +83,7 @@ type NotificationData = {
   trains: EuromapPlan[]
   traveler: TravelerSummary | null
   watchlist: EurostarWatchlist | null
+  responseStates?: ResponseState[]
 }
 
 type EurostarCatalogItem = {
@@ -255,14 +257,27 @@ async function loadNotifications(date: string): Promise<NotificationData> {
   let trains: EuromapPlan[] = []
   let traveler: TravelerSummary | null = null
   let watchlist: EurostarWatchlist | null = null
+  const responseStates: ResponseState[] = []
 
-  if (trainsRes.status === "fulfilled" && trainsRes.value.ok) trains = await trainsRes.value.json()
-  else throw new Error("Eurostar train plans are unavailable")
+  if (trainsRes.status === "fulfilled" && trainsRes.value.ok) {
+    responseStates.push(readResponseState(trainsRes.value))
+    trains = await trainsRes.value.json()
+  }
+  else if (trainsRes.status === "fulfilled") {
+    const body = await trainsRes.value.json().catch(() => ({}))
+    throw new Error(body.error || "Eurostar train plans are unavailable")
+  } else throw new Error("Eurostar train plans are unavailable")
 
-  if (travelerRes.status === "fulfilled" && travelerRes.value.ok) traveler = await travelerRes.value.json()
-  if (watchlistRes.status === "fulfilled" && watchlistRes.value.ok) watchlist = await watchlistRes.value.json()
+  if (travelerRes.status === "fulfilled" && travelerRes.value.ok) {
+    responseStates.push(readResponseState(travelerRes.value))
+    traveler = await travelerRes.value.json()
+  }
+  if (watchlistRes.status === "fulfilled" && watchlistRes.value.ok) {
+    responseStates.push(readResponseState(watchlistRes.value))
+    watchlist = await watchlistRes.value.json()
+  }
 
-  return { trains, traveler, watchlist }
+  return { trains, traveler, watchlist, responseStates }
 }
 
 function buildAlerts(data: NotificationData): AlertItem[] {
@@ -868,6 +883,12 @@ export function EurostarNotifications({
           <div className="mb-4 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold" style={{ background: "#fff1f3", borderColor: "#fecdd3", color: "#be123c" }}>
             <AlertTriangle size={16} />
             {error}
+          </div>
+        )}
+        {data?.responseStates?.some(state => state.stale) && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold" style={{ background: "#fff7ed", borderColor: "#fed7aa", color: "#9a3412" }}>
+            <AlertTriangle size={16} />
+            {staleLabel(data.responseStates.find(state => state.stale))} is being shown because live Eurostar notification feeds could not refresh.
           </div>
         )}
 

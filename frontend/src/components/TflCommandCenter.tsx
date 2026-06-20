@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import type { FormEvent } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { AlertCircle, ArrowRight, Bus, ChevronRight, Clock3, MapPin, Navigation, RefreshCw, Route, Search, TrainFront, X } from "lucide-react"
+import { readResponseState, responseSourceMeta, staleLabel, type ResponseState } from "../lib/responseState"
+import { DisabledServiceBanner, ServicePowerBadge } from "./ServicePowerBadge"
 
 const API = (import.meta.env.VITE_API_URL as string | undefined) ?? ""
 const BLUE = "#003688"
@@ -35,7 +37,7 @@ type LineCrowding = {
   missing: number
   currentBand: string
 }
-type TflData = { lines: Line[]; roads: Road[]; buses: BusLine[]; fetchedAt: Date; errors: Record<string, string> }
+type TflData = { lines: Line[]; roads: Road[]; buses: BusLine[]; fetchedAt: Date; errors: Record<string, string>; responseState?: ResponseState }
 
 const COLORS: Record<string, string> = {
   bakerloo: "#B36305", central: "#E32017", circle: "#FFD300", district: "#00782A", elizabeth: "#6950A1",
@@ -52,19 +54,27 @@ function eta(when: number, now: number) { const mins = Math.max(0, Math.round((w
 
 async function loadData(): Promise<TflData> {
   const response = await fetch(`${API}/api/tfl/command-center`)
-  if (!response.ok) throw new Error("The TfL service is not connected yet")
-  const value = await response.json()
-  return { ...value, errors: value.errors ?? {}, fetchedAt: new Date(value.fetchedAt) }
+  const value = await response.json().catch(() => ({}))
+  const responseState = readResponseState(response, value)
+  if (!response.ok) {
+    if (responseState.disabled) {
+      return { lines: [], roads: [], buses: [], fetchedAt: new Date(), errors: {}, responseState }
+    }
+    throw new Error((value as { error?: string }).error || "The TfL service is not connected yet")
+  }
+  return { ...value, errors: value.errors ?? {}, fetchedAt: new Date(value.fetchedAt), responseState }
 }
 async function loadArrivals(id: string): Promise<Arrivals> {
   const response = await fetch(`${API}/api/buses/${encodeURIComponent(id)}/arrivals`)
-  if (!response.ok) throw new Error("Live arrivals are unavailable")
-  return response.json()
+  const value = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(value.error || "Live arrivals are unavailable")
+  return value
 }
 async function loadLineCrowding(id: string, name: string): Promise<LineCrowding> {
   const response = await fetch(`${API}/api/tfl/lines/${encodeURIComponent(id)}/crowding?lineName=${encodeURIComponent(name)}`)
-  if (!response.ok) throw new Error("Station crowding is unavailable")
-  return response.json()
+  const value = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(value.error || "Station crowding is unavailable")
+  return value
 }
 
 function Roundel() {
@@ -130,6 +140,8 @@ export function TflCommandCenter({ onClose, onAsk }: { readonly onClose: () => v
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
   const [stop, setStop] = useState("")
+  const sourceMeta = responseSourceMeta(data?.responseState)
+  const serviceEnabled = !data?.responseState?.disabled
 
   const load = useCallback(async () => { setLoading(true); try { setData(await loadData()); setError(null) } catch (cause) { setError(cause instanceof Error ? cause.message : "TfL connection unavailable") } finally { setLoading(false) } }, [])
   useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 60000); return () => window.clearInterval(timer) }, [load])
@@ -172,14 +184,25 @@ export function TflCommandCenter({ onClose, onAsk }: { readonly onClose: () => v
   }, [activeLine?.id, activeLine?.name])
 
   return <motion.div className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-[#f5f5f7] text-[#161617]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-    <header className="relative z-20 flex h-16 shrink-0 items-center gap-3 border-b border-black/[.07] bg-white/85 px-5 backdrop-blur-2xl">
-      <Roundel /><div><h1 className="text-sm font-bold">TfL Live</h1><p className="text-[11px] text-[#6e6e73]">All of London, one operating view</p></div>
+      <header className="relative z-20 flex h-16 shrink-0 items-center gap-3 border-b border-black/[.07] bg-white/85 px-5 backdrop-blur-2xl">
+      <Roundel /><div><div className="flex items-center gap-2"><h1 className="text-sm font-bold">TfL Live</h1><ServicePowerBadge enabled={serviceEnabled} label={serviceEnabled ? "TfL on" : "TfL off"} compact /></div><p className="text-[11px] text-[#6e6e73]">All of London, one operating view</p></div>
       <div className="ml-auto hidden items-center gap-2 text-[11px] text-[#6e6e73] sm:flex"><motion.span className="h-2 w-2 rounded-full" style={{ background: error ? "#ff9f0a" : "#30d158" }} animate={{ opacity: [.4, 1, .4] }} transition={{ repeat: Infinity, duration: 1.7 }} />{data ? `Live at ${data.fetchedAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : loading ? "Connecting" : "Connection paused"}</div>
+      {data?.responseState && <div className="hidden items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-black sm:flex" style={{ background: sourceMeta.bg, borderColor: sourceMeta.border, color: sourceMeta.text }}><span className="h-2 w-2 rounded-full" style={{ background: sourceMeta.dot }} />{sourceMeta.label}</div>}
       <button type="button" title="Refresh TfL data" onClick={() => void load()} className="flex h-9 w-9 items-center justify-center rounded-full bg-black/[.045]"><motion.span animate={{ rotate: loading ? 360 : 0 }} transition={{ repeat: loading ? Infinity : 0, duration: .8 }}><RefreshCw size={15} /></motion.span></button>
       <button type="button" aria-label="Close TfL command center" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full bg-black/[.045]"><X size={16} /></button>
     </header>
 
-    <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto">
+      {data?.responseState?.disabled && (
+        <div className="px-5 pt-4 sm:px-8">
+          <DisabledServiceBanner message={data.responseState.error || "TfL has been disabled in Config > Services."} />
+        </div>
+      )}
+      {data?.responseState?.stale && (
+        <div className="border-b border-amber-300/50 bg-amber-50 px-5 py-3 text-xs font-semibold text-amber-900">
+          {staleLabel(data.responseState)} is being shown because the live TfL service is currently unavailable.
+        </div>
+      )}
       <section className="relative overflow-hidden border-b border-black/[.06] bg-white px-5 py-8 sm:px-8">
         <div className="pointer-events-none absolute inset-0 opacity-40" style={{ backgroundImage: "radial-gradient(circle at 22% 25%,rgba(0,113,227,.13),transparent 27%),radial-gradient(circle at 82% 18%,rgba(227,32,23,.1),transparent 24%)" }} />
         <div className="relative mx-auto max-w-7xl">

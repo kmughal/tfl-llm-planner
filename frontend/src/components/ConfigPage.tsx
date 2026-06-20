@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react"
 import {
-  Check, ChevronRight, Eye, EyeOff, Lock,
-  RefreshCw, Save, Settings, Wrench, X,
+  Activity, Bus, Check, ChevronRight, CloudSun, Eye, EyeOff, Gauge,
+  Lock, Network, Power, RefreshCw, Save, Settings, Train, Users,
+  Wrench, X,
 } from "lucide-react"
 import { motion } from "framer-motion"
 
@@ -16,6 +17,316 @@ interface ConfigLine {
 interface EditState {
   value: string
   active: boolean
+}
+
+interface ServiceState {
+  id: string
+  label: string
+  description: string
+  enabled: boolean
+  updatedAt: string
+}
+
+const SERVICE_THEME: Record<string, {
+  icon: typeof Train
+  logo: "tfl" | "sncf" | "eurostar" | "national-rail" | "paris-rer" | "crew" | "traveler" | "weather" | "wall" | "generic"
+  family: string
+  scope: string
+  tools: string
+  accent: string
+  border: string
+  glow: string
+  surface: string
+  statusOn: string
+  statusOff: string
+}> = {
+  crew: {
+    icon: Users,
+    logo: "crew",
+    family: "Crew tooling",
+    scope: "Roster + activities",
+    tools: "2 linked tools",
+    accent: "#8b5cf6",
+    border: "#4c1d95",
+    glow: "rgba(139,92,246,0.24)",
+    surface: "linear-gradient(180deg, rgba(91,33,182,0.22), rgba(10,15,26,0.94))",
+    statusOn: "#c4b5fd",
+    statusOff: "#cbd5e1",
+  },
+  eurostar: {
+    icon: Train,
+    logo: "eurostar",
+    family: "Cross-channel",
+    scope: "Plans + live map",
+    tools: "6 linked tools",
+    accent: "#3b82f6",
+    border: "#1d4ed8",
+    glow: "rgba(59,130,246,0.24)",
+    surface: "linear-gradient(180deg, rgba(29,78,216,0.22), rgba(10,15,26,0.94))",
+    statusOn: "#bfdbfe",
+    statusOff: "#cbd5e1",
+  },
+  "national-rail": {
+    icon: Activity,
+    logo: "national-rail",
+    family: "UK mainline",
+    scope: "Boards + hubs",
+    tools: "3 linked tools",
+    accent: "#22c55e",
+    border: "#15803d",
+    glow: "rgba(34,197,94,0.22)",
+    surface: "linear-gradient(180deg, rgba(21,128,61,0.22), rgba(10,15,26,0.94))",
+    statusOn: "#bbf7d0",
+    statusOff: "#cbd5e1",
+  },
+  "operations-wall": {
+    icon: Network,
+    logo: "wall",
+    family: "Fusion layer",
+    scope: "Cross-border picture",
+    tools: "1 wall feed",
+    accent: "#38bdf8",
+    border: "#0369a1",
+    glow: "rgba(56,189,248,0.22)",
+    surface: "linear-gradient(180deg, rgba(3,105,161,0.22), rgba(10,15,26,0.94))",
+    statusOn: "#bae6fd",
+    statusOff: "#cbd5e1",
+  },
+  "paris-rer": {
+    icon: Train,
+    logo: "paris-rer",
+    family: "Paris suburban",
+    scope: "Interchange boards",
+    tools: "1 live board",
+    accent: "#f97316",
+    border: "#c2410c",
+    glow: "rgba(249,115,22,0.22)",
+    surface: "linear-gradient(180deg, rgba(194,65,12,0.22), rgba(10,15,26,0.94))",
+    statusOn: "#fed7aa",
+    statusOff: "#cbd5e1",
+  },
+  sncf: {
+    icon: Train,
+    logo: "sncf",
+    family: "French national",
+    scope: "Stations + incidents",
+    tools: "7 linked tools",
+    accent: "#ec4899",
+    border: "#9d174d",
+    glow: "rgba(236,72,153,0.22)",
+    surface: "linear-gradient(180deg, rgba(157,23,77,0.22), rgba(10,15,26,0.94))",
+    statusOn: "#fbcfe8",
+    statusOff: "#cbd5e1",
+  },
+  tfl: {
+    icon: Bus,
+    logo: "tfl",
+    family: "London network",
+    scope: "Rail + bus + roads",
+    tools: "8 linked tools",
+    accent: "#ef4444",
+    border: "#b91c1c",
+    glow: "rgba(239,68,68,0.22)",
+    surface: "linear-gradient(180deg, rgba(185,28,28,0.22), rgba(10,15,26,0.94))",
+    statusOn: "#fecaca",
+    statusOff: "#cbd5e1",
+  },
+  traveler: {
+    icon: Gauge,
+    logo: "traveler",
+    family: "Passenger analytics",
+    scope: "Cabin + load mix",
+    tools: "1 analytics feed",
+    accent: "#f59e0b",
+    border: "#b45309",
+    glow: "rgba(245,158,11,0.22)",
+    surface: "linear-gradient(180deg, rgba(180,83,9,0.22), rgba(10,15,26,0.94))",
+    statusOn: "#fde68a",
+    statusOff: "#cbd5e1",
+  },
+  weather: {
+    icon: CloudSun,
+    logo: "weather",
+    family: "Journey context",
+    scope: "Travel weather",
+    tools: "1 forecast feed",
+    accent: "#14b8a6",
+    border: "#0f766e",
+    glow: "rgba(20,184,166,0.22)",
+    surface: "linear-gradient(180deg, rgba(15,118,110,0.22), rgba(10,15,26,0.94))",
+    statusOn: "#99f6e4",
+    statusOff: "#cbd5e1",
+  },
+}
+
+function ServiceLogo({
+  kind,
+  accent,
+  enabled,
+}: {
+  readonly kind: "tfl" | "sncf" | "eurostar" | "national-rail" | "paris-rer" | "crew" | "traveler" | "weather" | "wall" | "generic"
+  readonly accent: string
+  readonly enabled: boolean
+}) {
+  const muted = enabled ? accent : "#a1a1aa"
+  const ink = enabled ? "#f8fafc" : "#e4e4e7"
+
+  if (kind === "tfl") {
+    return (
+      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="7.5" fill="none" stroke="#E32017" strokeWidth="3" opacity={enabled ? 1 : 0.55} />
+        <rect x="3" y="10" width="18" height="4" rx="1" fill="#003688" opacity={enabled ? 1 : 0.55} />
+      </svg>
+    )
+  }
+
+  if (kind === "sncf") {
+    return (
+      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+        <polyline points="3,17 9,7 15,17" fill="none" stroke="#E2001A" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" opacity={enabled ? 1 : 0.55} />
+        <polyline points="8,17 14,7 20,17" fill="none" stroke="#E2001A" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" opacity={enabled ? 1 : 0.55} />
+      </svg>
+    )
+  }
+
+  if (kind === "eurostar") {
+    return (
+      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+        <polygon points="12,2.4 14.3,9 21.2,9 15.7,13.4 17.8,20.2 12,16.2 6.2,20.2 8.3,13.4 2.8,9 9.7,9" fill="#FFD700" opacity={enabled ? 1 : 0.55} />
+      </svg>
+    )
+  }
+
+  if (kind === "national-rail") {
+    return (
+      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 8h10.5l-2.6-2.6 1.5-1.5L19 9.5l-5.6 5.6-1.5-1.5 2.6-2.6H4z" fill={muted} />
+        <path d="M20 16H9.5l2.6 2.6-1.5 1.5L5 14.5l5.6-5.6 1.5 1.5-2.6 2.6H20z" fill={ink} opacity={enabled ? 0.95 : 0.7} />
+      </svg>
+    )
+  }
+
+  if (kind === "paris-rer") {
+    return (
+      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="8" fill={muted} opacity={enabled ? 0.9 : 0.55} />
+        <path d="M9 17V7h4.3c2 0 3.2 1.1 3.2 2.8 0 1.2-.7 2.1-1.9 2.5l2.2 4.7h-2.3l-2-4.2H11v4.2zm2-5.8h2.1c1 0 1.6-.5 1.6-1.4 0-.8-.6-1.3-1.6-1.3H11z" fill="#f8fafc" />
+      </svg>
+    )
+  }
+
+  if (kind === "crew") {
+    return (
+      <div className="flex items-center justify-center text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: ink }}>
+        SOT
+      </div>
+    )
+  }
+
+  if (kind === "traveler") {
+    return (
+      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 16.5h16" stroke={muted} strokeWidth="2" strokeLinecap="round" />
+        <path d="M6 13.5h12" stroke={muted} strokeWidth="2" strokeLinecap="round" opacity={0.75} />
+        <path d="M8 10.5h8" stroke={ink} strokeWidth="2.2" strokeLinecap="round" />
+      </svg>
+    )
+  }
+
+  if (kind === "weather") {
+    return (
+      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="9" cy="10" r="3.5" fill={muted} opacity={0.9} />
+        <path d="M10.5 18h6.1a3.2 3.2 0 0 0 .1-6.4 4.8 4.8 0 0 0-9.1 1.7A2.8 2.8 0 0 0 10.5 18Z" fill={ink} opacity={0.92} />
+      </svg>
+    )
+  }
+
+  if (kind === "wall") {
+    return (
+      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="2.6" fill={ink} />
+        <circle cx="6" cy="7" r="1.7" fill={muted} />
+        <circle cx="18" cy="7" r="1.7" fill={muted} />
+        <circle cx="6" cy="17" r="1.7" fill={muted} />
+        <circle cx="18" cy="17" r="1.7" fill={muted} />
+        <path d="M12 12 6 7m6 5 6-5m-6 0-6 5m6-5 6 5" stroke={muted} strokeWidth="1.6" strokeLinecap="round" opacity={0.9} />
+      </svg>
+    )
+  }
+
+  return (
+    <div className="flex items-center justify-center text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: ink }}>
+      SYS
+    </div>
+  )
+}
+
+const SERVICE_TRACKS = [
+  { top: "12%", color: "#3b82f6", width: 560, duration: 22, delay: 0 },
+  { top: "26%", color: "#ef4444", width: 420, duration: 19, delay: 1.6 },
+  { top: "42%", color: "#ec4899", width: 640, duration: 24, delay: 0.8 },
+  { top: "58%", color: "#22c55e", width: 500, duration: 20, delay: 2.4 },
+  { top: "74%", color: "#f59e0b", width: 440, duration: 18, delay: 1.1 },
+]
+
+function ServicesRailBackdrop() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[32px]">
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(circle at top left, rgba(59,130,246,.12), transparent 26%), radial-gradient(circle at 82% 18%, rgba(236,72,153,.1), transparent 22%), linear-gradient(180deg, rgba(2,6,23,.92), rgba(3,7,18,.98))",
+        }}
+      />
+      <div
+        className="absolute inset-0 opacity-[0.22]"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(148,163,184,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.08) 1px, transparent 1px)",
+          backgroundSize: "44px 44px",
+        }}
+      />
+      {SERVICE_TRACKS.map((track, index) => (
+        <motion.div
+          key={index}
+          className="absolute left-[-38rem] h-[3px] rounded-full"
+          style={{
+            top: track.top,
+            width: track.width,
+            background: `linear-gradient(90deg, transparent, ${track.color}, transparent)`,
+            opacity: 0.28,
+          }}
+          animate={{ x: [0, 2200] }}
+          transition={{ duration: track.duration, delay: track.delay, repeat: Infinity, ease: "linear" }}
+        />
+      ))}
+      <div className="absolute inset-x-10 top-[17%] h-px bg-white/10" />
+      <div className="absolute inset-x-16 top-[48%] h-px bg-white/10" />
+      <div className="absolute inset-x-8 top-[80%] h-px bg-white/10" />
+      <svg className="absolute right-10 top-10 opacity-[0.1]" width="280" height="180" viewBox="0 0 280 180" aria-hidden="true">
+        <path d="M8 150C48 126 70 96 112 92c34-4 48 12 77 7 36-6 46-38 83-61" fill="none" stroke="#93c5fd" strokeWidth="3" strokeLinecap="round" />
+        <path d="M18 158C58 134 80 105 122 101c34-4 48 12 77 7 36-6 46-38 83-61" fill="none" stroke="#fca5a5" strokeWidth="3" strokeLinecap="round" opacity="0.75" />
+        <circle cx="112" cy="92" r="6" fill="#3b82f6" />
+        <circle cx="189" cy="99" r="6" fill="#ec4899" />
+        <circle cx="255" cy="38" r="6" fill="#22c55e" />
+      </svg>
+      <motion.div
+        className="absolute bottom-12 left-[-10rem] opacity-[0.12]"
+        animate={{ x: [0, 1900] }}
+        transition={{ duration: 26, repeat: Infinity, ease: "linear" }}
+      >
+        <svg width="180" height="34" viewBox="0 0 180 34" fill="none" aria-hidden="true">
+          <rect x="12" y="9" width="122" height="14" rx="6" fill="#f8fafc" />
+          <rect x="132" y="6" width="28" height="11" rx="3" fill="#f8fafc" />
+          <circle cx="36" cy="27" r="4" fill="#f8fafc" />
+          <circle cx="72" cy="27" r="4" fill="#f8fafc" />
+          <circle cx="108" cy="27" r="4" fill="#f8fafc" />
+        </svg>
+      </motion.div>
+    </div>
+  )
 }
 
 // ── Static tool registry ──────────────────────────────────────────────────────
@@ -197,7 +508,9 @@ function ConfigRow({
 export function ConfigPage({ onClose }: { readonly onClose: () => void }) {
   const [lines,   setLines]   = useState<ConfigLine[]>([])
   const [edits,   setEdits]   = useState<Record<string, EditState>>({})
-  const [tab,     setTab]     = useState<"config" | "tools">("config")
+  const [services, setServices] = useState<ServiceState[]>([])
+  const [serviceEdits, setServiceEdits] = useState<Record<string, boolean>>({})
+  const [tab,     setTab]     = useState<"config" | "services" | "tools">("config")
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
   const [saved,   setSaved]   = useState(false)
@@ -206,9 +519,15 @@ export function ConfigPage({ onClose }: { readonly onClose: () => void }) {
   const backendURL = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8080"
 
   useEffect(() => {
-    fetch(`${backendURL}/api/config`)
-      .then(r => r.json())
-      .then(d => { setLines(d.lines ?? []); setLoading(false) })
+    Promise.all([
+      fetch(`${backendURL}/api/config`).then(r => r.json()),
+      fetch(`${backendURL}/api/services/status`).then(r => r.json()),
+    ])
+      .then(([configData, serviceData]) => {
+        setLines(configData.lines ?? [])
+        setServices(serviceData.services ?? [])
+        setLoading(false)
+      })
       .catch(e => { setError(String(e)); setLoading(false) })
   }, [backendURL])
 
@@ -219,26 +538,48 @@ export function ConfigPage({ onClose }: { readonly onClose: () => void }) {
   async function handleSave() {
     setSaving(true)
     setError(null)
-    const req: Record<string, EditState> = {}
-    for (const line of lines) {
-      if (!line.key) continue
-      req[line.key] = edits[line.key] ?? {
-        value:  line.value ?? "",
-        active: line.type === "entry",
-      }
-    }
     try {
-      const r = await fetch(`${backendURL}/api/config`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(req),
-      })
-      if (!r.ok) throw new Error(await r.text())
+      if (tab === "config") {
+        const req: Record<string, EditState> = {}
+        for (const line of lines) {
+          if (!line.key) continue
+          req[line.key] = edits[line.key] ?? {
+            value:  line.value ?? "",
+            active: line.type === "entry",
+          }
+        }
+        const r = await fetch(`${backendURL}/api/config`, {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify(req),
+        })
+        if (!r.ok) throw new Error(await r.text())
+      }
+
+      if (tab === "services") {
+        const r = await fetch(`${backendURL}/api/services/status`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            services: services.map(service => ({
+              ...service,
+              enabled: serviceEdits[service.id] ?? service.enabled,
+            })),
+          }),
+        })
+        if (!r.ok) throw new Error(await r.text())
+      }
+
       setEdits({})
+      setServiceEdits({})
       setSaved(true)
-      const fresh = await fetch(`${backendURL}/api/config`)
-      const d = await fresh.json()
-      setLines(d.lines ?? [])
+      const [freshConfig, freshServices] = await Promise.all([
+        fetch(`${backendURL}/api/config`).then(r => r.json()),
+        fetch(`${backendURL}/api/services/status`).then(r => r.json()),
+      ])
+      setLines(freshConfig.lines ?? [])
+      setServices(freshServices.services ?? [])
+      window.dispatchEvent(new CustomEvent("service-status-updated"))
       setTimeout(() => setSaved(false), 4000)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -264,6 +605,7 @@ export function ConfigPage({ onClose }: { readonly onClose: () => void }) {
   }, [lines])
 
   const isDirty   = Object.keys(edits).length > 0
+  const servicesDirty = Object.keys(serviceEdits).length > 0
   const totalKeys = lines.filter(l => l.type === "entry" || l.type === "commented_entry").length
 
   return (
@@ -307,17 +649,17 @@ export function ConfigPage({ onClose }: { readonly onClose: () => void }) {
           <span className="text-[11px] mr-2" style={{ color: "#f87171" }}>{error}</span>
         )}
 
-        {tab === "config" && (
+        {(tab === "config" || tab === "services") && (
           <button
             type="button"
             onClick={handleSave}
-            disabled={!isDirty || saving}
+            disabled={tab === "config" ? !isDirty || saving : !servicesDirty || saving}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
             style={{
-              background: isDirty ? "#064e3b" : "#0d1117",
-              color:      isDirty ? "#6ee7b7" : "#374151",
-              border:    `1px solid ${isDirty ? "#059669" : "#1f2937"}`,
-              cursor:     isDirty ? "pointer" : "not-allowed",
+              background: (tab === "config" ? isDirty : servicesDirty) ? "#064e3b" : "#0d1117",
+              color:      (tab === "config" ? isDirty : servicesDirty) ? "#6ee7b7" : "#374151",
+              border:    `1px solid ${(tab === "config" ? isDirty : servicesDirty) ? "#059669" : "#1f2937"}`,
+              cursor:     (tab === "config" ? isDirty : servicesDirty) ? "pointer" : "not-allowed",
             }}
           >
             {saving
@@ -334,7 +676,7 @@ export function ConfigPage({ onClose }: { readonly onClose: () => void }) {
         className="flex items-center gap-1 px-5 py-2 shrink-0"
         style={{ borderBottom: "1px solid #1e293b", background: "#08101a" }}
       >
-        {(["config", "tools"] as const).map(t => (
+        {(["config", "services", "tools"] as const).map(t => (
           <button
             key={t}
             type="button"
@@ -346,8 +688,11 @@ export function ConfigPage({ onClose }: { readonly onClose: () => void }) {
               border:    `1px solid ${tab === t ? "#334155" : "transparent"}`,
             }}
           >
-            {t === "config" ? "Environment" : "MCP Tools"}
+            {t === "config" ? "Environment" : t === "services" ? "Services" : "MCP Tools"}
             {t === "config" && isDirty && (
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#fbbf24" }} />
+            )}
+            {t === "services" && servicesDirty && (
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#fbbf24" }} />
             )}
           </button>
@@ -398,6 +743,184 @@ export function ConfigPage({ onClose }: { readonly onClose: () => void }) {
                 <p className="text-[10px] font-mono text-center mt-2" style={{ color: "#1f2937" }}>
                   Toggle the switch to comment/uncomment a key · Changes written to .env on save
                 </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === "services" && (
+          <div className="max-w-5xl mx-auto px-4 py-6">
+            {loading ? (
+              <p className="text-center text-[12px] font-mono mt-16" style={{ color: "#374151" }}>
+                Loading service toggles…
+              </p>
+            ) : (
+              <div className="relative overflow-hidden rounded-[32px] border p-5 md:p-6" style={{ borderColor: "#1e293b" }}>
+                <ServicesRailBackdrop />
+                <div className="relative z-10 space-y-5">
+                <div
+                  className="overflow-hidden rounded-[28px] border p-5"
+                  style={{
+                    borderColor: "#1e293b",
+                    background:
+                      "radial-gradient(circle at top right, rgba(56,189,248,.12), transparent 28%), linear-gradient(180deg, rgba(15,23,42,.95), rgba(2,6,23,.98))",
+                  }}
+                >
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div className="max-w-2xl">
+                      <div className="text-[11px] font-black uppercase tracking-[0.28em]" style={{ color: "#64748b" }}>
+                        Service Control
+                      </div>
+                      <h2 className="mt-2 text-xl font-semibold tracking-tight" style={{ color: "#f8fafc" }}>
+                        Live providers and tool families
+                      </h2>
+                      <p className="mt-2 text-sm leading-6" style={{ color: "#94a3b8" }}>
+                        Each provider carries its own tool family, fallback cache, and command-center surface. Toggle them here without losing the visual identity of what each subsystem powers.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-center">
+                      <div className="rounded-2xl border px-4 py-3" style={{ borderColor: "#1e293b", background: "rgba(15,23,42,.72)" }}>
+                        <div className="text-lg font-semibold" style={{ color: "#f8fafc" }}>{services.length}</div>
+                        <div className="text-[10px] uppercase tracking-[0.24em]" style={{ color: "#64748b" }}>Providers</div>
+                      </div>
+                      <div className="rounded-2xl border px-4 py-3" style={{ borderColor: "#1e293b", background: "rgba(15,23,42,.72)" }}>
+                        <div className="text-lg font-semibold" style={{ color: "#86efac" }}>
+                          {services.filter(service => (serviceEdits[service.id] ?? service.enabled)).length}
+                        </div>
+                        <div className="text-[10px] uppercase tracking-[0.24em]" style={{ color: "#64748b" }}>Enabled</div>
+                      </div>
+                      <div className="rounded-2xl border px-4 py-3" style={{ borderColor: "#1e293b", background: "rgba(15,23,42,.72)" }}>
+                        <div className="text-lg font-semibold" style={{ color: servicesDirty ? "#facc15" : "#f8fafc" }}>
+                          {Object.keys(serviceEdits).length}
+                        </div>
+                        <div className="text-[10px] uppercase tracking-[0.24em]" style={{ color: "#64748b" }}>Pending</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  className="overflow-hidden rounded-[28px] border"
+                  style={{ borderColor: "#1e293b", background: "rgba(2,6,23,.76)", boxShadow: "0 18px 50px rgba(15,23,42,.28)" }}
+                >
+                  <div
+                    className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.15fr)_minmax(0,0.95fr)_minmax(0,1fr)_120px] gap-3 border-b px-4 py-3 text-[10px] font-black uppercase tracking-[0.24em]"
+                    style={{ borderColor: "#1e293b", color: "#64748b", background: "rgba(15,23,42,.84)" }}
+                  >
+                    <div>Provider</div>
+                    <div>Tool Family</div>
+                    <div>Scope</div>
+                    <div>Status</div>
+                    <div className="text-right">Control</div>
+                  </div>
+
+                  {services.map(service => {
+                    const enabled = serviceEdits[service.id] ?? service.enabled
+                    const dirty = service.id in serviceEdits
+                    const theme = SERVICE_THEME[service.id] ?? {
+                      icon: Power,
+                      logo: "generic",
+                      family: "Generic service",
+                      scope: "Shared runtime",
+                      tools: "Live provider",
+                      accent: "#94a3b8",
+                      border: "#334155",
+                      glow: "rgba(148,163,184,0.18)",
+                      surface: "linear-gradient(180deg, rgba(51,65,85,0.16), rgba(10,15,26,0.94))",
+                      statusOn: "#e2e8f0",
+                      statusOff: "#cbd5e1",
+                    }
+
+                    return (
+                      <div
+                        key={service.id}
+                        className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.15fr)_minmax(0,0.95fr)_minmax(0,1fr)_120px] gap-3 border-b px-4 py-3 transition-colors"
+                        style={{
+                          borderColor: "#1e293b",
+                          background: enabled
+                            ? `linear-gradient(90deg, ${theme.accent}12, rgba(2,6,23,.22) 24%, rgba(2,6,23,.08))`
+                            : "rgba(9,12,19,.52)",
+                          boxShadow: dirty ? `inset 2px 0 0 #facc15` : `inset 2px 0 0 ${enabled ? theme.accent : "#3f3f46"}`,
+                        }}
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-start gap-3">
+                            <div
+                              className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl border"
+                              style={{
+                                background: enabled ? `${theme.accent}22` : "rgba(113,113,122,0.16)",
+                                borderColor: enabled ? `${theme.accent}55` : "#3f3f46",
+                              }}
+                            >
+                              <ServiceLogo kind={theme.logo} accent={theme.accent} enabled={enabled} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <div className="truncate text-sm font-black" style={{ color: "#f8fafc" }}>{service.label}</div>
+                                {dirty && (
+                                  <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.22em]" style={{ color: "#facc15" }}>
+                                    Pending
+                                  </span>
+                                )}
+                              </div>
+                              <p className="mt-1 line-clamp-2 text-[11px] leading-5" style={{ color: "#cbd5e1" }}>
+                                {service.description}
+                              </p>
+                              <div className="mt-2 text-[10px] font-mono" style={{ color: "#64748b" }}>
+                                Updated {service.updatedAt ? new Date(service.updatedAt).toLocaleString("en-GB") : "—"}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="min-w-0">
+                          <div
+                            className="inline-flex rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.24em]"
+                            style={{ borderColor: enabled ? `${theme.accent}55` : "#3f3f46", color: enabled ? theme.accent : "#a1a1aa", background: enabled ? `${theme.accent}14` : "rgba(113,113,122,0.08)" }}
+                          >
+                            {theme.family}
+                          </div>
+                          <div className="mt-2 text-xs font-semibold" style={{ color: "#e2e8f0" }}>{theme.tools}</div>
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold" style={{ color: "#e2e8f0" }}>{theme.scope}</div>
+                          <div className="mt-2 text-[10px]" style={{ color: "#64748b" }}>
+                            Frontend + backend ready
+                          </div>
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 text-[11px] font-semibold" style={{ color: enabled ? theme.statusOn : theme.statusOff }}>
+                            <span className="h-2.5 w-2.5 rounded-full" style={{ background: enabled ? "#22c55e" : "#f87171", boxShadow: enabled ? "0 0 14px rgba(34,197,94,.7)" : "0 0 14px rgba(248,113,113,.45)" }} />
+                            {enabled ? "Enabled" : "Disabled"}
+                          </div>
+                          <div className="mt-2 text-[10px]" style={{ color: dirty ? "#facc15" : "#64748b" }}>
+                            {dirty ? "Waiting for save" : "Synced to service registry"}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-3">
+                          <button
+                            type="button"
+                            title={enabled ? "Disable service" : "Enable service"}
+                            onClick={() => setServiceEdits(current => ({ ...current, [service.id]: !enabled }))}
+                            className="shrink-0 h-6 w-11 rounded-full relative transition-colors"
+                            style={{ background: enabled ? "#14532d" : "#3f3f46" }}
+                          >
+                            <motion.span
+                              className="absolute top-0.5 h-5 w-5 rounded-full"
+                              style={{ background: enabled ? "#22c55e" : "#71717a" }}
+                              animate={{ left: enabled ? "calc(100% - 22px)" : "2px" }}
+                              transition={{ duration: 0.16 }}
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                </div>
               </div>
             )}
           </div>
@@ -503,13 +1026,16 @@ export function ConfigPage({ onClose }: { readonly onClose: () => void }) {
       >
         <span>file: ../.env</span>
         <span>{totalKeys} keys</span>
+        {tab === "services" && <span>{services.length} service toggles</span>}
         {tab === "tools" && (
           <span>
             {TOOL_NETWORKS.reduce((n, nw) => n + nw.tools.length, 0)} tools registered
           </span>
         )}
         <span className="ml-auto">
-          {isDirty ? `${Object.keys(edits).length} unsaved change(s)` : "no unsaved changes"}
+          {tab === "services"
+            ? (servicesDirty ? `${Object.keys(serviceEdits).length} unsaved service change(s)` : "no unsaved changes")
+            : (isDirty ? `${Object.keys(edits).length} unsaved change(s)` : "no unsaved changes")}
         </span>
       </div>
     </div>

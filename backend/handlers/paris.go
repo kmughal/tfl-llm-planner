@@ -43,9 +43,14 @@ var parisDashboardStations = []string{
 }
 
 func (h *Handler) GetParisCommandCenter(c *gin.Context) {
+	if !IsServiceEnabled("paris-rer") {
+		serviceDisabledJSON(c, "paris-rer")
+		return
+	}
 	ctx := c.Request.Context()
 	errors := make(map[string]string)
 	boards := make([]ParisTransitBoard, 0, len(parisDashboardStations))
+	cacheKey := "paris/command-center"
 
 	for _, station := range parisDashboardStations {
 		args, _ := json.Marshal(map[string]any{"station": station, "count": 6})
@@ -60,11 +65,14 @@ func (h *Handler) GetParisCommandCenter(c *gin.Context) {
 	}
 
 	if len(boards) == 0 && len(errors) > 0 {
+		if respondWithCachedSnapshot(c, cacheKey, "Paris RER MCP tools are unavailable") {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Paris RER MCP tools are unavailable", "sections": errors})
 		return
 	}
 
-	c.JSON(http.StatusOK, ParisTransitCommandCenterResponse{
+	respondJSONAndCache(c, cacheKey, http.StatusOK, ParisTransitCommandCenterResponse{
 		Boards:      boards,
 		FetchedAt:   time.Now().UTC().Format(time.RFC3339),
 		ToolSources: []string{"get_paris_metro_departures"},

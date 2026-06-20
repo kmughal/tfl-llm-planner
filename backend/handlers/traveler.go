@@ -109,6 +109,10 @@ func firstPart(parts []string, idx int) string {
 }
 
 func (h *Handler) GetEurostarTravelerSummary(c *gin.Context) {
+	if !IsServiceEnabled("traveler") {
+		serviceDisabledJSON(c, "traveler")
+		return
+	}
 	date := strings.TrimSpace(c.Query("date"))
 	if date == "" {
 		date = time.Now().UTC().Format(dateFmt)
@@ -117,15 +121,22 @@ func (h *Handler) GetEurostarTravelerSummary(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date, use YYYY-MM-DD"})
 		return
 	}
+	cacheKey := "traveler/summary/" + date
 
 	summary, err := h.fetchTravelerSummaryForDate(context.Background(), date)
 	if err != nil {
+		if respondWithCachedSnapshot(c, cacheKey, err.Error()) {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
 	if summary == nil {
+		if respondWithCachedSnapshot(c, cacheKey, "traveler summary unavailable") {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": "traveler summary unavailable"})
 		return
 	}
-	c.JSON(http.StatusOK, summary)
+	respondJSONAndCache(c, cacheKey, http.StatusOK, summary)
 }

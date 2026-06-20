@@ -5,6 +5,8 @@ import {
   TrainFront, X, Zap,
 } from "lucide-react"
 import { EurostarDisplayMenu, EurostarDisplayStyles, eurostarDisplayClass, useEurostarDisplay } from "./EurostarDisplay"
+import { readResponseState, responseSourceMeta, staleLabel, type ResponseState } from "../lib/responseState"
+import { DisabledServiceBanner, ServicePowerBadge } from "./ServicePowerBadge"
 
 const API = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080"
 const SNCF_RED = "#e2001a"
@@ -13,7 +15,7 @@ const SNCF_PINK = "#d6006d"
 type Service = { time: string; baseTime: string; delay: number; mode: string; number: string; direction: string }
 type Board = { station: string; services: Service[] }
 type Incident = { effect: string; severity: string; impacted: string; message: string; begin: string; end: string }
-type DashboardData = { boards: Board[]; incidents: Incident[]; fetchedAt: string; toolSources: string[]; errors?: Record<string, string> }
+type DashboardData = { boards: Board[]; incidents: Incident[]; fetchedAt: string; toolSources: string[]; errors?: Record<string, string>; responseState?: ResponseState }
 
 function modeColor(mode: string): string {
   const value = mode.toLowerCase()
@@ -76,8 +78,16 @@ export function SNCFCommandCenter({ onClose, onAsk }: { readonly onClose: () => 
     try {
       const response = await fetch(`${API}/api/sncf/command-center`)
       const body = await response.json() as DashboardData & { error?: string }
-      if (!response.ok) throw new Error(body.error || "SNCF live tools are unavailable")
-      setData(body)
+      const responseState = readResponseState(response, body)
+      if (!response.ok) {
+        if (responseState.disabled) {
+          setData({ boards: [], incidents: [], fetchedAt: new Date().toISOString(), toolSources: [], errors: {}, responseState })
+          setSelectedStation("")
+          return
+        }
+        throw new Error(body.error || "SNCF live tools are unavailable")
+      }
+      setData({ ...body, responseState })
       setSelectedStation(current => current || body.boards[0]?.station || "")
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to load SNCF operations")
@@ -95,6 +105,8 @@ export function SNCFCommandCenter({ onClose, onAsk }: { readonly onClose: () => 
   const latestUpdate = data?.fetchedAt ? new Date(data.fetchedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--:--:--"
   const health = services.length ? Math.round(((services.length - delayed.length) / services.length) * 100) : 0
   const cities = useMemo(() => data?.boards.map(item => shortStation(item.station)) ?? [], [data])
+  const sourceMeta = responseSourceMeta(data?.responseState)
+  const serviceEnabled = !data?.responseState?.disabled
 
   const ask = (query: string) => {
     if (!onAsk) return
@@ -114,10 +126,11 @@ export function SNCFCommandCenter({ onClose, onAsk }: { readonly onClose: () => 
           <TrainFront size={20} />
         </div>
         <div className="min-w-0">
-          <h1 className="es-adaptive-text text-base font-black">SNCF Command Center</h1>
+          <div className="flex items-center gap-2"><h1 className="es-adaptive-text text-base font-black">SNCF Command Center</h1><ServicePowerBadge enabled={serviceEnabled} label={serviceEnabled ? "SNCF on" : "SNCF off"} compact /></div>
           <p className="es-adaptive-subtle text-xs">National operations, station departures, disruptions and journey tools</p>
         </div>
         <div className="es-adaptive-subtle ml-auto hidden items-center gap-2 text-xs md:flex"><Clock3 size={13} /> Updated {latestUpdate}</div>
+        {data?.responseState && <div className="hidden items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-black md:flex" style={{ background: sourceMeta.bg, borderColor: sourceMeta.border, color: sourceMeta.text }}><span className="h-2 w-2 rounded-full" style={{ background: sourceMeta.dot }} />{sourceMeta.label}</div>}
         <EurostarDisplayMenu />
         <button type="button" onClick={() => void load()} className="es-themed-panel flex h-9 w-9 items-center justify-center rounded-lg border" aria-label="Refresh SNCF data">
           <motion.span className="flex" animate={loading ? { rotate: 360 } : { rotate: 0 }} transition={{ repeat: loading ? Infinity : 0, duration: 0.8, ease: "linear" }}><RefreshCw size={15} /></motion.span>
@@ -126,6 +139,8 @@ export function SNCFCommandCenter({ onClose, onAsk }: { readonly onClose: () => 
       </header>
 
       <main className="flex-1 overflow-y-auto p-5">
+        {data?.responseState?.disabled && <DisabledServiceBanner message={data.responseState.error || "SNCF has been disabled in Config > Services."} />}
+        {data?.responseState?.stale && <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">{staleLabel(data.responseState)} is being shown while SNCF live feeds are degraded.</div>}
         {error && <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-400 bg-red-50 px-4 py-3 text-sm font-bold text-red-800"><AlertTriangle size={16} />{error}</div>}
 
         <section className="mb-4 grid grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)] gap-4 max-xl:grid-cols-1">

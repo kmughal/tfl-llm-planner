@@ -58,6 +58,10 @@ type tflCrowdingPayload struct {
 }
 
 func (h *Handler) GetTFLLineCrowding(c *gin.Context) {
+	if !IsServiceEnabled("tfl") {
+		serviceDisabledJSON(c, "tfl")
+		return
+	}
 	lineID := strings.TrimSpace(c.Param("lineID"))
 	if lineID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "lineID required"})
@@ -68,6 +72,7 @@ func (h *Handler) GetTFLLineCrowding(c *gin.Context) {
 	if day == "" {
 		day = londonCrowdingDay(time.Now())
 	}
+	cacheKey := "tfl/crowding/" + lineID + "/" + day
 
 	lineName := c.Query("lineName")
 	if lineName == "" {
@@ -76,12 +81,18 @@ func (h *Handler) GetTFLLineCrowding(c *gin.Context) {
 
 	stopsBody, err := tflGet("/Line/"+url.PathEscape(lineID)+"/StopPoints", url.Values{})
 	if err != nil {
+		if respondWithCachedSnapshot(c, cacheKey, fmt.Sprintf("stop points unavailable: %v", err)) {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("stop points unavailable: %v", err)})
 		return
 	}
 
 	var rawStops []tflStopPoint
 	if err := json.Unmarshal(stopsBody, &rawStops); err != nil {
+		if respondWithCachedSnapshot(c, cacheKey, "failed to decode TfL stop points") {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to decode TfL stop points"})
 		return
 	}
@@ -162,7 +173,7 @@ func (h *Handler) GetTFLLineCrowding(c *gin.Context) {
 		return outStops[i].CurrentLevel > outStops[j].CurrentLevel
 	})
 
-	c.JSON(http.StatusOK, TFLLineCrowdingResponse{
+	respondJSONAndCache(c, cacheKey, http.StatusOK, TFLLineCrowdingResponse{
 		LineID:      lineID,
 		LineName:    lineName,
 		DayOfWeek:   day,

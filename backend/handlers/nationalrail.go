@@ -44,17 +44,28 @@ type NationalRailCommandCenterResponse struct {
 }
 
 func (h *Handler) GetNationalRailCommandCenter(c *gin.Context) {
+	if !IsServiceEnabled("national-rail") {
+		serviceDisabledJSON(c, "national-rail")
+		return
+	}
+	cacheKey := "national-rail/command-center"
 	raw, err := h.mcp.CallTool(c.Request.Context(), "get_national_rail_dashboard", `{"count":6}`)
 	if err != nil {
+		if respondWithCachedSnapshot(c, cacheKey, err.Error()) {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": "National Rail live tools are unavailable", "detail": err.Error()})
 		return
 	}
 	hubs, services, alerts := parseNationalRailDashboard(raw)
 	if len(hubs) == 0 {
+		if respondWithCachedSnapshot(c, cacheKey, "National Rail live dashboard returned no hubs") {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": "National Rail live dashboard returned no hubs"})
 		return
 	}
-	c.JSON(http.StatusOK, NationalRailCommandCenterResponse{
+	respondJSONAndCache(c, cacheKey, http.StatusOK, NationalRailCommandCenterResponse{
 		Hubs: hubs, Services: services, Alerts: alerts,
 		FetchedAt:   time.Now().UTC().Format(time.RFC3339),
 		ToolSources: []string{"get_national_rail_dashboard"},

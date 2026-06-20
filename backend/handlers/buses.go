@@ -66,8 +66,16 @@ func tflGet(path string, params url.Values) ([]byte, error) {
 
 // GetBusLines returns all London bus routes sorted numerically then alphabetically.
 func GetBusLines(c *gin.Context) {
+	if !IsServiceEnabled("tfl") {
+		serviceDisabledJSON(c, "tfl")
+		return
+	}
+	cacheKey := "tfl/bus-lines"
 	body, err := tflGet("/Line/Mode/bus", url.Values{})
 	if err != nil {
+		if respondWithCachedSnapshot(c, cacheKey, err.Error()) {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
@@ -83,6 +91,9 @@ func GetBusLines(c *gin.Context) {
 		} `json:"serviceTypes"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
+		if respondWithCachedSnapshot(c, cacheKey, "decode failed") {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": "decode failed"})
 		return
 	}
@@ -114,16 +125,21 @@ func GetBusLines(c *gin.Context) {
 		return lines[i].ID < lines[j].ID
 	})
 
-	c.JSON(http.StatusOK, lines)
+	respondJSONAndCache(c, cacheKey, http.StatusOK, lines)
 }
 
 // GetBusLineArrivals fetches live arrivals for a bus route via the TfL Countdown URA API.
 func GetBusLineArrivals(c *gin.Context) {
+	if !IsServiceEnabled("tfl") {
+		serviceDisabledJSON(c, "tfl")
+		return
+	}
 	lineID := c.Param("lineID")
 	if lineID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "lineID required"})
 		return
 	}
+	cacheKey := "tfl/bus-arrivals/" + lineID
 
 	u := fmt.Sprintf("%s?LineName=%s&ReturnList=StopPointName,LineName,EstimatedTime",
 		countdownBase, url.QueryEscape(lineID))
@@ -137,6 +153,9 @@ func GetBusLineArrivals(c *gin.Context) {
 
 	resp, err := busHTTP.Do(req)
 	if err != nil {
+		if respondWithCachedSnapshot(c, cacheKey, err.Error()) {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
@@ -144,10 +163,16 @@ func GetBusLineArrivals(c *gin.Context) {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		if respondWithCachedSnapshot(c, cacheKey, "read body failed") {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": "read body failed"})
 		return
 	}
 	if resp.StatusCode != http.StatusOK {
+		if respondWithCachedSnapshot(c, cacheKey, fmt.Sprintf("countdown returned %d", resp.StatusCode)) {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("countdown returned %d", resp.StatusCode)})
 		return
 	}
@@ -195,5 +220,5 @@ func GetBusLineArrivals(c *gin.Context) {
 		result.Arrivals = result.Arrivals[:40]
 	}
 
-	c.JSON(http.StatusOK, result)
+	respondJSONAndCache(c, cacheKey, http.StatusOK, result)
 }

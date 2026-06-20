@@ -122,13 +122,21 @@ type OperationsCorrelation struct {
 }
 
 func (h *Handler) GetOperationsWall(c *gin.Context) {
+	if !IsServiceEnabled("operations-wall") {
+		serviceDisabledJSON(c, "operations-wall")
+		return
+	}
 	ctx := c.Request.Context()
+	cacheKey := "operations/wall"
 	response := h.buildOperationsWallResponse(ctx)
 	if response.Overview.NetworksLive == 0 {
+		if respondWithCachedSnapshot(c, cacheKey, "No live network feeds are currently available") {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": "No live network feeds are currently available", "errors": response.Errors})
 		return
 	}
-	c.JSON(http.StatusOK, response)
+	respondJSONAndCache(c, cacheKey, http.StatusOK, response)
 }
 
 func (h *Handler) buildOperationsWallResponse(ctx context.Context) OperationsWallResponse {
@@ -200,6 +208,11 @@ func (h *Handler) buildOperationsWallResponse(ctx context.Context) OperationsWal
 func fetchEurostarWall(ctx context.Context) (OperationsEurostar, map[string]string) {
 	out := OperationsEurostar{}
 	errs := make(map[string]string)
+	if !IsServiceEnabled("eurostar") {
+		errs["eurostar.disabled"] = DisabledServiceMessage("eurostar")
+		out.Issues = append(out.Issues, "Eurostar disabled in Config > Services")
+		return out, errs
+	}
 	date := time.Now().Format("2006-01-02")
 	params := url.Values{}
 	params.Set("fromDateTime", date+"T00:00:00Z")
@@ -212,15 +225,19 @@ func fetchEurostarWall(ctx context.Context) (OperationsEurostar, map[string]stri
 		errs["eurostar.trains"] = "decode error"
 	}
 
-	actBody, err := sotclient().get("/v1/activities?operationalDate=" + date)
-	if err != nil {
-		errs["eurostar.crew"] = err.Error()
+	if !IsServiceEnabled("crew") {
+		errs["eurostar.crew"] = DisabledServiceMessage("crew")
 	} else {
-		var activities []CrewActivity
-		if err := json.Unmarshal(actBody, &activities); err != nil {
-			errs["eurostar.crew"] = "decode activities"
+		actBody, err := sotclient().get("/v1/activities?operationalDate=" + date)
+		if err != nil {
+			errs["eurostar.crew"] = err.Error()
 		} else {
-			out.Crew = enrichCrewActivities(ctx, activities)
+			var activities []CrewActivity
+			if err := json.Unmarshal(actBody, &activities); err != nil {
+				errs["eurostar.crew"] = "decode activities"
+			} else {
+				out.Crew = enrichCrewActivities(ctx, activities)
+			}
 		}
 	}
 
@@ -300,6 +317,10 @@ func enrichCrewActivities(_ context.Context, activities []CrewActivity) []Enrich
 
 func (h *Handler) fetchTFLWall(ctx context.Context) (OperationsTFL, map[string]string) {
 	out := OperationsTFL{Errors: make(map[string]string)}
+	if !IsServiceEnabled("tfl") {
+		out.Errors["service"] = DisabledServiceMessage("tfl")
+		return out, out.Errors
+	}
 	statusRaw, statusErr := h.mcp.CallTool(ctx, "get_status_by_mode", `{"modes":"tube,dlr,overground,elizabeth-line"}`)
 	if statusErr != nil {
 		out.Errors["lines"] = statusErr.Error()
@@ -333,6 +354,10 @@ func (h *Handler) fetchTFLWall(ctx context.Context) (OperationsTFL, map[string]s
 
 func (h *Handler) fetchSNCFWall(ctx context.Context) (OperationsSNCF, map[string]string) {
 	out := OperationsSNCF{Errors: make(map[string]string)}
+	if !IsServiceEnabled("sncf") {
+		out.Errors["service"] = DisabledServiceMessage("sncf")
+		return out, out.Errors
+	}
 	for _, station := range sncfDashboardStations {
 		args, _ := json.Marshal(map[string]any{"station": station, "count": 8})
 		raw, err := h.mcp.CallTool(ctx, "get_sncf_departures", string(args))
@@ -363,6 +388,10 @@ func (h *Handler) fetchSNCFWall(ctx context.Context) (OperationsSNCF, map[string
 
 func (h *Handler) fetchNationalRailWall(ctx context.Context) (OperationsNationalRail, map[string]string) {
 	out := OperationsNationalRail{Errors: make(map[string]string)}
+	if !IsServiceEnabled("national-rail") {
+		out.Errors["service"] = DisabledServiceMessage("national-rail")
+		return out, out.Errors
+	}
 	raw, err := h.mcp.CallTool(ctx, "get_national_rail_dashboard", `{"count":6}`)
 	if err != nil {
 		out.Errors["national-rail.dashboard"] = err.Error()
@@ -379,6 +408,10 @@ func (h *Handler) fetchNationalRailWall(ctx context.Context) (OperationsNational
 
 func (h *Handler) fetchParisWall(ctx context.Context) (OperationsParis, map[string]string) {
 	out := OperationsParis{Errors: make(map[string]string)}
+	if !IsServiceEnabled("paris-rer") {
+		out.Errors["service"] = DisabledServiceMessage("paris-rer")
+		return out, out.Errors
+	}
 	for _, station := range parisDashboardStations {
 		args, _ := json.Marshal(map[string]any{"station": station, "count": 6})
 		raw, err := h.mcp.CallTool(ctx, "get_paris_metro_departures", string(args))

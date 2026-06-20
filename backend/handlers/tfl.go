@@ -64,7 +64,12 @@ type TFLCommandCenterResponse struct {
 
 // GetTFLCommandCenter builds the dashboard exclusively from registered MCP tools.
 func (h *Handler) GetTFLCommandCenter(c *gin.Context) {
+	if !IsServiceEnabled("tfl") {
+		serviceDisabledJSON(c, "tfl")
+		return
+	}
 	ctx := c.Request.Context()
+	cacheKey := "tfl/command-center"
 
 	errors := make(map[string]string)
 	statusRaw, statusErr := h.mcp.CallTool(ctx, "get_status_by_mode", `{"modes":"tube,dlr,overground,elizabeth-line"}`)
@@ -82,11 +87,14 @@ func (h *Handler) GetTFLCommandCenter(c *gin.Context) {
 	lines := parseTFLStatuses(statusRaw)
 
 	if len(errors) >= 3 && len(lines) == 0 {
+		if respondWithCachedSnapshot(c, cacheKey, "all TfL MCP tools are unavailable") {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": "all TfL MCP tools are unavailable", "sections": errors})
 		return
 	}
 
-	c.JSON(http.StatusOK, TFLCommandCenterResponse{
+	respondJSONAndCache(c, cacheKey, http.StatusOK, TFLCommandCenterResponse{
 		Lines:       lines,
 		Roads:       parseTFLRoads(roadsRaw),
 		Buses:       parseTFLBusLines(busesRaw),

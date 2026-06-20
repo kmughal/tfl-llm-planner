@@ -3,6 +3,8 @@ import type { ReactNode } from "react"
 import { motion } from "framer-motion"
 import { Activity, AlertTriangle, ArrowRight, GitBranch, Globe2, Link2, Network, RefreshCw, Shield, TrainFront, Waves, X } from "lucide-react"
 import { EurostarDisplayMenu, EurostarDisplayStyles, eurostarDisplayClass, useEurostarDisplay } from "./EurostarDisplay"
+import { readResponseState, responseSourceMeta, staleLabel, type ResponseState } from "../lib/responseState"
+import { DisabledServiceBanner, ServicePowerBadge } from "./ServicePowerBadge"
 
 const API = (import.meta.env.VITE_API_URL as string | undefined) ?? ""
 
@@ -33,6 +35,21 @@ type Data = {
   transferMap: TransferNode[]
   fetchedAt: string
   errors?: Record<string, string>
+  responseState?: ResponseState
+}
+
+const EMPTY_DATA: Data = {
+  overview: { narrative: "", networksLive: 0, activeServices: 0, watchedServices: 0, networkAlerts: 0, crewCoverage: 0, disruptionPoints: 0 },
+  eurostar: { trains: [], crew: [], servicesToday: 0, active: 0, watched: 0, cancelled: 0, crewCoverage: 0, issues: [] },
+  tfl: { lines: [], roads: [], buses: [], goodLines: 0, disrupted: 0, roadIssues: 0, errors: {} },
+  sncf: { boards: [], incidents: [], delayed: 0, services: 0, errors: {} },
+  nationalRail: { hubs: [], services: [], alerts: [], delayed: 0, cancelled: 0, errors: {} },
+  paris: { boards: [], delayed: 0, lines: 0, errors: {} },
+  correlations: [],
+  propagations: [],
+  transferMap: [],
+  fetchedAt: "",
+  errors: {},
 }
 
 type FeedHealth = "live" | "degraded" | "unavailable"
@@ -204,8 +221,15 @@ export function OperationsWall({ onClose, onAsk }: { readonly onClose: () => voi
     try {
       const response = await fetch(`${API}/api/operations/wall`)
       const body = await readJsonOrThrow(response)
-      if (!response.ok) throw new Error(body.error || "Operations wall is unavailable")
-      setData(body)
+      const responseState = readResponseState(response, body)
+      if (!response.ok) {
+        if (responseState.disabled) {
+          setData({ ...EMPTY_DATA, fetchedAt: new Date().toISOString(), responseState })
+          return
+        }
+        throw new Error(body.error || "Operations wall is unavailable")
+      }
+      setData({ ...body, responseState })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to load cross-border wall")
     } finally {
@@ -264,6 +288,8 @@ export function OperationsWall({ onClose, onAsk }: { readonly onClose: () => voi
   const liveFeeds = countTruthy(providerStrip.map(item => item.status === "live"))
   const degradedFeeds = countTruthy(providerStrip.map(item => item.status === "degraded"))
   const unavailableFeeds = countTruthy(providerStrip.map(item => item.status === "unavailable"))
+  const sourceMeta = responseSourceMeta(data?.responseState)
+  const serviceEnabled = !data?.responseState?.disabled
 
   const ask = (query: string) => {
     if (!onAsk) return
@@ -286,13 +312,14 @@ export function OperationsWall({ onClose, onAsk }: { readonly onClose: () => voi
             <Globe2 size={20} />
           </span>
           <div className="min-w-0">
-            <h1 className="text-base font-black text-white">Operations Wall</h1>
+            <div className="flex items-center gap-2"><h1 className="text-base font-black text-white">Operations Wall</h1><ServicePowerBadge enabled={serviceEnabled} label={serviceEnabled ? "Wall on" : "Wall off"} compact /></div>
             <p className="text-xs text-white/45">Eurostar, TfL, SNCF, National Rail and Paris RER in one live cross-border view</p>
           </div>
           <div className="ml-auto hidden items-center gap-2 text-xs text-white/55 lg:flex">
             <motion.span className="h-2 w-2 rounded-full bg-emerald-400" animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 1.6, repeat: Infinity }} />
             Updated {updated}
           </div>
+          {data?.responseState && <div className="hidden items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-black md:flex" style={{ background: sourceMeta.bg, borderColor: sourceMeta.border, color: sourceMeta.text }}><span className="h-2 w-2 rounded-full" style={{ background: sourceMeta.dot }} />{sourceMeta.label}</div>}
           <EurostarDisplayMenu inverted />
           <button type="button" onClick={() => void load()} className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white" aria-label="Refresh operations wall">
             <motion.span animate={loading ? { rotate: 360 } : { rotate: 0 }} transition={{ repeat: loading ? Infinity : 0, duration: 0.8, ease: "linear" }}>
@@ -307,6 +334,8 @@ export function OperationsWall({ onClose, onAsk }: { readonly onClose: () => voi
 
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[1500px] px-5 py-6">
+          {data?.responseState?.disabled && <DisabledServiceBanner message={data.responseState.error || "Operations Wall has been disabled in Config > Services."} />}
+          {data?.responseState?.stale && <div className="mb-4 rounded-2xl border border-amber-300/45 bg-amber-500/10 px-4 py-3 text-sm font-bold text-amber-100">{staleLabel(data.responseState)} is being shown because the live cross-border wall could not fully refresh.</div>}
           {error && <div className="mb-4 rounded-2xl border border-red-400/45 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-100">{error}</div>}
 
           <section className="mb-6 rounded-[26px] border border-white/10 bg-[rgba(8,14,28,.82)] p-4 shadow-[0_18px_60px_rgba(2,6,23,.22)] backdrop-blur-xl">

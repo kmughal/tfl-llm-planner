@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -522,6 +523,7 @@ func (h *Handler) Chat(c *gin.Context) {
 		return
 	}
 	tools = selectToolsForMessage(req.Message, tools)
+	tools, disabledServices := filterEnabledTools(tools)
 	logger.Debug(logger.TagMCP, fmt.Sprintf("tools selected: %d available", len(tools)), selectedToolNames(tools))
 
 	systemPrompt := h.systemPromptWithMemory(ctx, req.SessionID, req.ConvID)
@@ -553,6 +555,19 @@ func (h *Handler) Chat(c *gin.Context) {
 		"source":     "live MCP tools",
 	})
 	sendEvent("selection", string(selectionMeta))
+
+	if len(tools) == 0 && len(disabledServices) > 0 {
+		reply := disabledServicesReply(disabledServices)
+		b, _ := json.Marshal(ChatResponse{
+			Reply: reply,
+			Messages: []llm.Message{
+				{Role: "user", Content: req.Message},
+				{Role: "assistant", Content: reply},
+			},
+		})
+		sendEvent("done", string(b))
+		return
+	}
 
 	reply, finalMessages, err := h.runAgentLoop(ctx, messages, tools, req.Message, func(token string) {
 		b, _ := json.Marshal(token)
@@ -774,6 +789,39 @@ func toolNames(tools []llm.Tool) string {
 	return strings.Join(names, ", ")
 }
 
+func filterEnabledTools(tools []llm.Tool) ([]llm.Tool, []string) {
+	enabled := make([]llm.Tool, 0, len(tools))
+	disabledSet := make(map[string]bool)
+	for _, tool := range tools {
+		serviceID := serviceIDForTool(tool.Function.Name)
+		if serviceID != "" && !IsServiceEnabled(serviceID) {
+			disabledSet[serviceID] = true
+			continue
+		}
+		enabled = append(enabled, tool)
+	}
+	disabled := make([]string, 0, len(disabledSet))
+	for serviceID := range disabledSet {
+		disabled = append(disabled, serviceID)
+	}
+	sort.Strings(disabled)
+	return enabled, disabled
+}
+
+func disabledServicesReply(serviceIDs []string) string {
+	if len(serviceIDs) == 0 {
+		return "That service is currently disabled in Config > Services."
+	}
+	if len(serviceIDs) == 1 {
+		return DisabledServiceMessage(serviceIDs[0])
+	}
+	parts := make([]string, 0, len(serviceIDs))
+	for _, id := range serviceIDs {
+		parts = append(parts, DisabledServiceMessage(id))
+	}
+	return strings.Join(parts, " ")
+}
+
 // runAgentLoop runs the LLM → tool-call → LLM loop until the model stops calling tools.
 // Returns the final reply, the complete message sequence (for the client to replay as
 // history on the next turn), and any error.
@@ -901,6 +949,9 @@ func (h *Handler) executeToolCalls(
 				tc.Function.Name, toolNames(tools),
 			)
 			logger.Warn(logger.TagTool, fmt.Sprintf("hallucinated tool %q rejected", tc.Function.Name), "")
+		} else if serviceID := serviceIDForTool(tc.Function.Name); serviceID != "" && !IsServiceEnabled(serviceID) {
+			result = DisabledServiceMessage(serviceID)
+			logger.Warn(logger.TagTool, fmt.Sprintf("disabled service blocked tool %q", tc.Function.Name), serviceID)
 		} else {
 			var err error
 			result, err = h.mcp.CallTool(ctx, tc.Function.Name, tc.Function.Arguments)

@@ -282,6 +282,10 @@ func getCachedEurostarCatalog(date string) ([]EurostarCatalogItem, bool, time.Ti
 
 // GetEurostarTrains handles GET /api/eurostar/trains?date=YYYY-MM-DD
 func GetEurostarTrains(c *gin.Context) {
+	if !IsServiceEnabled("eurostar") {
+		serviceDisabledJSON(c, "eurostar")
+		return
+	}
 	date := c.Query("date")
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
@@ -294,45 +298,67 @@ func GetEurostarTrains(c *gin.Context) {
 	params := url.Values{}
 	params.Set("fromDateTime", date+"T00:00:00Z")
 	params.Set("range", "thalys,channel")
+	cacheKey := "eurostar/trains/" + date
 
 	body, err := eclient().get("/v1/plans", params)
 	if err != nil {
+		if respondWithCachedSnapshot(c, cacheKey, err.Error()) {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
 
 	var plans []EuromapPlan
 	if err := json.Unmarshal(body, &plans); err != nil {
+		if respondWithCachedSnapshot(c, cacheKey, "decode error") {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "decode error"})
 		return
 	}
-	c.JSON(http.StatusOK, plans)
+	respondJSONAndCache(c, cacheKey, http.StatusOK, plans)
 }
 
 // GetEurostarTrainByID handles GET /api/eurostar/trains/:planID
 func GetEurostarTrainByID(c *gin.Context) {
+	if !IsServiceEnabled("eurostar") {
+		serviceDisabledJSON(c, "eurostar")
+		return
+	}
 	planID := c.Param("planID")
 	if !planIDRe.MatchString(planID) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid planID format"})
 		return
 	}
+	cacheKey := "eurostar/train/" + planID
 
 	body, err := eclient().get("/v1/plans/"+planID, nil)
 	if err != nil {
+		if respondWithCachedSnapshot(c, cacheKey, err.Error()) {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
 
 	var plan EuromapPlan
 	if err := json.Unmarshal(body, &plan); err != nil {
+		if respondWithCachedSnapshot(c, cacheKey, "decode error") {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "decode error"})
 		return
 	}
-	c.JSON(http.StatusOK, plan)
+	respondJSONAndCache(c, cacheKey, http.StatusOK, plan)
 }
 
 // GetEurostarCatalog handles GET /api/eurostar/catalog?date=YYYY-MM-DD
 func GetEurostarCatalog(c *gin.Context) {
+	if !IsServiceEnabled("eurostar") {
+		serviceDisabledJSON(c, "eurostar")
+		return
+	}
 	date := c.Query("date")
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
@@ -341,9 +367,13 @@ func GetEurostarCatalog(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date, use YYYY-MM-DD"})
 		return
 	}
+	cacheKey := "eurostar/catalog/" + date
 
 	services, cached, fetchedAt, err := getCachedEurostarCatalog(date)
 	if err != nil {
+		if respondWithCachedSnapshot(c, cacheKey, err.Error()) {
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
@@ -353,7 +383,7 @@ func GetEurostarCatalog(c *gin.Context) {
 		routes[item.RouteKey] = struct{}{}
 	}
 
-	c.JSON(http.StatusOK, EurostarCatalogResponse{
+	respondJSONAndCache(c, cacheKey, http.StatusOK, EurostarCatalogResponse{
 		Date:       date,
 		Cached:     cached,
 		FetchedAt:  fetchedAt.Format(time.RFC3339),

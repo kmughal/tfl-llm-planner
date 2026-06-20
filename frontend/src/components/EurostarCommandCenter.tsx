@@ -28,6 +28,8 @@ import {
   Bell,
 } from "lucide-react"
 import { useEurostarDisplay } from "./EurostarDisplay"
+import { readResponseState, responseSourceMeta, staleLabel, type ResponseState } from "../lib/responseState"
+import { DisabledServiceBanner, ServicePowerBadge } from "./ServicePowerBadge"
 
 const API = (import.meta.env.VITE_API_URL as string | undefined) ?? ""
 
@@ -127,6 +129,7 @@ type HubData = {
   watchlist: EurostarWatchlist | null
   fetchedAt: Date
   issues: string[]
+  responseStates?: ResponseState[]
 }
 
 type TrainFilter = "all" | "active" | "watch" | "crew"
@@ -476,32 +479,50 @@ async function fetchHubData(date: string): Promise<HubData> {
   let crew: EnrichedCrew[] = []
   let traveler: TravelerSummary | null = null
   let watchlist: EurostarWatchlist | null = null
+  const responseStates: ResponseState[] = []
 
   if (trainsRes.status === "fulfilled" && trainsRes.value.ok) {
-    trains = (await trainsRes.value.json()) as EuromapPlan[]
+    const body = await trainsRes.value.json() as EuromapPlan[]
+    responseStates.push(readResponseState(trainsRes.value, body))
+    trains = body
+  } else if (trainsRes.status === "fulfilled") {
+    const body = await trainsRes.value.json().catch(() => ({}))
+    const responseState = readResponseState(trainsRes.value, body)
+    if (responseState.disabled) {
+      responseStates.push(responseState)
+      issues.push(responseState.error || "Eurostar has been disabled in Config > Services.")
+    } else {
+      throw new Error((body as { error?: string }).error || "Euromap service plans are unavailable.")
+    }
   } else {
     issues.push("Euromap service plans are unavailable. Check the Eurostar API credentials and connection.")
   }
 
   if (crewRes.status === "fulfilled" && crewRes.value.ok) {
-    crew = (await crewRes.value.json()) as EnrichedCrew[]
+    const body = await crewRes.value.json() as EnrichedCrew[]
+    responseStates.push(readResponseState(crewRes.value, body))
+    crew = body
   } else {
     issues.push("Start-on-Time crew activity is unavailable. Service plans can still be used without crew coverage.")
   }
 
   if (travelerRes.status === "fulfilled" && travelerRes.value.ok) {
-    traveler = (await travelerRes.value.json()) as TravelerSummary
+    const body = await travelerRes.value.json() as TravelerSummary
+    responseStates.push(readResponseState(travelerRes.value, body))
+    traveler = body
   } else {
     issues.push("Traveler summary is unavailable. The board is showing services without passenger load.")
   }
 
   if (watchlistRes.status === "fulfilled" && watchlistRes.value.ok) {
-    watchlist = (await watchlistRes.value.json()) as EurostarWatchlist
+    const body = await watchlistRes.value.json() as EurostarWatchlist
+    responseStates.push(readResponseState(watchlistRes.value, body))
+    watchlist = body
   } else {
     issues.push("Operational watchlist is unavailable. Attention scoring is temporarily offline.")
   }
 
-  return { trains, crew, traveler, watchlist, fetchedAt: new Date(), issues }
+  return { trains, crew, traveler, watchlist, fetchedAt: new Date(), issues, responseStates }
 }
 
 function metricLabel(value: number | string, label: string, sub: string, accent: string) {
@@ -1053,6 +1074,8 @@ export function EurostarCommandCenter({
 
   const fetchRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const cdRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const sourceMeta = responseSourceMeta(data?.responseStates?.find(state => state.stale) ?? data?.responseStates?.[0])
+  const serviceEnabled = !data?.responseStates?.some(state => state.disabled)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1277,9 +1300,9 @@ export function EurostarCommandCenter({
               <Train size={20} />
             </div>
             <div className="min-w-0">
-              <h1 className="text-sm font-black uppercase sm:text-base" style={{ color: INK }}>
+              <div className="flex items-center gap-2"><h1 className="text-sm font-black uppercase sm:text-base" style={{ color: INK }}>
                 Eurostar Command Center
-              </h1>
+              </h1><ServicePowerBadge enabled={serviceEnabled} label={serviceEnabled ? "Eurostar on" : "Eurostar off"} compact /></div>
               <p className="truncate text-[11px] sm:text-xs" style={{ color: "#667085" }}>
                 Live services, crew and network operations · {date}
               </p>
@@ -1290,6 +1313,7 @@ export function EurostarCommandCenter({
             <Clock size={14} />
             Updated {lastUpdate}
           </div>
+          {data?.responseStates?.[0] && <div className="hidden items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-black md:flex" style={{ background: sourceMeta.bg, borderColor: sourceMeta.border, color: sourceMeta.text }}><span className="h-2 w-2 rounded-full" style={{ background: sourceMeta.dot }} />{sourceMeta.label}</div>}
 
           <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto">
           {refreshSecs > 0 && (
@@ -1419,10 +1443,19 @@ export function EurostarCommandCenter({
       </header>
 
       <main className="flex-1 overflow-y-auto px-5 py-5">
+        {data?.responseStates?.some(state => state.disabled) && (
+          <DisabledServiceBanner message={data.responseStates.find(state => state.disabled)?.error || "Eurostar has been disabled in Config > Services."} />
+        )}
         {error && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold" style={{ background: "#fff1f3", borderColor: "#fecdd3", color: "#be123c" }}>
             <AlertTriangle size={16} />
             {error}
+          </div>
+        )}
+        {data?.responseStates?.some(state => state.stale) && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold" style={{ background: displayTheme === "light" ? "#fff7ed" : "#2b1d0e", borderColor: "#f59e0b", color: displayTheme === "light" ? "#9a3412" : "#fed7aa" }}>
+            <AlertTriangle size={16} />
+            {staleLabel(data.responseStates.find(state => state.stale))} is being shown because one or more Eurostar feeds are down, so the last successful response is being used.
           </div>
         )}
         {data?.issues?.map(issue => (
