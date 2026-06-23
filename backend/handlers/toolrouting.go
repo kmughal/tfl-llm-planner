@@ -381,6 +381,11 @@ func normalizeToolCall(call llm.ToolCall, userMessage string) llm.ToolCall {
 	if call.Function.Arguments != "" && json.Unmarshal([]byte(call.Function.Arguments), &args) != nil {
 		return call
 	}
+	if wrapped, ok := args["parameters"].(map[string]any); ok {
+		if rawName, hasName := args["name"].(string); !hasName || rawName == "" || rawName == call.Function.Name {
+			args = wrapped
+		}
+	}
 
 	switch call.Function.Name {
 	case "get_road_disruptions":
@@ -415,8 +420,21 @@ func normalizeToolCall(call llm.ToolCall, userMessage string) llm.ToolCall {
 		}
 		delete(args, "lines")
 	case "get_euromap_plan_by_id", "get_euromap_technical_plan_by_id":
-		if date, ok := args["date"].(string); ok {
-			args["date"] = strings.ReplaceAll(strings.TrimSpace(date), "-", "")
+		todayCompact := time.Now().UTC().Format("20060102")
+		if rawDate, ok := args["date"]; ok {
+			switch date := rawDate.(type) {
+			case string:
+				date = strings.ReplaceAll(strings.TrimSpace(date), "-", "")
+				if len(date) == 8 {
+					args["date"] = date
+				} else {
+					args["date"] = todayCompact
+				}
+			default:
+				args["date"] = todayCompact
+			}
+		} else {
+			args["date"] = todayCompact
 		}
 		if _, hasPlan := args["planID"]; !hasPlan {
 			if _, hasService := args["serviceCode"]; !hasService {

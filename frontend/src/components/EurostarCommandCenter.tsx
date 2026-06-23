@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Route,
   Rows3,
+  Search,
   ShieldCheck,
   Sun,
   Train,
@@ -162,6 +163,19 @@ const STATION_NAMES: Record<string, string> = {
   MVC: "Marne-la-Vallee Chessy",
 }
 
+const STATION_ALIASES: Record<string, string> = {
+  BRU: "BXL",
+  AMS: "ASD",
+  RDM: "RTD",
+  LEW: "LIL",
+  EBD: "EBF",
+  AFK: "ASH",
+  CFR: "FTN",
+}
+
+const PRIMARY_HUB_CODES = ["SPX", "PNO", "BXL", "LIL", "ASD", "RTD", "EBF", "ASH"] as const
+const PRIMARY_HUB_SET = new Set<string>(PRIMARY_HUB_CODES)
+
 const MARKET_LABELS: Record<string, string> = {
   "SPX-PNO": "London - Paris",
   "PNO-SPX": "Paris - London",
@@ -229,15 +243,25 @@ function destStation(plan: EuromapPlan): EuromapStation | undefined {
 }
 
 function stationName(code: string): string {
-  return STATION_NAMES[code?.toUpperCase()] ?? code
+  const key = canonicalStationCode(code)
+  return STATION_NAMES[key] ?? key
+}
+
+function canonicalStationCode(code: string): string {
+  const key = code?.toUpperCase() ?? ""
+  return STATION_ALIASES[key] ?? key
+}
+
+function isPrimaryHubCode(code: string): boolean {
+  return PRIMARY_HUB_SET.has(canonicalStationCode(code))
 }
 
 function originCode(plan: EuromapPlan): string {
-  return originStation(plan)?.shortCode ?? "TBC"
+  return canonicalStationCode(originStation(plan)?.shortCode ?? "TBC")
 }
 
 function destCode(plan: EuromapPlan): string {
-  return destStation(plan)?.shortCode ?? "TBC"
+  return canonicalStationCode(destStation(plan)?.shortCode ?? "TBC")
 }
 
 function marketLabel(plan: EuromapPlan): string {
@@ -249,6 +273,10 @@ function directionLabel(plan: EuromapPlan): "Outbound" | "Inbound" | "Continenta
   if (originStation(plan)?.country === "GB") return "Outbound"
   if (destStation(plan)?.country === "GB") return "Inbound"
   return "Continental"
+}
+
+function isPassengerJourney(plan: EuromapPlan): boolean {
+  return isPrimaryHubCode(originCode(plan)) && isPrimaryHubCode(destCode(plan))
 }
 
 function statusLabel(status: string): string {
@@ -651,6 +679,751 @@ function HeroMetric({
   )
 }
 
+function InfoLegend({
+  items,
+}: {
+  readonly items: Array<{ label: string; text: string; tone?: string }>
+}) {
+  return (
+    <div
+      className="mt-4 mb-5 rounded-[22px] border px-3 py-3 md:px-4 md:py-4"
+      style={{ borderColor: "#dbe7f3", background: "linear-gradient(180deg, rgba(252,253,255,0.98), rgba(247,250,255,0.94))" }}
+    >
+      <div className="mb-2 flex items-center gap-2">
+        <span className="flex h-6 w-6 items-center justify-center rounded-full" style={{ background: "#eff6ff", color: CHANNEL_BLUE }}>
+          <CircleDot size={12} />
+        </span>
+        <div className="text-[10px] font-black uppercase tracking-[0.18em]" style={{ color: "#667085" }}>
+          How to read this
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2.5">
+        {items.map(item => (
+          <div
+            key={item.label}
+            className="inline-flex max-w-full items-start gap-2 rounded-full border px-3 py-2.5"
+            style={{ borderColor: "#dbe7f3", background: "white" }}
+          >
+            <span className="shrink-0 text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: item.tone ?? CHANNEL_BLUE }}>
+              {item.label}
+            </span>
+            <span className="text-xs leading-5" style={{ color: "#475467" }}>
+              {item.text}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+type SearchableOption = {
+  value: string
+  label: string
+  sublabel?: string
+}
+
+function SearchableSelect({
+  label,
+  placeholder,
+  value,
+  options,
+  onChange,
+}: {
+  readonly label: string
+  readonly placeholder: string
+  readonly value: string
+  readonly options: SearchableOption[]
+  readonly onChange: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState("")
+  const panelRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) setQuery("")
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return undefined
+    const onPointerDown = (event: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(event.target as Node)) setOpen(false)
+    }
+    window.addEventListener("mousedown", onPointerDown)
+    return () => window.removeEventListener("mousedown", onPointerDown)
+  }, [open])
+
+  const selected = options.find(option => option.value === value) ?? null
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return options.slice(0, 80)
+    return options
+      .filter(option =>
+        option.label.toLowerCase().includes(q) ||
+        option.sublabel?.toLowerCase().includes(q) ||
+        option.value.toLowerCase().includes(q),
+      )
+      .slice(0, 80)
+  }, [options, query])
+
+  return (
+    <div className="searchable-select-force-light relative min-w-0 flex-1" ref={panelRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(current => !current)}
+        className="flex w-full items-center justify-between gap-3 rounded-xl border bg-white px-3 py-2.5 text-left"
+        style={{ borderColor: "#d0d5dd", color: INK }}
+      >
+        <div className="min-w-0">
+          <div className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: "#667085" }}>{label}</div>
+          <div className="truncate text-sm font-semibold">
+            {selected?.label ?? placeholder}
+          </div>
+          {selected?.sublabel && (
+            <div className="truncate text-xs" style={{ color: "#667085" }}>{selected.sublabel}</div>
+          )}
+        </div>
+        <ChevronDown size={15} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <motion.div
+          initial={{ opacity: 0, y: 8, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 8, scale: 0.98 }}
+          className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-2xl border bg-white shadow-[0_20px_45px_rgba(16,24,40,.14)]"
+          style={{ borderColor: "#d0d5dd" }}
+        >
+          <div className="border-b px-3 py-2.5" style={{ borderColor: "#eef2f6" }}>
+            <div className="flex items-center gap-2 rounded-xl border bg-[#f8fafc] px-3 transition focus-within:border-[#7aa2d6] focus-within:shadow-[0_0_0_2px_rgba(0,51,102,.12)]" style={{ borderColor: "#e2e8f0" }}>
+              <Search size={14} style={{ color: "#667085" }} />
+              <input
+                autoFocus
+                value={query}
+                onChange={event => setQuery(event.target.value)}
+                placeholder="Search service, city, route, time…"
+                className="w-full bg-transparent py-2.5 text-sm outline-none"
+                style={{ color: INK, WebkitTextFillColor: INK, colorScheme: "light", caretColor: INK }}
+              />
+            </div>
+          </div>
+
+          <div className="max-h-72 overflow-y-auto p-2">
+            {filtered.map(option => {
+              const active = option.value === value
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => {
+                    onChange(option.value)
+                    setOpen(false)
+                  }}
+                  className="flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition-colors"
+                  style={{ background: active ? "#eff6ff" : "white" }}
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-bold" style={{ color: INK }}>{option.label}</div>
+                    {option.sublabel && <div className="truncate text-xs" style={{ color: "#667085" }}>{option.sublabel}</div>}
+                  </div>
+                  {active && <BadgeCheck size={15} className="mt-0.5 shrink-0" style={{ color: EUROSTAR_BLUE }} />}
+                </button>
+              )
+            })}
+            {filtered.length === 0 && (
+              <div className="px-3 py-8 text-center text-sm" style={{ color: "#667085" }}>
+                No matching Eurostar services found.
+              </div>
+            )}
+          </div>
+        </motion.div>
+      )}
+    </div>
+  )
+}
+
+type StationIntelligence = {
+  code: string
+  name: string
+  touchCount: number
+  outbound: number
+  inbound: number
+  active: number
+  watch: number
+  crewLinked: number
+  passengerEstimate: number
+  nextDeparture?: string
+  nextArrival?: string
+  markets: string[]
+}
+
+function stationSeverity(station: StationIntelligence) {
+  if (station.watch > 0) return { ring: "#ef4444", glow: "rgba(239,68,68,0.22)", label: "Watch" }
+  if (station.active > 0) return { ring: "#0ea5e9", glow: "rgba(14,165,233,0.18)", label: "Live" }
+  return { ring: "#94a3b8", glow: "rgba(148,163,184,0.14)", label: "Idle" }
+}
+
+function HeroNetworkCanvas({
+  stations,
+  trains,
+  selectedStationCode,
+  onSelectStation,
+}: {
+  readonly stations: StationIntelligence[]
+  readonly trains: EuromapPlan[]
+  readonly selectedStationCode: string
+  readonly onSelectStation: (code: string) => void
+}) {
+  const nodes = [
+    { code: "SPX", x: 14, y: 54, short: "London" },
+    { code: "LIL", x: 37, y: 58, short: "Lille" },
+    { code: "BXL", x: 52, y: 35, short: "Brussels" },
+    { code: "PNO", x: 68, y: 73, short: "Paris" },
+    { code: "RTD", x: 70, y: 20, short: "Rotterdam" },
+    { code: "ASD", x: 86, y: 14, short: "Amsterdam" },
+  ] as const
+
+  const stationByCode = new Map(stations.map(station => [station.code, station]))
+  const edgeCounts = new Map<string, number>()
+  for (const train of trains) {
+    const origin = originCode(train)
+    const destination = destCode(train)
+    const key = `${origin}-${destination}`
+    edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1)
+  }
+
+  const edges = [
+    ["SPX", "LIL"],
+    ["LIL", "PNO"],
+    ["LIL", "BXL"],
+    ["BXL", "RTD"],
+    ["RTD", "ASD"],
+    ["BXL", "PNO"],
+    ["SPX", "BXL"],
+  ] as const
+
+  const corridorLeaders = [...new Map(
+    trains.map(train => [marketLabel(train), (trains.filter(item => marketLabel(item) === marketLabel(train)).length)]),
+  ).entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
+
+  return (
+    <div
+      className="core-network-force-dark relative overflow-hidden rounded-[28px] border p-4"
+      style={{ borderColor: "#d7e3f0", background: "linear-gradient(180deg, rgba(248,251,255,0.98), rgba(255,255,255,0.96))", color: INK }}
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-black uppercase tracking-[0.16em]" style={{ color: INK }}>Core network map</div>
+          <div className="text-xs font-semibold" style={{ color: "#344054" }}>Passenger-facing Eurostar hubs and the busiest live corridors</div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border px-3 py-1.5 text-[11px] font-black shadow-[0_1px_2px_rgba(16,24,40,.04)]" style={{ borderColor: "#bfd6ee", background: "#ffffff", color: "#1f2937" }}>
+            {trains.length} passenger services
+          </span>
+          <span className="rounded-full border px-3 py-1.5 text-[11px] font-black shadow-[0_1px_2px_rgba(16,24,40,.04)]" style={{ borderColor: "#bfdbfe", background: "#eff6ff", color: "#1d4ed8" }}>
+            Blue hub = live
+          </span>
+          <span className="rounded-full border px-3 py-1.5 text-[11px] font-black shadow-[0_1px_2px_rgba(16,24,40,.04)]" style={{ borderColor: "#fecaca", background: "#fff1f2", color: "#991b1b" }}>
+            Red pulse = watch
+          </span>
+        </div>
+      </div>
+
+      <InfoLegend
+        items={[
+          { label: "What this is", text: "A simplified Eurostar network sketch. Each circle is a major passenger hub and each line is a busy corridor." },
+          { label: "How to read it", text: "Blue activity means live movement on that hub or corridor. A red pulse means at least one watched service is touching that path." },
+          { label: "What to do", text: "Click a hub to focus the station panel below and inspect the services currently feeding that part of the network." },
+        ]}
+      />
+
+      <div className="relative h-[420px] overflow-hidden rounded-[24px] border xl:h-[520px]" style={{ borderColor: "#dbe7f3", background: "radial-gradient(circle at 28% 20%, rgba(14,165,233,.18), transparent 24%), radial-gradient(circle at 82% 14%, rgba(200,154,12,.16), transparent 22%), linear-gradient(180deg, #061328 0%, #0b1d38 100%)" }}>
+        <motion.div
+          className="pointer-events-none absolute inset-0"
+          style={{ background: "linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.04) 45%, transparent 65%)" }}
+          animate={{ x: ["-45%", "85%"] }}
+          transition={{ duration: 7, repeat: Infinity, ease: "linear" }}
+        />
+        <svg viewBox="0 0 100 100" className="pointer-events-none absolute inset-0 h-full w-full">
+          {edges.map(([from, to], index) => {
+            const fromNode = nodes.find(node => node.code === from)
+            const toNode = nodes.find(node => node.code === to)
+            if (!fromNode || !toNode) return null
+            const fromStation = stationByCode.get(from)
+            const toStation = stationByCode.get(to)
+            const hasTraffic = (edgeCounts.get(`${from}-${to}`) ?? 0) + (edgeCounts.get(`${to}-${from}`) ?? 0) > 0
+            const edgeColor = from === "LIL" || to === "LIL" ? "rgba(200,154,12,.58)" : "rgba(125,211,252,.46)"
+            return (
+              <g key={`${from}-${to}`}>
+                <line
+                  x1={fromNode.x}
+                  y1={fromNode.y}
+                  x2={toNode.x}
+                  y2={toNode.y}
+                  stroke={edgeColor}
+                  strokeWidth="0.42"
+                  strokeLinecap="round"
+                  opacity={hasTraffic ? 1 : 0.42}
+                />
+                {hasTraffic && (
+                  <motion.circle
+                    r="0.95"
+                    fill={index % 2 === 0 ? EUROSTAR_GOLD : "#7dd3fc"}
+                    style={{ filter: `drop-shadow(0 0 8px ${index % 2 === 0 ? EUROSTAR_GOLD : "#7dd3fc"})` }}
+                    animate={{ cx: [fromNode.x, toNode.x], cy: [fromNode.y, toNode.y] }}
+                    transition={{ duration: 4.5 + index * 0.35, repeat: Infinity, repeatType: "reverse", ease: "easeInOut", delay: index * 0.2 }}
+                  />
+                )}
+                {(fromStation?.watch || toStation?.watch) ? (
+                  <motion.circle
+                    cx={(fromNode.x + toNode.x) / 2}
+                    cy={(fromNode.y + toNode.y) / 2}
+                    r="1.2"
+                    fill="#ef4444"
+                    animate={{ r: [0.8, 1.5, 0.8], opacity: [0.45, 1, 0.45] }}
+                    transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+                  />
+                ) : null}
+              </g>
+            )
+          })}
+        </svg>
+
+        {nodes.map((node, index) => {
+          const station = stationByCode.get(node.code)
+          const selected = selectedStationCode === node.code
+          const severity = station ? stationSeverity(station) : { ring: "#94a3b8", glow: "rgba(148,163,184,0.16)", label: "Idle" }
+          return (
+            <motion.button
+              key={node.code}
+              type="button"
+              className="absolute flex w-[144px] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2"
+              style={{ left: `${node.x}%`, top: `${node.y}%`, color: "#e2e8f0" }}
+              onClick={() => onSelectStation(node.code)}
+            >
+              <motion.span
+                className="absolute h-20 w-20 rounded-full"
+                style={{ background: `radial-gradient(circle, ${severity.glow} 0%, transparent 72%)` }}
+                animate={{ scale: selected ? [1, 1.24, 1] : [0.96, 1.12, 0.96], opacity: [0.55, 0.95, 0.55] }}
+                transition={{ duration: selected ? 1.5 : 2.4, repeat: Infinity, ease: "easeInOut", delay: index * 0.05 }}
+              />
+              <motion.div
+                className="relative flex h-14 w-14 items-center justify-center rounded-full border text-sm font-black text-white"
+                style={{
+                  borderColor: selected ? "#ffffff" : severity.ring,
+                  background: selected ? `linear-gradient(135deg, ${CHANNEL_BLUE}, ${EUROSTAR_BLUE})` : "rgba(3,12,28,0.82)",
+                  boxShadow: selected ? "0 0 0 3px rgba(255,255,255,0.2)" : `0 0 24px ${severity.glow}`,
+                }}
+                whileHover={{ scale: 1.04, boxShadow: `0 0 0 2px rgba(255,255,255,0.14), 0 0 24px ${severity.glow}` }}
+                transition={{ duration: 0.16, ease: "easeOut" }}
+              >
+                {node.code}
+              </motion.div>
+              <motion.div
+                className="rounded-2xl border px-3 py-2 text-center"
+                style={{
+                  width: 144,
+                  borderColor: selected ? "#7dd3fc" : "rgba(255,255,255,0.12)",
+                  background: selected ? "rgba(4,18,43,0.88)" : "rgba(8,20,41,0.72)",
+                  boxShadow: selected ? "0 0 0 1px rgba(125,211,252,0.32)" : "none",
+                  backdropFilter: "blur(10px)",
+                }}
+                whileHover={{ borderColor: "rgba(125,211,252,0.65)", backgroundColor: selected ? "rgba(4,18,43,0.9)" : "rgba(10,24,49,0.82)" }}
+                transition={{ duration: 0.16, ease: "easeOut" }}
+              >
+                <div className="max-w-[132px] text-[11px] font-black uppercase tracking-[0.14em]" style={{ color: selected ? "#f8fafc" : "#cbd5e1" }}>{node.short}</div>
+                <div className="mt-1 text-[11px] font-semibold" style={{ color: selected ? "#bae6fd" : "#94a3b8" }}>
+                  {station ? `${station.active} active · ${station.touchCount} touches` : "0 active · 0 touches"}
+                </div>
+              </motion.div>
+            </motion.button>
+          )
+        })}
+
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        {corridorLeaders.map(([route, count]) => (
+          <div key={route} className="rounded-2xl border px-3 py-3" style={{ borderColor: "#dbe7f3", background: "white", color: INK }}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>Busiest corridor</div>
+              <span className="rounded-full px-2 py-1 text-[10px] font-black" style={{ background: "#eff6ff", color: CHANNEL_BLUE }}>Live</span>
+            </div>
+            <div className="mt-2 flex items-end gap-2">
+              <div className="text-2xl font-black tabular-nums" style={{ color: INK }}>{count}</div>
+              <div className="pb-1 text-[11px]" style={{ color: "#667085" }}>services</div>
+            </div>
+            <div className="mt-1 text-[11px] font-semibold" style={{ color: "#475467" }}>{route}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function CrossBorderJourneyChain({
+  plan,
+  plans,
+  traveler,
+  watchItem,
+  crewCount,
+  onAsk,
+  onOpenProfile,
+  onSelectPlan,
+}: {
+  readonly plan?: EuromapPlan
+  readonly plans: EuromapPlan[]
+  readonly traveler?: TravelerService
+  readonly watchItem?: EurostarWatchlistItem
+  readonly crewCount: number
+  readonly onAsk?: (query: string) => void
+  readonly onOpenProfile?: (planID: string) => void
+  readonly onSelectPlan?: (planID: string) => void
+}) {
+  if (!plan) {
+    return (
+      <div className="rounded-[28px] border bg-white p-4" style={{ borderColor: "#eaecf0" }}>
+        <SectionHeader icon={<Globe2 size={16} />} title="Cross-border journey chain" detail="Select a service to trace its operating path" />
+        <div className="rounded-[24px] border border-dashed px-6 py-10 text-center text-sm font-semibold" style={{ borderColor: "#d0d5dd", color: "#667085" }}>
+          No service is available to render the chain yet.
+        </div>
+      </div>
+    )
+  }
+
+  const origin = stationName(originCode(plan))
+  const destination = stationName(destCode(plan))
+  const hasWatch = Boolean(watchItem)
+  const borderLabel = originCode(plan) === "SPX" || destCode(plan) === "SPX" ? "Channel tunnel passage" : "Continental corridor"
+  const riskText = hasWatch ? watchItem?.reasons?.[0] ?? "Service needs attention" : "No active operating issue is standing out on this service."
+  const planOptions: SearchableOption[] = plans.map(option => ({
+    value: option.planID,
+    label: `${option.serviceCode} · ${stationName(originCode(option))} to ${stationName(destCode(option))}`,
+    sublabel: `${fmtISOTime(option.departureDateTime)} departure · ${statusLabel(option.status)}`,
+  }))
+
+  const steps = [
+    {
+      id: "origin",
+      title: origin,
+      subtitle: `Departs ${fmtISOTime(plan.departureDateTime)}`,
+      detail: `${crewCount} crew linked${traveler ? ` · ${traveler.totalCount} passengers` : ""}`,
+      color: CHANNEL_BLUE,
+    },
+    {
+      id: "border",
+      title: borderLabel,
+      subtitle: fmtDuration(plan.departureDateTime, plan.arrivalDateTime),
+      detail: hasWatch ? riskText : "Cross-border segment is flowing in the current plan.",
+      color: EUROSTAR_GOLD,
+    },
+    {
+      id: "arrival",
+      title: destination,
+      subtitle: `Arrives ${fmtISOTime(plan.arrivalDateTime)}`,
+      detail: destCode(plan) === "PNO" ? "Paris onward distribution via RER and SNCF." : destCode(plan) === "SPX" ? "London onward distribution via TfL and National Rail." : "European onward distribution from the arrival hub.",
+      color: hasWatch ? "#ef4444" : "#22c55e",
+    },
+  ] as const
+
+  return (
+    <div className="chain-force-dark rounded-[28px] border bg-white p-4" style={{ borderColor: "#eaecf0", color: INK }}>
+        <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span
+            className="flex h-8 w-8 items-center justify-center rounded-lg"
+            style={{ background: "#eff6ff", color: EUROSTAR_BLUE }}
+          >
+            <Globe2 size={16} />
+          </span>
+          <div className="min-w-0">
+            <h2 className="chain-header-title text-sm font-black uppercase tracking-wide" style={{ color: INK }}>
+              Cross-border journey chain
+            </h2>
+            <p className="chain-header-subtitle text-xs" data-chain-tone="muted" style={{ color: "#667085" }}>
+              How the selected service moves from origin to arrival and beyond
+            </p>
+          </div>
+        </div>
+        <div className="rounded-full border px-3 py-1.5 text-[11px] font-black" style={{ borderColor: hasWatch ? "#fecaca" : "#dbe7f3", background: hasWatch ? "#fff1f2" : "#f8fbff", color: hasWatch ? "#b91c1c" : "#475467" }}>
+          Service {plan.serviceCode}
+        </div>
+      </div>
+
+      <div className="mb-4 rounded-[20px] border p-3" style={{ borderColor: "#dbe7f3", background: "#f8fbff" }}>
+        <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>
+          Pick a service
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <SearchableSelect
+            label="Service"
+            placeholder="Pick a Eurostar service"
+            value={plan.planID}
+            options={planOptions}
+            onChange={nextPlanID => onSelectPlan?.(nextPlanID)}
+          />
+          <span className="rounded-full border px-3 py-2 text-[11px] font-black" style={{ borderColor: "#dbe7f3", background: "white", color: "#475467" }}>
+            {plans.length} visible services
+          </span>
+        </div>
+      </div>
+
+      <InfoLegend
+        items={[
+          { label: "What this shows", text: "A single service broken into departure hub, cross-border segment, and arrival side so you can read the journey as one operating chain." },
+          { label: "Risk read", text: "If the selected train is on the watchlist, the chain explains why it matters and where the fragility is likely to show up next." },
+          { label: "Actions", text: "Use the quick actions to jump straight into stop detail, crew coverage, or passenger load for the selected service." },
+        ]}
+      />
+
+        <div className="mt-2 rounded-[24px] border p-4" style={{ borderColor: "#dbe7f3", background: "linear-gradient(180deg, rgba(248,251,255,0.98), rgba(255,255,255,0.96))" }}>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-base font-black" style={{ color: INK }}>{origin} to {destination}</div>
+              <div className="text-xs" data-chain-tone="muted" style={{ color: "#667085" }}>{marketLabel(plan)} · {statusLabel(plan.status)}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] font-black uppercase tracking-[0.16em]" data-chain-tone="muted" style={{ color: "#667085" }}>Passenger posture</div>
+              <div className="text-sm font-black" style={{ color: traveler ? travelerClassMeta(travelerLeadClass(traveler.classes)).color : INK }}>
+                {traveler ? `${traveler.totalCount} pax · ${travelerClassMeta(travelerLeadClass(traveler.classes)).label}` : "Traveler feed pending"}
+              </div>
+            </div>
+          </div>
+
+        <div className="relative grid gap-4">
+          <div className="absolute left-7 top-8 bottom-8 w-0.5 rounded-full" style={{ background: "linear-gradient(180deg, rgba(0,114,206,.36), rgba(200,154,12,.36), rgba(34,197,94,.36))" }} />
+          {steps.map((step, index) => (
+            <motion.div
+              key={step.id}
+              className="relative flex gap-3 rounded-[22px] border bg-white px-4 py-3"
+              style={{ borderColor: "#e2e8f0" }}
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.24, delay: index * 0.08 }}
+            >
+              <div className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 bg-white" style={{ borderColor: step.color }}>
+                <motion.span className="h-2.5 w-2.5 rounded-full" style={{ background: step.color }} animate={{ scale: [1, 1.25, 1] }} transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut", delay: index * 0.1 }} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-black" style={{ color: INK }}>{step.title}</div>
+                <div
+                  className="text-xs font-bold"
+                  data-chain-tone="accent"
+                  style={{ color: step.color, ["--chain-accent" as string]: step.color }}
+                >
+                  {step.subtitle}
+                </div>
+                <div className="mt-1 text-xs leading-5" data-chain-tone="muted" style={{ color: "#667085" }}>{step.detail}</div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+
+        <div className="mt-4 grid gap-2 md:grid-cols-2">
+          <div className="rounded-2xl border px-3 py-3" style={{ borderColor: hasWatch ? "#fecaca" : "#dbe7f3", background: hasWatch ? "#fff7f7" : "white" }}>
+            <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: hasWatch ? "#b91c1c" : "#667085" }}>Chain read</div>
+            <div className="mt-1 text-xs leading-5" data-chain-tone="soft" style={{ color: hasWatch ? "#9f1239" : "#475467" }}>
+              {hasWatch
+                ? `This service is carrying a live risk signal: ${riskText}. The chain should be read as fragile from departure through arrival.`
+                : "This service currently reads as a stable cross-border movement with no elevated watch signal attached."}
+            </div>
+          </div>
+          <div className="rounded-2xl border px-3 py-3" style={{ borderColor: "#dbe7f3", background: "white" }}>
+            <div className="text-[10px] font-black uppercase tracking-[0.16em]" data-chain-tone="muted" style={{ color: "#667085" }}>Operator next step</div>
+            <div className="mt-1 text-xs leading-5" data-chain-tone="soft" style={{ color: "#475467" }}>
+              {destCode(plan) === "PNO"
+                ? "Use this chain to judge Paris arrival pressure, onward SNCF/RER sensitivity, and whether the service needs extra arrival handling."
+                : destCode(plan) === "SPX"
+                  ? "Use this chain to judge London arrival pressure, TfL access sensitivity, and onward National Rail handoff risk."
+                  : "Use this chain to inspect whether the selected service is stable enough for onward European distribution."}
+            </div>
+          </div>
+        </div>
+
+        {onAsk && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onOpenProfile?.(plan.planID)}
+              className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-black"
+              style={{ borderColor: "#bfdbfe", background: "#eff6ff", color: CHANNEL_BLUE }}
+            >
+              <Eye size={12} />
+              Open profile
+            </button>
+            <CommandButton icon={<Train size={14} />} label="Ask this service" query={`Show me full stop times for Eurostar service ${plan.serviceCode} today`} onAsk={onAsk} />
+            <CommandButton icon={<Users size={14} />} label="Ask crew" query={`Show me crew activity for Eurostar service ${plan.serviceCode} today`} onAsk={onAsk} />
+            {traveler && <CommandButton icon={<Gauge size={14} />} label="Ask load" query={`How is passenger load looking today on Eurostar service ${plan.serviceCode}?`} onAsk={onAsk} />}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function StationIntelligencePanel({
+  stations,
+  selectedStationCode,
+  onSelectStation,
+  trains,
+  onAsk,
+  onOpenProfile,
+}: {
+  readonly stations: StationIntelligence[]
+  readonly selectedStationCode: string
+  readonly onSelectStation: (code: string) => void
+  readonly trains: EuromapPlan[]
+  readonly onAsk?: (query: string) => void
+  readonly onOpenProfile?: (planID: string) => void
+}) {
+  const selectedStation = stations.find(station => station.code === selectedStationCode) ?? stations[0]
+  const relatedServices = selectedStation
+    ? trains
+        .filter(train => train.stations.some(stop => canonicalStationCode(stop.shortCode) === selectedStation.code))
+        .sort((a, b) => a.departureDateTime.localeCompare(b.departureDateTime))
+        .slice(0, 6)
+    : []
+
+  return (
+    <section className="station-intelligence-force-dark mb-5 rounded-lg border bg-white p-4" style={{ borderColor: "#eaecf0", color: INK }}>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <SectionHeader icon={<MapPin size={16} />} title="Station intelligence" detail="Clickable hub intelligence for departures, arrivals, crew linkage and network pressure" />
+        <div className="rounded-full border px-3 py-1.5 text-[11px] font-black" style={{ borderColor: "#dbe7f3", background: "#f8fbff", color: "#475467" }}>
+          {stations.length} live hubs
+        </div>
+      </div>
+
+      <InfoLegend
+        items={[
+          { label: "Touches", text: "How many service movements in the current Eurostar plan include this hub." },
+          { label: "Out / In", text: "Outbound counts start from the hub. Inbound counts terminate at the hub." },
+          { label: "Watch", text: "How many services through this hub are currently carrying a warning or critical signal." },
+        ]}
+      />
+
+      <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(340px,0.65fr)]">
+        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+          {stations.map(station => {
+            const selected = station.code === selectedStationCode
+            const severity = stationSeverity(station)
+            return (
+              <motion.button
+                key={station.code}
+                type="button"
+                className="rounded-[24px] border px-4 py-4 text-left"
+                style={{
+                  color: INK,
+                  borderColor: selected ? CHANNEL_BLUE : "#e2e8f0",
+                  background: selected ? "linear-gradient(180deg, rgba(239,246,255,0.98), rgba(255,255,255,0.96))" : "linear-gradient(180deg, rgba(249,250,251,0.98), rgba(255,255,255,0.96))",
+                  boxShadow: selected ? "0 0 0 3px rgba(0,114,206,0.12)" : "none",
+                }}
+                onClick={() => onSelectStation(station.code)}
+                whileHover={{ y: -1 }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>{station.code}</div>
+                    <div className="text-sm font-black" style={{ color: INK }}>{station.name}</div>
+                  </div>
+                  <span className="rounded-full px-2 py-1 text-[10px] font-black" style={{ background: severity.glow, color: severity.ring }}>{severity.label}</span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: "#e2e8f0", background: "white" }}>
+                    <div className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: "#667085" }}>Touches</div>
+                    <div className="mt-1 text-xl font-black tabular-nums" style={{ color: INK }}>{station.touchCount}</div>
+                  </div>
+                  <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: "#e2e8f0", background: "white" }}>
+                    <div className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: "#667085" }}>Active</div>
+                    <div className="mt-1 text-xl font-black tabular-nums" style={{ color: INK }}>{station.active}</div>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold">
+                  <span className="rounded-full border px-2.5 py-1" style={{ borderColor: "#dbe7f3", background: "white", color: "#475467" }}>Out {station.outbound}</span>
+                  <span className="rounded-full border px-2.5 py-1" style={{ borderColor: "#dbe7f3", background: "white", color: "#475467" }}>In {station.inbound}</span>
+                  <span className="rounded-full border px-2.5 py-1" style={{ borderColor: station.watch > 0 ? "#fecaca" : "#dbe7f3", background: station.watch > 0 ? "#fff1f2" : "white", color: station.watch > 0 ? "#b91c1c" : "#475467" }}>
+                    Watch {station.watch}
+                  </span>
+                </div>
+              </motion.button>
+            )
+          })}
+        </div>
+
+        <div className="rounded-[28px] border p-4" style={{ borderColor: "#dbe7f3", background: "linear-gradient(180deg, rgba(248,251,255,0.98), rgba(255,255,255,0.96))", color: INK }}>
+          {selectedStation ? (
+            <>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>Focused hub</div>
+                  <div className="text-xl font-black" style={{ color: INK }}>{selectedStation.name}</div>
+                  <div className="text-xs" style={{ color: "#667085" }}>{selectedStation.code} · {selectedStation.markets.slice(0, 3).join(" · ") || "Live Eurostar hub"}</div>
+                </div>
+                <div className="rounded-full border px-3 py-1.5 text-[11px] font-black" style={{ borderColor: "#dbe7f3", background: "white", color: "#475467" }}>
+                  {selectedStation.passengerEstimate > 0 ? `${selectedStation.passengerEstimate.toLocaleString("en-GB")} pax estimate` : "Traveler estimate pending"}
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                {[
+                  { label: "Next departure", value: selectedStation.nextDeparture ? fmtISOTime(selectedStation.nextDeparture) : "--:--" },
+                  { label: "Next arrival", value: selectedStation.nextArrival ? fmtISOTime(selectedStation.nextArrival) : "--:--" },
+                  { label: "Crew-linked", value: selectedStation.crewLinked },
+                  { label: "Watch signals", value: selectedStation.watch },
+                ].map(metric => (
+                  <div key={metric.label} className="rounded-2xl border px-3 py-3" style={{ borderColor: "#e2e8f0", background: "white" }}>
+                    <div className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: "#667085" }}>{metric.label}</div>
+                    <div className="mt-1 text-xl font-black tabular-nums" style={{ color: INK }}>{metric.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4">
+                <div className="mb-2 text-[11px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>Next services through this hub</div>
+                <div className="grid gap-2">
+                  {relatedServices.slice(0, 5).map(service => (
+                    <button
+                      key={`${selectedStation.code}-${service.planID}`}
+                      type="button"
+                      onClick={() => onOpenProfile?.(service.planID)}
+                      className="flex w-full items-center justify-between gap-3 rounded-2xl border px-3 py-2.5 text-left transition"
+                      style={{ borderColor: "#e2e8f0", background: "white", color: INK }}
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-black" style={{ color: INK }}>{service.serviceCode} · {stationName(originCode(service))} to {stationName(destCode(service))}</div>
+                        <div className="truncate text-xs" style={{ color: "#667085" }}>{statusLabel(service.status)} · {fmtDuration(service.departureDateTime, service.arrivalDateTime)}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-black tabular-nums" style={{ color: INK }}>{fmtISOTime(service.departureDateTime)}</div>
+                        <div className="text-[11px]" style={{ color: "#667085" }}>{fmtISOTime(service.arrivalDateTime)}</div>
+                      </div>
+                    </button>
+                  ))}
+                  {relatedServices.length === 0 && (
+                    <div className="rounded-2xl border border-dashed px-4 py-8 text-center text-sm font-semibold" style={{ borderColor: "#d0d5dd", color: "#667085" }}>
+                      No live service is currently linked to this station.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {onAsk && (
+                <div className="station-actions-force-contrast mt-4 flex flex-wrap gap-2">
+                  <CommandButton icon={<Train size={14} />} label="Ask departures" query={`Show Eurostar trains from ${selectedStation.name} today`} onAsk={onAsk} />
+                  <CommandButton icon={<MapPin size={14} />} label="Ask station detail" query={`Which Eurostar services stop at ${selectedStation.name} today?`} onAsk={onAsk} />
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="rounded-2xl border border-dashed px-6 py-10 text-center text-sm font-semibold" style={{ borderColor: "#d0d5dd", color: "#667085" }}>
+              Select a station to inspect its live intelligence.
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function serviceAlertMeta(watchItem?: EurostarWatchlistItem) {
   if (!watchItem) {
     return {
@@ -873,18 +1646,23 @@ function ServiceDetailPanel({
   plan,
   crewMembers,
   traveler,
+  watchItem,
   onAsk,
   onClose,
+  onOpenProfile,
 }: {
   readonly plan: EuromapPlan
   readonly crewMembers: EnrichedCrew[]
   readonly traveler?: TravelerService
+  readonly watchItem?: EurostarWatchlistItem
   readonly onAsk?: (query: string) => void
   readonly onClose: () => void
+  readonly onOpenProfile?: (planID: string) => void
 }) {
   const tone = statusTone(plan.status)
   const stopCount = plan.stations.length
   const hasCrew = crewMembers.length > 0
+  const alert = serviceAlertMeta(watchItem)
 
   return (
     <motion.div
@@ -1016,6 +1794,15 @@ function ServiceDetailPanel({
               Actions
             </div>
             <div className="grid grid-cols-1 gap-2" onClick={event => event.stopPropagation()}>
+              <button
+                type="button"
+                onClick={() => onOpenProfile?.(plan.planID)}
+                className="flex items-center gap-2 rounded-lg border bg-[#eff6ff] px-3 py-2 text-left text-xs font-bold transition"
+                style={{ borderColor: "#bfdbfe", color: CHANNEL_BLUE }}
+              >
+                <Eye size={14} />
+                Open service profile
+              </button>
               <CommandButton
                 icon={<Route size={14} />}
                 label="Ask for stop detail"
@@ -1035,6 +1822,13 @@ function ServiceDetailPanel({
             Plan ID <span className="font-bold tabular-nums" style={{ color: INK }}>{plan.planID}</span>
           </div>
 
+          {watchItem && watchItem.reasons.length > 0 && (
+            <div className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: alert.bannerBorder, background: alert.bannerBg, color: alert.bannerText }}>
+              <div className="mb-1 text-[10px] font-black uppercase tracking-[0.16em]">Profile watch reason</div>
+              {watchItem.reasons[0]}
+            </div>
+          )}
+
           {!traveler && (
             <div className="rounded-lg border bg-white px-3 py-2 text-xs" style={{ borderColor: "#eaecf0", color: "#667085" }}>
               Traveler load is not available for this service yet.
@@ -1042,6 +1836,178 @@ function ServiceDetailPanel({
           )}
         </div>
       </div>
+    </motion.div>
+  )
+}
+
+function EurostarServiceProfile({
+  plan,
+  crewMembers,
+  traveler,
+  watchItem,
+  onClose,
+  onAsk,
+}: {
+  readonly plan: EuromapPlan
+  readonly crewMembers: EnrichedCrew[]
+  readonly traveler?: TravelerService
+  readonly watchItem?: EurostarWatchlistItem
+  readonly onClose: () => void
+  readonly onAsk?: (query: string) => void
+}) {
+  const tone = statusTone(plan.status)
+  const origin = stationName(originCode(plan))
+  const destination = stationName(destCode(plan))
+  const hasCrew = crewMembers.length > 0
+  const alert = serviceAlertMeta(watchItem)
+  const leadClass = traveler ? travelerClassMeta(travelerLeadClass(traveler.classes)) : null
+  const hasWatch = Boolean(watchItem)
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[82] flex flex-col overflow-hidden"
+      style={{ background: "#f7f5ef" }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <header className="shrink-0 border-b bg-white" style={{ borderColor: "#e4e7ec" }}>
+        <div className="flex items-center gap-3 px-5 py-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ background: EUROSTAR_BLUE, color: "white" }}>
+            <Train size={19} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-black uppercase" style={{ color: INK }}>Eurostar Service Profile</h2>
+              <span className="rounded-full border px-2.5 py-1 text-[11px] font-black" style={{ background: tone.bg, borderColor: tone.border, color: tone.text }}>
+                {statusLabel(plan.status)}
+              </span>
+              {hasWatch && (
+                <span className="rounded-full border px-2.5 py-1 text-[11px] font-black" style={{ background: alert.bannerBg, borderColor: alert.bannerBorder, color: alert.bannerText }}>
+                  Watchlist
+                </span>
+              )}
+            </div>
+            <p className="truncate text-xs" style={{ color: "#667085" }}>
+              Service {plan.serviceCode} · {origin} to {destination} · Plan {plan.planID}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-lg border bg-white" style={{ borderColor: "#d0d5dd", color: "#475467" }}>
+            <X size={16} />
+          </button>
+        </div>
+      </header>
+
+      <main className="flex-1 overflow-y-auto px-5 py-5">
+        <section className="mb-5 rounded-[28px] border p-5" style={{ borderColor: "#d7e3f0", background: `linear-gradient(135deg, ${EUROSTAR_BLUE} 0%, #0f2f5f 58%, #111827 100%)`, color: "white" }}>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] font-black uppercase tracking-[0.18em]" style={{ color: "#bfdbfe" }}>Service overview</div>
+              <div className="mt-2 text-3xl font-black tracking-tight">{origin} to {destination}</div>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold" style={{ color: "rgba(255,255,255,0.76)" }}>
+                <span>{fmtISOTime(plan.departureDateTime)} departure</span>
+                <span>{fmtISOTime(plan.arrivalDateTime)} arrival</span>
+                <span>{fmtDuration(plan.departureDateTime, plan.arrivalDateTime)}</span>
+                <span>{plan.stations.length} stops</span>
+              </div>
+            </div>
+            <div className="grid min-w-[280px] grid-cols-2 gap-3 max-sm:min-w-0 max-sm:w-full">
+              {[
+                { label: "Passengers", value: traveler ? traveler.totalCount.toLocaleString("en-GB") : "--" },
+                { label: "Crew linked", value: crewMembers.length },
+                { label: "Cabin leader", value: leadClass?.label ?? "--" },
+                { label: "Risk", value: watchItem ? `${watchItem.riskScore}` : "Stable" },
+              ].map(metric => (
+                <div key={metric.label} className="rounded-2xl border px-3 py-3" style={{ borderColor: "rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.08)" }}>
+                  <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#bfdbfe" }}>{metric.label}</div>
+                  <div className="mt-1 text-xl font-black tabular-nums">{metric.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="mb-5 grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+          <div className="rounded-[28px] border bg-white p-4" style={{ borderColor: "#eaecf0" }}>
+            <SectionHeader icon={<Route size={16} />} title="Full stop pattern" detail="Departure, passage points and arrival timings for this service" />
+            <div className="mt-3 overflow-x-auto pb-2">
+              <div className="flex min-w-max items-start px-1">
+                {plan.stations.map((station, index) => {
+                  const stationTime = fmtISOTime(station.departureDateTime || station.arrivalDatetime)
+                  const terminal = index === 0 || index === plan.stations.length - 1
+                  return (
+                    <div key={`${plan.planID}-${station.shortCode}-${station.sequenceNumber}`} className="flex items-start">
+                      <div className="flex w-28 flex-col items-center text-center">
+                        <span className="text-[11px] font-black tabular-nums" style={{ color: terminal ? EUROSTAR_BLUE : "#667085" }}>{stationTime}</span>
+                        <span className="my-2 h-3 w-3 rounded-full border-2" style={{ borderColor: EUROSTAR_BLUE, background: terminal ? EUROSTAR_BLUE : "white" }} />
+                        <span className="text-[11px] font-bold leading-tight" style={{ color: INK }}>{stationName(station.shortCode)}</span>
+                        <span className="mt-0.5 text-[10px]" style={{ color: "#98a2b3" }}>{canonicalStationCode(station.shortCode)}</span>
+                      </div>
+                      {index < plan.stations.length - 1 && <div className="mt-[25px] h-0.5 w-10 rounded-full" style={{ background: "#bfdbfe" }} />}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {traveler && (
+              <div className="mt-4">
+                <TravelerMixChart traveler={traveler} />
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <div className="rounded-[28px] border bg-white p-4" style={{ borderColor: hasWatch ? alert.bannerBorder : "#eaecf0", background: hasWatch ? "linear-gradient(180deg, rgba(255,247,247,0.98), rgba(255,255,255,0.96))" : "white" }}>
+              <SectionHeader icon={<AlertTriangle size={16} />} title="Watch and impact" detail="Why this service is stable or why it needs attention" />
+              {hasWatch ? (
+                <div className="mt-3 space-y-2">
+                  {watchItem?.reasons.map(reason => (
+                    <div key={reason} className="rounded-2xl border px-3 py-3 text-sm font-semibold" style={{ borderColor: alert.bannerBorder, background: alert.bannerBg, color: alert.bannerText }}>
+                      {reason}
+                    </div>
+                  ))}
+                  <div className="rounded-2xl border px-3 py-3 text-xs leading-5" style={{ borderColor: "#fecaca", background: "white", color: "#7f1d1d" }}>
+                    Recommended next ask: {watchItem?.recommendedAsk}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 rounded-2xl border px-3 py-3 text-sm" style={{ borderColor: "#dbe7f3", background: "#f8fbff", color: "#475467" }}>
+                  This service is not currently carrying a warning or critical signal in the live Eurostar watchlist.
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-[28px] border bg-white p-4" style={{ borderColor: "#eaecf0" }}>
+              <SectionHeader icon={<Users size={16} />} title="Crew coverage" detail="Start-on-Time assignments currently linked to this service" />
+              <div className="mt-3 space-y-2">
+                {hasCrew ? crewMembers.map(member => {
+                  const name = [member.firstName, member.lastName].filter(Boolean).join(" ") || member.crewId || "Assigned crew"
+                  return (
+                    <div key={`${member.crewId}-${member.crewType}-profile`} className="rounded-2xl border bg-[#f9fafb] px-3 py-3" style={{ borderColor: "#e2e8f0" }}>
+                      <div className="text-sm font-black" style={{ color: INK }}>{name}</div>
+                      <div className="mt-1 text-xs" style={{ color: "#667085" }}>{crewRoleLabel(member.crewType)} · {member.departure} to {member.arrival}</div>
+                    </div>
+                  )
+                }) : (
+                  <div className="rounded-2xl border px-3 py-3 text-sm" style={{ borderColor: "#fed7aa", background: "#fff7ed", color: "#9a3412" }}>
+                    No linked crew roster is currently attached to this service.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border bg-white p-4" style={{ borderColor: "#eaecf0" }}>
+              <SectionHeader icon={<MessagesSquare size={16} />} title="Actions" detail="Ask directly from this service profile" />
+              <div className="mt-3 grid gap-2">
+                <CommandButton icon={<Route size={14} />} label="Ask stop detail" query={`Show me full stop times for Eurostar service ${plan.serviceCode} today`} onAsk={onAsk} />
+                <CommandButton icon={<Users size={14} />} label="Ask crew" query={`Show me crew activity for Eurostar service ${plan.serviceCode} today`} onAsk={onAsk} />
+                {traveler && <CommandButton icon={<Gauge size={14} />} label="Ask load" query={`How is passenger load looking today on Eurostar service ${plan.serviceCode}?`} onAsk={onAsk} />}
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
     </motion.div>
   )
 }
@@ -1071,6 +2037,11 @@ export function EurostarCommandCenter({
   const [trainFilter, setTrainFilter] = useState<TrainFilter>("all")
   const [pulseIndex, setPulseIndex] = useState(0)
   const [selectedPlanID, setSelectedPlanID] = useState<string | null>(null)
+  const [profilePlanID, setProfilePlanID] = useState<string | null>(null)
+  const [selectedStationCode, setSelectedStationCode] = useState("")
+  const [serviceSearch, setServiceSearch] = useState("")
+  const [originSearch, setOriginSearch] = useState("")
+  const [destinationSearch, setDestinationSearch] = useState("")
 
   const fetchRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const cdRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -1150,36 +2121,113 @@ export function EurostarCommandCenter({
     return grouped
   }, [watchlist])
 
+  const passengerTrains = useMemo(() => trains.filter(isPassengerJourney), [trains])
+
   const routeEntries = useMemo(() => {
     const counts = new Map<string, number>()
-    for (const train of trains) {
+    for (const train of passengerTrains) {
       const label = marketLabel(train)
       counts.set(label, (counts.get(label) ?? 0) + 1)
     }
     return [...counts.entries()].sort((a, b) => b[1] - a[1])
-  }, [trains])
+  }, [passengerTrains])
+
+  const crewedServices = new Set(Object.keys(crewByService))
 
   const stationEntries = useMemo(() => {
     const counts = new Map<string, number>()
-    for (const train of trains) {
+    for (const train of passengerTrains) {
       for (const station of train.stations) {
-        const label = `${station.shortCode} · ${stationName(station.shortCode)}`
+        const canonical = canonicalStationCode(station.shortCode)
+        if (!isPrimaryHubCode(canonical)) continue
+        const label = `${canonical} · ${stationName(canonical)}`
         counts.set(label, (counts.get(label) ?? 0) + 1)
       }
     }
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)
-  }, [trains])
+  }, [passengerTrains])
 
-  const activeTrains = trains.filter(t => isTrainActive(t, now))
-  const watchTrains = trains.filter(t => isWatchStatus(t.status))
-  const crewedServices = new Set(Object.keys(crewByService))
-  const uncrewedTrains = trains.filter(t => !crewedServices.has(normalizeServiceCode(t.serviceCode)))
-  const nextDeparture = trains
+  const stationIntelligence = useMemo<StationIntelligence[]>(() => {
+    const grouped = new Map<string, StationIntelligence>()
+    const ensure = (code: string) => {
+      const key = code.toUpperCase()
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          code: key,
+          name: stationName(key),
+          touchCount: 0,
+          outbound: 0,
+          inbound: 0,
+          active: 0,
+          watch: 0,
+          crewLinked: 0,
+          passengerEstimate: 0,
+          markets: [],
+        })
+      }
+      return grouped.get(key)!
+    }
+
+    for (const train of passengerTrains) {
+      const origin = originCode(train)
+      const destination = destCode(train)
+      const market = marketLabel(train)
+      const active = isTrainActive(train, now)
+      const watch = isWatchStatus(train.status) || Boolean(watchByPlanID[train.planID])
+      const serviceCode = normalizeServiceCode(train.serviceCode)
+      const hasCrew = crewedServices.has(serviceCode)
+      const travelerLoad = travelerByService[serviceCode]?.totalCount ?? 0
+
+      const originSummary = ensure(origin)
+      originSummary.outbound += 1
+      originSummary.passengerEstimate += travelerLoad
+      if (!originSummary.nextDeparture || new Date(train.departureDateTime).getTime() < new Date(originSummary.nextDeparture).getTime()) {
+        originSummary.nextDeparture = train.departureDateTime
+      }
+
+      const destinationSummary = ensure(destination)
+      destinationSummary.inbound += 1
+      destinationSummary.passengerEstimate += travelerLoad
+      if (!destinationSummary.nextArrival || new Date(train.arrivalDateTime).getTime() < new Date(destinationSummary.nextArrival).getTime()) {
+        destinationSummary.nextArrival = train.arrivalDateTime
+      }
+
+      for (const stop of train.stations) {
+        const canonicalStop = canonicalStationCode(stop.shortCode)
+        if (!isPrimaryHubCode(canonicalStop)) continue
+        const station = ensure(canonicalStop)
+        station.touchCount += 1
+        if (!station.markets.includes(market)) station.markets.push(market)
+        if (active) station.active += 1
+        if (watch) station.watch += 1
+        if (hasCrew) station.crewLinked += 1
+      }
+    }
+
+    return [...grouped.values()].sort((a, b) => {
+      if (b.touchCount !== a.touchCount) return b.touchCount - a.touchCount
+      return a.name.localeCompare(b.name)
+    })
+  }, [passengerTrains, now, watchByPlanID, crewedServices, travelerByService])
+
+  const activeTrains = passengerTrains.filter(t => isTrainActive(t, now))
+  const watchTrains = passengerTrains.filter(t => isWatchStatus(t.status))
+  const uncrewedTrains = passengerTrains.filter(t => !crewedServices.has(normalizeServiceCode(t.serviceCode)))
+  const originOptions = useMemo(
+    () => [...new Set(passengerTrains.map(train => stationName(originCode(train))))].sort((a, b) => a.localeCompare(b)),
+    [passengerTrains],
+  )
+  const destinationOptions = useMemo(
+    () => [...new Set(passengerTrains.map(train => stationName(destCode(train))))].sort((a, b) => a.localeCompare(b)),
+    [passengerTrains],
+  )
+  const displayTrains = passengerTrains
+  const nextDeparture = displayTrains
     .filter(t => new Date(t.departureDateTime).getTime() >= now)
     .sort((a, b) => a.departureDateTime.localeCompare(b.departureDateTime))[0]
   const minutesToNext = minsUntil(nextDeparture?.departureDateTime, now)
 
-  const filteredTrains = [...trains]
+  const filteredTrains = [...displayTrains]
     .sort((a, b) => a.departureDateTime.localeCompare(b.departureDateTime))
     .filter(train => {
       if (trainFilter === "active") return isTrainActive(train, now)
@@ -1187,7 +2235,24 @@ export function EurostarCommandCenter({
       if (trainFilter === "crew") return crewedServices.has(train.serviceCode.replaceAll(/\D/g, "").replace(/^0+/, "").slice(-4))
       return true
     })
-  const selectedPlan = trains.find(train => train.planID === selectedPlanID)
+    .filter(train => {
+      const serviceNeedle = serviceSearch.trim().toLowerCase()
+      const originNeedle = originSearch.trim().toLowerCase()
+      const destinationNeedle = destinationSearch.trim().toLowerCase()
+
+      if (serviceNeedle && !train.serviceCode.toLowerCase().includes(serviceNeedle)) return false
+      if (originNeedle && stationName(originCode(train)).toLowerCase() !== originNeedle) return false
+      if (destinationNeedle && stationName(destCode(train)).toLowerCase() !== destinationNeedle) return false
+      return true
+    })
+  const focusedPlan = filteredTrains.find(train => train.planID === selectedPlanID) ?? nextDeparture ?? filteredTrains[0] ?? trains[0]
+  const focusedTraveler = focusedPlan ? travelerByService[normalizeServiceCode(focusedPlan.serviceCode)] : undefined
+  const focusedWatchItem = focusedPlan ? watchByPlanID[focusedPlan.planID] : undefined
+  const focusedCrewCount = focusedPlan ? (crewByService[normalizeServiceCode(focusedPlan.serviceCode)]?.length ?? 0) : 0
+  const profilePlan = trains.find(train => train.planID === profilePlanID) ?? null
+  const profileTraveler = profilePlan ? travelerByService[normalizeServiceCode(profilePlan.serviceCode)] : undefined
+  const profileWatchItem = profilePlan ? watchByPlanID[profilePlan.planID] : undefined
+  const profileCrewMembers = profilePlan ? (crewByService[normalizeServiceCode(profilePlan.serviceCode)] ?? []) : []
   const refreshOpt = REFRESH_OPTIONS.find(o => o.seconds === refreshSecs) ?? REFRESH_OPTIONS[1]
   const lastUpdate = data ? fmtClock(data.fetchedAt) : "--:--:--"
   const commandAsk = onAsk
@@ -1250,6 +2315,28 @@ export function EurostarCommandCenter({
   ]
   const activeUpdate = liveUpdates[pulseIndex % liveUpdates.length]
 
+  useEffect(() => {
+    if (selectedPlanID && !filteredTrains.some(train => train.planID === selectedPlanID)) {
+      setSelectedPlanID(null)
+    }
+  }, [filteredTrains, selectedPlanID])
+
+  useEffect(() => {
+    if (profilePlanID && !trains.some(train => train.planID === profilePlanID)) {
+      setProfilePlanID(null)
+    }
+  }, [profilePlanID, trains])
+
+  useEffect(() => {
+    if (!selectedStationCode && stationIntelligence[0]) {
+      setSelectedStationCode(nextDeparture ? originCode(nextDeparture) : stationIntelligence[0].code)
+      return
+    }
+    if (selectedStationCode && !stationIntelligence.some(station => station.code === selectedStationCode)) {
+      setSelectedStationCode(stationIntelligence[0]?.code ?? "")
+    }
+  }, [selectedStationCode, stationIntelligence, nextDeparture])
+
   return (
     <motion.div
       className={`eurostar-command-center eurostar-theme-${displayTheme} ${compact ? "eurostar-compact" : ""} fixed inset-0 z-[70] flex flex-col overflow-hidden`}
@@ -1283,6 +2370,72 @@ export function EurostarCommandCenter({
         .eurostar-theme-contrast main * { text-shadow: none !important; }
         .eurostar-theme-contrast main [style*="color:"] { color: #fff !important; }
         .eurostar-theme-contrast main button:focus-visible { outline: 3px solid #ffdf00; outline-offset: 2px; }
+        .eurostar-command-center .station-intelligence-force-dark,
+        .eurostar-command-center .station-intelligence-force-dark * {
+          color: #101828 !important;
+          -webkit-text-fill-color: #101828 !important;
+        }
+        .eurostar-command-center .station-actions-force-contrast button,
+        .eurostar-command-center .station-actions-force-contrast button * {
+          color: #1d4ed8 !important;
+          -webkit-text-fill-color: #1d4ed8 !important;
+        }
+        .eurostar-command-center .station-actions-force-contrast button {
+          background: #eff6ff !important;
+          border-color: #bfdbfe !important;
+        }
+        .eurostar-command-center .searchable-select-force-light button,
+        .eurostar-command-center .searchable-select-force-light input,
+        .eurostar-command-center .searchable-select-force-light div {
+          color: #101828;
+          -webkit-text-fill-color: #101828;
+        }
+        .eurostar-command-center .searchable-select-force-light > button,
+        .eurostar-command-center .searchable-select-force-light .absolute {
+          background: #ffffff !important;
+          border-color: #d0d5dd !important;
+        }
+        .eurostar-command-center .searchable-select-force-light input::placeholder {
+          color: #667085 !important;
+          -webkit-text-fill-color: #667085 !important;
+        }
+        .eurostar-command-center .chain-force-dark {
+          color: #101828 !important;
+          -webkit-text-fill-color: #101828 !important;
+        }
+        .eurostar-command-center .chain-force-dark [data-chain-tone="muted"] {
+          color: #667085 !important;
+          -webkit-text-fill-color: #667085 !important;
+        }
+        .eurostar-command-center .chain-force-dark [data-chain-tone="soft"] {
+          color: #475467 !important;
+          -webkit-text-fill-color: #475467 !important;
+        }
+        .eurostar-command-center .chain-force-dark [data-chain-tone="accent"] {
+          color: var(--chain-accent, #1d4ed8) !important;
+          -webkit-text-fill-color: var(--chain-accent, #1d4ed8) !important;
+        }
+        .eurostar-theme-dark .chain-header-title,
+        .eurostar-theme-contrast .chain-header-title {
+          color: #f8fafc !important;
+          -webkit-text-fill-color: #f8fafc !important;
+        }
+        .eurostar-theme-dark .chain-header-subtitle,
+        .eurostar-theme-contrast .chain-header-subtitle {
+          color: #cbd5e1 !important;
+          -webkit-text-fill-color: #cbd5e1 !important;
+        }
+        .eurostar-command-center .core-network-force-dark,
+        .eurostar-command-center .core-network-force-dark * {
+          -webkit-text-fill-color: inherit;
+        }
+        .eurostar-command-center .core-network-force-dark > div:first-child,
+        .eurostar-command-center .core-network-force-dark > div:first-child *,
+        .eurostar-command-center .core-network-force-dark > div:last-child,
+        .eurostar-command-center .core-network-force-dark > div:last-child * {
+          color: #101828 !important;
+          -webkit-text-fill-color: #101828 !important;
+        }
         .eurostar-compact main { padding-top: 12px !important; padding-bottom: 12px !important; }
         .eurostar-compact main section { margin-bottom: 12px !important; }
         .eurostar-compact .eurostar-service-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
@@ -1625,6 +2778,34 @@ export function EurostarCommandCenter({
           <CommandButton icon={<Globe2 size={15} />} label="Weather" query="What's the weather in London, Paris, Brussels and Amsterdam right now?" onAsk={commandAsk} />
         </section>
 
+        <section className="mb-5 grid gap-4 2xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.7fr)]">
+          <HeroNetworkCanvas
+            stations={stationIntelligence}
+            trains={displayTrains}
+            selectedStationCode={selectedStationCode}
+            onSelectStation={setSelectedStationCode}
+          />
+          <CrossBorderJourneyChain
+            plan={focusedPlan}
+            plans={filteredTrains}
+            traveler={focusedTraveler}
+            watchItem={focusedWatchItem}
+            crewCount={focusedCrewCount}
+            onAsk={commandAsk}
+            onOpenProfile={setProfilePlanID}
+            onSelectPlan={setSelectedPlanID}
+          />
+        </section>
+
+        <StationIntelligencePanel
+          stations={stationIntelligence.slice(0, 8)}
+          selectedStationCode={selectedStationCode}
+          onSelectStation={setSelectedStationCode}
+          trains={displayTrains}
+          onAsk={commandAsk}
+          onOpenProfile={setProfilePlanID}
+        />
+
         <section className="mb-5 overflow-hidden rounded-lg border bg-white px-5 py-4" style={{ borderColor: "#eaecf0" }}>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <SectionHeader icon={<Route size={16} />} title="Channel Corridors" detail="Today's network at a glance" />
@@ -1685,6 +2866,41 @@ export function EurostarCommandCenter({
                 </div>
               </div>
 
+              <div className="mb-4 grid grid-cols-[minmax(0,1.1fr)_minmax(0,.95fr)_minmax(0,.95fr)_auto] gap-2 max-lg:grid-cols-1">
+                <label className="flex items-center gap-2 rounded-lg border bg-[#f8fafc] px-3 py-2.5 transition focus-within:border-[#7aa2d6] focus-within:shadow-[0_0_0_2px_rgba(0,51,102,.12)]" style={{ borderColor: "#e4e7ec" }}>
+                  <Search size={14} style={{ color: "#667085" }} />
+                  <input
+                    value={serviceSearch}
+                    onChange={event => setServiceSearch(event.target.value)}
+                    placeholder="Search train number"
+                    className="w-full bg-transparent text-sm outline-none"
+                    style={{ color: INK, WebkitTextFillColor: INK, colorScheme: "light", caretColor: INK }}
+                  />
+                </label>
+                <label className="rounded-lg border bg-[#f8fafc] px-3 py-2.5" style={{ borderColor: "#e4e7ec" }}>
+                  <div className="mb-1 text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: "#667085" }}>Origin</div>
+                  <select value={originSearch} onChange={event => setOriginSearch(event.target.value)} className="w-full bg-transparent text-sm outline-none" style={{ color: INK, WebkitTextFillColor: INK, colorScheme: "light" }}>
+                    <option value="">All origins</option>
+                    {originOptions.map(option => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                </label>
+                <label className="rounded-lg border bg-[#f8fafc] px-3 py-2.5" style={{ borderColor: "#e4e7ec" }}>
+                  <div className="mb-1 text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: "#667085" }}>Destination</div>
+                  <select value={destinationSearch} onChange={event => setDestinationSearch(event.target.value)} className="w-full bg-transparent text-sm outline-none" style={{ color: INK, WebkitTextFillColor: INK, colorScheme: "light" }}>
+                    <option value="">All destinations</option>
+                    {destinationOptions.map(option => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => { setServiceSearch(""); setOriginSearch(""); setDestinationSearch("") }}
+                  className="rounded-lg border bg-white px-3 py-2.5 text-xs font-black"
+                  style={{ borderColor: "#d0d5dd", color: "#475467" }}
+                >
+                  Clear
+                </button>
+              </div>
+
               {(watchlist?.items?.length ?? 0) > 0 && (
                 <div
                   className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3"
@@ -1717,20 +2933,6 @@ export function EurostarCommandCenter({
                 </div>
               )}
 
-              <AnimatePresence initial={false}>
-                {selectedPlan && (
-                  <div className="mb-3">
-                    <ServiceDetailPanel
-                      plan={selectedPlan}
-                      crewMembers={crewByService[normalizeServiceCode(selectedPlan.serviceCode)] ?? []}
-                      traveler={travelerByService[normalizeServiceCode(selectedPlan.serviceCode)]}
-                      onAsk={commandAsk}
-                      onClose={() => setSelectedPlanID(null)}
-                    />
-                  </div>
-                )}
-              </AnimatePresence>
-
               <div className="eurostar-service-grid grid grid-cols-2 gap-3 max-lg:grid-cols-1">
                 {loading && !data && Array.from({ length: 8 }).map((_, i) => (
                   <div key={i} className="h-44 animate-pulse rounded-lg" style={{ background: "#f2f4f7" }} />
@@ -1744,16 +2946,32 @@ export function EurostarCommandCenter({
                 {filteredTrains.map(plan => {
                   const selected = selectedPlanID === plan.planID
                   return (
-                    <ServiceRow
-                      key={plan.planID}
-                      plan={plan}
-                      active={isTrainActive(plan, now)}
-                      hasCrew={crewedServices.has(normalizeServiceCode(plan.serviceCode))}
-                      traveler={travelerByService[normalizeServiceCode(plan.serviceCode)]}
-                      watchItem={watchByPlanID[plan.planID]}
-                      selected={selected}
-                      onSelect={() => setSelectedPlanID(current => current === plan.planID ? null : plan.planID)}
-                    />
+                    <div key={plan.planID} className={selected ? "col-span-full" : undefined}>
+                      <ServiceRow
+                        plan={plan}
+                        active={isTrainActive(plan, now)}
+                        hasCrew={crewedServices.has(normalizeServiceCode(plan.serviceCode))}
+                        traveler={travelerByService[normalizeServiceCode(plan.serviceCode)]}
+                        watchItem={watchByPlanID[plan.planID]}
+                        selected={selected}
+                        onSelect={() => setSelectedPlanID(current => current === plan.planID ? null : plan.planID)}
+                      />
+                      <AnimatePresence initial={false}>
+                        {selected && (
+                          <div className="mt-3">
+                            <ServiceDetailPanel
+                              plan={plan}
+                              crewMembers={crewByService[normalizeServiceCode(plan.serviceCode)] ?? []}
+                              traveler={travelerByService[normalizeServiceCode(plan.serviceCode)]}
+                              watchItem={watchByPlanID[plan.planID]}
+                              onAsk={commandAsk}
+                              onClose={() => setSelectedPlanID(null)}
+                              onOpenProfile={setProfilePlanID}
+                            />
+                          </div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   )
                 })}
               </div>
@@ -1811,6 +3029,19 @@ export function EurostarCommandCenter({
           </aside>
         </section>
       </main>
+
+      <AnimatePresence>
+        {profilePlan && (
+          <EurostarServiceProfile
+            plan={profilePlan}
+            crewMembers={profileCrewMembers}
+            traveler={profileTraveler}
+            watchItem={profileWatchItem}
+            onClose={() => setProfilePlanID(null)}
+            onAsk={commandAsk}
+          />
+        )}
+      </AnimatePresence>
 
       <footer className="shrink-0 border-t bg-white px-5 py-2.5" style={{ borderColor: "#e4e7ec" }}>
         <div className="flex flex-wrap items-center gap-3 text-[11px] font-semibold" style={{ color: "#667085" }}>

@@ -159,13 +159,23 @@ function ObservabilityPanel({ toolEvents }: { readonly toolEvents: ToolEvent[] }
             <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: "#94a3b8" }}>
               <Wrench size={12} /> Tool Call
             </div>
-            <div className="text-xs" style={{ color: "#e2e8f0" }}>
-              <div><span style={{ color: "#94a3b8" }}>Chosen tool:</span> {chosenTool}</div>
+            <div className="rounded-xl border px-3 py-3" style={{ borderColor: "rgba(96,165,250,0.22)", background: "linear-gradient(180deg, rgba(30,41,59,.92), rgba(2,6,23,.92))" }}>
+              <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#93c5fd" }}>
+                Chosen tool
+              </div>
+              <div className="mt-1 text-sm font-black break-all" style={{ color: "#f8fafc" }}>
+                {chosenTool}
+              </div>
             </div>
             {args && (
-              <pre className="mt-2 overflow-x-auto rounded-lg border p-2 text-[10px]" style={{ borderColor: "rgba(148,163,184,0.12)", background: "rgba(2,6,23,0.7)", color: "#cbd5e1" }}>
+              <div className="mt-3">
+                <div className="mb-1 text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: "#94a3b8" }}>
+                  Arguments
+                </div>
+                <pre className="overflow-x-auto rounded-xl border p-3 text-[11px] leading-5" style={{ borderColor: "rgba(96,165,250,0.16)", background: "rgba(2,6,23,0.92)", color: "#dbeafe" }}>
                 {args}
-              </pre>
+                </pre>
+              </div>
             )}
           </div>
         </div>

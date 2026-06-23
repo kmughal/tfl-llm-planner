@@ -113,6 +113,11 @@ type AlertItem = {
   tone: "info" | "warning" | "critical" | "success"
   title: string
   message: string
+  reasonLabel?: string
+  reasonDetail?: string
+  impactLabel?: string
+  impactDetail?: string
+  operatorHint?: string
   serviceCode?: string
   timeLabel: string
   routeLabel: string
@@ -205,6 +210,33 @@ function toneMeta(tone: AlertItem["tone"]) {
   }
 }
 
+function criticalCardStyle(meta: ReturnType<typeof toneMeta>, tone: AlertItem["tone"]) {
+  if (tone !== "critical") return { borderColor: meta.border, background: meta.bg }
+  return {
+    borderColor: "#ef4444",
+    background: "linear-gradient(180deg, rgba(254,242,242,0.99), rgba(255,255,255,0.97))",
+    boxShadow: "0 0 0 1px rgba(239,68,68,.12), 0 18px 40px rgba(239,68,68,.14)",
+  }
+}
+
+function matchesAlertSearch(alert: AlertItem, query: string) {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return true
+  return [
+    alert.title,
+    alert.message,
+    alert.reasonLabel ?? "",
+    alert.reasonDetail ?? "",
+    alert.impactLabel ?? "",
+    alert.impactDetail ?? "",
+    alert.operatorHint ?? "",
+    alert.serviceCode ?? "",
+    alert.routeLabel,
+    alert.timeLabel,
+    alert.matchedRules?.join(" ") ?? "",
+  ].some(value => value.toLowerCase().includes(needle))
+}
+
 function defaultRules(): SavedRule[] {
   return DEFAULT_RULES.map(rule => ({ ...rule }))
 }
@@ -293,6 +325,19 @@ function buildAlerts(data: NotificationData): AlertItem[] {
       tone,
       title: tone === "critical" ? `Service ${item.serviceCode} needs intervention` : `Service ${item.serviceCode} needs attention`,
       message: item.reasons[0] ?? "Live operational risk detected on this service.",
+      reasonLabel: item.cancelled ? "Cancellation or suspension" : item.crewLinked ? "Operational watchlist trigger" : "Crew coverage gap",
+      reasonDetail: item.reasons.join(" · ") || "The watchlist promoted this service from live operational signals.",
+      impactLabel: item.cancelled ? "Passenger impact" : item.active ? "Service impact" : "Readiness impact",
+      impactDetail: item.cancelled
+        ? "This train is not expected to operate normally, so onward plans and station flows may need intervention."
+        : item.active
+          ? "The service is still active, but current operating signals suggest elevated risk."
+          : "The service is being watched before departure because the operating picture is not fully settled.",
+      operatorHint: item.cancelled
+        ? "Check alternatives, station handling, and onward connections first."
+        : item.crewLinked
+          ? "Inspect the linked plan and watch for further deterioration."
+          : "Confirm whether roster coverage can still be linked before departure.",
       serviceCode: item.serviceCode,
       timeLabel: fmtTime(item.departureDateTime),
       routeLabel: `${item.origin} - ${item.destination}`,
@@ -311,6 +356,13 @@ function buildAlerts(data: NotificationData): AlertItem[] {
       tone: entry.mins !== null && entry.mins <= 10 ? "warning" : "info",
       title: `${entry.plan.serviceCode} departs soon`,
       message: `${stationName(originCode(entry.plan))} to ${stationName(destCode(entry.plan))} leaves in ${entry.mins} minutes.`,
+      reasonLabel: entry.mins !== null && entry.mins <= 10 ? "Departure window is closing" : "Near departure watch",
+      reasonDetail: entry.mins !== null && entry.mins <= 10
+        ? "Boarding and platform decisions now matter because departure is imminent."
+        : "This service is approaching departure and is being promoted for operator awareness.",
+      impactLabel: "Operator impact",
+      impactDetail: "Late changes here are more likely to affect platform flow, customer messaging, and last-minute routing decisions.",
+      operatorHint: "Use this as a prompt to confirm readiness and passenger flow at origin.",
       serviceCode: entry.plan.serviceCode,
       timeLabel: fmtTime(entry.plan.departureDateTime),
       routeLabel: `${stationName(originCode(entry.plan))} - ${stationName(destCode(entry.plan))}`,
@@ -329,6 +381,11 @@ function buildAlerts(data: NotificationData): AlertItem[] {
       message: mins !== null && mins >= 0
         ? `${lastParis.serviceCode} is the final Paris departure and leaves in ${mins} minutes.`
         : `${lastParis.serviceCode} is the final Paris departure scheduled tonight.`,
+      reasonLabel: "Final departure on this corridor",
+      reasonDetail: "This is the last Paris to London Eurostar scheduled for the selected date.",
+      impactLabel: "Recovery impact",
+      impactDetail: "If this train is disrupted, passenger recovery options narrow quickly and support demand usually rises.",
+      operatorHint: "Watch closely for crowding, gate timing, and disruption escalation on the final departure.",
       serviceCode: lastParis.serviceCode,
       timeLabel: fmtTime(lastParis.departureDateTime),
       routeLabel: "Paris Gare du Nord - London St Pancras",
@@ -347,6 +404,11 @@ function buildAlerts(data: NotificationData): AlertItem[] {
       tone: item.totalCount >= 850 ? "critical" : "warning",
       title: `${item.serviceCode} is carrying a heavy load`,
       message: `${item.totalCount} passengers are currently assigned across ${item.origin} to ${item.destination}.`,
+      reasonLabel: item.totalCount >= 850 ? "Exceptional passenger load" : "High passenger load",
+      reasonDetail: "Traveler summary is reporting a larger-than-normal onboard count for this service.",
+      impactLabel: "Crowding impact",
+      impactDetail: "Heavier load increases the chance of slower boarding, denser dwell time, and more visible disruption if anything changes.",
+      operatorHint: "Check whether this train needs extra attention for boarding, passenger messaging, or recovery planning.",
       serviceCode: item.serviceCode,
       timeLabel: "Load watch",
       routeLabel: `${item.origin} - ${item.destination}`,
@@ -360,6 +422,11 @@ function buildAlerts(data: NotificationData): AlertItem[] {
       tone: "success",
       title: "Eurostar network is currently settled",
       message: "No urgent departures, crew gaps, or disruption spikes are being promoted right now.",
+      reasonLabel: "No active triggers",
+      reasonDetail: "The current feed did not elevate any service into a warning or critical state.",
+      impactLabel: "Operational posture",
+      impactDetail: "The network can be monitored in a steady-state mode while still watching for the next change.",
+      operatorHint: "Use the saved rules and live feed below for routine monitoring.",
       timeLabel: "Live now",
       routeLabel: "Cross-channel network",
     })
@@ -387,6 +454,11 @@ function buildRuleMatches(data: NotificationData, rules: SavedRule[]): AlertItem
             tone: "critical",
             title: `${item.serviceCode} matched ${rule.label.toLowerCase()}`,
             message: item.reasons[0] ?? "Critical disruption detected on the watched service.",
+            reasonLabel: "Rule trigger",
+            reasonDetail: "Your critical disruption rule matched a service already marked critical in the watchlist.",
+            impactLabel: "Why this matters",
+            impactDetail: "This rule is surfacing the most urgent services so they remain visible even if other alerts increase.",
+            operatorHint: "Start with the cancellation or disruption cause, then check downstream station and connection effects.",
             serviceCode: item.serviceCode,
             timeLabel: fmtTime(item.departureDateTime),
             routeLabel: `${item.origin} - ${item.destination}`,
@@ -403,6 +475,11 @@ function buildRuleMatches(data: NotificationData, rules: SavedRule[]): AlertItem
             tone: "warning",
             title: `${item.serviceCode} has no crew link`,
             message: "This service is being tracked without a linked crew roster.",
+            reasonLabel: "Roster link missing",
+            reasonDetail: "The service appears in the train plan but is not currently matched to crew coverage data.",
+            impactLabel: "Readiness risk",
+            impactDetail: "A missing crew link can mean incomplete operating coverage or simply a mapping gap, but it still needs checking.",
+            operatorHint: "Confirm whether this is a true coverage issue or a data-linking problem.",
             serviceCode: item.serviceCode,
             timeLabel: fmtTime(item.departureDateTime),
             routeLabel: `${item.origin} - ${item.destination}`,
@@ -419,6 +496,11 @@ function buildRuleMatches(data: NotificationData, rules: SavedRule[]): AlertItem
             tone: item.totalCount >= 850 ? "critical" : "warning",
             title: `${item.serviceCode} matched high-load rule`,
             message: `${item.totalCount} passengers are currently assigned across ${item.origin} to ${item.destination}.`,
+            reasonLabel: "Load threshold crossed",
+            reasonDetail: "This rule promotes services once traveler load exceeds the configured watch threshold.",
+            impactLabel: "Passenger handling impact",
+            impactDetail: "High load services are more sensitive to disruption because customer volumes are already elevated.",
+            operatorHint: "Review cabin mix, likely boarding pressure, and any linked operational issues.",
             serviceCode: item.serviceCode,
             timeLabel: "Load watch",
             routeLabel: `${item.origin} - ${item.destination}`,
@@ -440,6 +522,11 @@ function buildRuleMatches(data: NotificationData, rules: SavedRule[]): AlertItem
             message: mins !== null && mins >= 0
               ? `${lastParis.serviceCode} is your last Paris to London train tonight and leaves in ${mins} minutes.`
               : `${lastParis.serviceCode} is the final Paris to London departure on this date.`,
+            reasonLabel: "Last-train rule matched",
+            reasonDetail: "Your watch rule found the final Paris to London service in today's schedule.",
+            impactLabel: "Recovery impact",
+            impactDetail: "If this service degrades, there are fewer same-day alternatives for affected passengers.",
+            operatorHint: "Use this as an early warning for end-of-day passenger recovery risk.",
             serviceCode: lastParis.serviceCode,
             timeLabel: fmtTime(lastParis.departureDateTime),
             routeLabel: "Paris Gare du Nord - London St Pancras",
@@ -460,6 +547,11 @@ function buildRuleMatches(data: NotificationData, rules: SavedRule[]): AlertItem
             tone: matchedWatch.severity === "critical" ? "critical" : "warning",
             title: `${matchedWatch.serviceCode} changed state`,
             message: matchedWatch.reasons[0] ?? "The watched service now requires attention.",
+            reasonLabel: "Watched service changed",
+            reasonDetail: "A saved rule is attached to this service and the live watchlist now reports a higher-risk state.",
+            impactLabel: "Attention needed",
+            impactDetail: "This service is important to you and now has a live operational signal worth checking.",
+            operatorHint: "Open the plan or related route context to see whether the issue is isolated or spreading.",
             serviceCode: matchedWatch.serviceCode,
             timeLabel: fmtTime(matchedWatch.departureDateTime),
             routeLabel: `${matchedWatch.origin} - ${matchedWatch.destination}`,
@@ -475,6 +567,11 @@ function buildRuleMatches(data: NotificationData, rules: SavedRule[]): AlertItem
             message: mins !== null && mins >= 0
               ? `Watched service ${matchedTrain.serviceCode} departs in ${mins} minutes and is currently on time.`
               : `Watched service ${matchedTrain.serviceCode} is present in today's plan.`,
+            reasonLabel: "Saved watch matched",
+            reasonDetail: "Your saved service rule found this train in the current Eurostar operating plan.",
+            impactLabel: "Monitoring state",
+            impactDetail: "The train is visible and can be followed even when no active disruption has been raised yet.",
+            operatorHint: "Use this as a convenience monitor for a service you care about.",
             serviceCode: matchedTrain.serviceCode,
             timeLabel: fmtTime(matchedTrain.departureDateTime),
             routeLabel: `${stationName(originCode(matchedTrain))} - ${stationName(destCode(matchedTrain))}`,
@@ -500,6 +597,11 @@ function buildRuleMatches(data: NotificationData, rules: SavedRule[]): AlertItem
             message: mins !== null && mins >= 0
               ? `${plan.serviceCode} departs in ${mins} minutes on your watched route.`
               : `${plan.serviceCode} is scheduled on your watched route today.`,
+            reasonLabel: "Saved corridor watch matched",
+            reasonDetail: "A route-level watch found a scheduled service on the corridor you are monitoring.",
+            impactLabel: "Corridor visibility",
+            impactDetail: "This keeps route coverage visible even before a train enters warning or critical state.",
+            operatorHint: "Helpful for monitoring a whole corridor rather than a single service.",
             serviceCode: plan.serviceCode,
             timeLabel: fmtTime(plan.departureDateTime),
             routeLabel: `${origin} - ${destination}`,
@@ -524,6 +626,47 @@ function MetricTile({ label, value, sub, tone }: { readonly label: string; reado
       </div>
       <div className="mt-2 text-3xl font-black tabular-nums" style={{ color: INK }}>{value}</div>
       <div className="mt-1 text-xs" style={{ color: "#667085" }}>{sub}</div>
+    </div>
+  )
+}
+
+function AlertExplanation({
+  alert,
+  accent,
+  subtle,
+}: {
+  readonly alert: AlertItem
+  readonly accent: string
+  readonly subtle: string
+}) {
+  if (!alert.reasonDetail && !alert.impactDetail && !alert.operatorHint) return null
+
+  return (
+    <div className="mt-4 grid gap-2 md:grid-cols-3">
+      <div className="rounded-2xl border px-3 py-3" style={{ borderColor: "#e2e8f0", background: "rgba(255,255,255,0.82)" }}>
+        <div className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: accent }}>
+          {alert.reasonLabel ?? "Why this surfaced"}
+        </div>
+        <div className="mt-1 text-xs leading-5" style={{ color: subtle }}>
+          {alert.reasonDetail ?? alert.message}
+        </div>
+      </div>
+      <div className="rounded-2xl border px-3 py-3" style={{ borderColor: "#e2e8f0", background: "rgba(255,255,255,0.82)" }}>
+        <div className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: accent }}>
+          {alert.impactLabel ?? "What it means"}
+        </div>
+        <div className="mt-1 text-xs leading-5" style={{ color: subtle }}>
+          {alert.impactDetail ?? "This signal is useful because it changes how the service should be watched."}
+        </div>
+      </div>
+      <div className="rounded-2xl border px-3 py-3" style={{ borderColor: "#e2e8f0", background: "rgba(255,255,255,0.82)" }}>
+        <div className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: accent }}>
+          Operator read
+        </div>
+        <div className="mt-1 text-xs leading-5" style={{ color: subtle }}>
+          {alert.operatorHint ?? "Use the related ask action to drill into the live service context."}
+        </div>
+      </div>
     </div>
   )
 }
@@ -606,7 +749,7 @@ function SearchableSelect({
           style={{ borderColor: "#d0d5dd" }}
         >
           <div className="border-b px-3 py-2.5" style={{ borderColor: "#eef2f6" }}>
-            <div className="flex items-center gap-2 rounded-xl border bg-[#f8fafc] px-3" style={{ borderColor: "#e2e8f0" }}>
+            <div className="flex items-center gap-2 rounded-xl border bg-[#f8fafc] px-3 transition focus-within:border-[#7aa2d6] focus-within:shadow-[0_0_0_2px_rgba(0,51,102,.12)]" style={{ borderColor: "#e2e8f0" }}>
               <Search size={14} style={{ color: "#667085" }} />
               <input
                 autoFocus
@@ -614,7 +757,7 @@ function SearchableSelect({
                 onChange={event => setQuery(event.target.value)}
                 placeholder="Search services, cities, route, time…"
                 className="w-full bg-transparent py-2.5 text-sm outline-none"
-                style={{ color: INK }}
+                style={{ color: INK, WebkitTextFillColor: INK, colorScheme: "light", caretColor: INK }}
               />
             </div>
           </div>
@@ -671,6 +814,7 @@ export function EurostarNotifications({
   const [catalog, setCatalog] = useState<EurostarCatalogResponse | null>(() => loadStoredCatalog(todayDate()))
   const [selectedService, setSelectedService] = useState("")
   const [selectedRoute, setSelectedRoute] = useState("")
+  const [alertSearch, setAlertSearch] = useState("")
   const fetchRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const cdRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -732,6 +876,14 @@ export function EurostarNotifications({
 
   const alerts = useMemo(() => data ? buildAlerts(data) : [], [data])
   const ruleAlerts = useMemo(() => data ? buildRuleMatches(data, rules) : [], [data, rules])
+  const criticalAlerts = useMemo(
+    () => alerts.filter(alert => alert.tone === "critical").filter(alert => matchesAlertSearch(alert, alertSearch)),
+    [alerts, alertSearch],
+  )
+  const filteredAlerts = useMemo(
+    () => alerts.filter(alert => alert.tone !== "critical").filter(alert => matchesAlertSearch(alert, alertSearch)),
+    [alerts, alertSearch],
+  )
   const criticalCount = alerts.filter(alert => alert.tone === "critical").length
   const warningCount = alerts.filter(alert => alert.tone === "warning").length
   const departureCount = alerts.filter(alert => alert.id.startsWith("depart-")).length
@@ -865,7 +1017,7 @@ export function EurostarNotifications({
             value={date}
             onChange={event => setDate(event.target.value)}
             className="rounded-lg border px-3 py-2 text-sm"
-            style={{ borderColor: "#d0d5dd", color: INK }}
+            style={{ borderColor: "#d0d5dd", color: INK, background: "white", WebkitTextFillColor: INK, colorScheme: "light" }}
           />
           <button type="button" onClick={() => void load()} className="flex h-9 w-9 items-center justify-center rounded-lg border bg-white" style={{ borderColor: "#d0d5dd", color: "#475467" }}>
             <motion.span animate={loading ? { rotate: 360 } : { rotate: 0 }} transition={{ duration: 0.7, repeat: loading ? Infinity : 0, ease: "linear" }} className="flex">
@@ -892,31 +1044,277 @@ export function EurostarNotifications({
           </div>
         )}
 
-        <section className="mb-5 grid grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)] gap-4 max-xl:grid-cols-1">
-          <div className="relative overflow-hidden rounded-[28px] border p-5" style={{ background: `linear-gradient(135deg, ${EUROSTAR_BLUE} 0%, #0f2f5f 58%, #111827 100%)`, borderColor: "rgba(0,51,102,0.18)", color: "white" }}>
-            <motion.div
-              className="pointer-events-none absolute inset-x-0 top-0 h-px"
-              style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.8), transparent)" }}
-              animate={{ x: ["-100%", "100%"] }}
-              transition={{ duration: 3.8, repeat: Infinity, ease: "linear" }}
-            />
-            <div className="mb-2 flex items-center gap-2">
-              <motion.span className="h-2 w-2 rounded-full" style={{ background: "#67e8f9" }} animate={{ opacity: [1, 0.25, 1], scale: [1, 1.8, 1] }} transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }} />
-              <p className="text-xs font-black uppercase tracking-[0.18em]" style={{ color: "#bfdbfe" }}>Notification center</p>
-            </div>
-            <h2 className="text-3xl font-black tracking-tight">Live Eurostar alerting</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6" style={{ color: "rgba(255,255,255,0.72)" }}>
-              This page turns your current Eurostar feeds into operational notifications for near departures, last trains, disruptions, crowding and crew-linked risk.
-            </p>
-            <div className="mt-5 grid grid-cols-4 gap-3 max-md:grid-cols-2">
-              <MetricTile label="Alerts live" value={alerts.length} sub="currently surfaced on this page" tone="#7dd3fc" />
-              <MetricTile label="Critical" value={criticalCount} sub="cancelled, suspended or severe risk" tone="#ef4444" />
-              <MetricTile label="Watch" value={warningCount} sub="requires operator attention" tone="#f59e0b" />
-              <MetricTile label="Soon" value={departureCount} sub="departures inside 30 minutes" tone={EUROSTAR_GOLD} />
-            </div>
+        <div className="grid items-start grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)] gap-4 max-xl:grid-cols-1">
+          <div className="space-y-5">
+            <section className="relative self-start overflow-hidden rounded-[28px] border p-5" style={{ background: `linear-gradient(135deg, ${EUROSTAR_BLUE} 0%, #0f2f5f 58%, #111827 100%)`, borderColor: "rgba(0,51,102,0.18)", color: "white" }}>
+              <motion.div
+                className="pointer-events-none absolute inset-x-0 top-0 h-px"
+                style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.8), transparent)" }}
+                animate={{ x: ["-100%", "100%"] }}
+                transition={{ duration: 3.8, repeat: Infinity, ease: "linear" }}
+              />
+              <div className="mb-2 flex items-center gap-2">
+                <motion.span className="h-2 w-2 rounded-full" style={{ background: "#67e8f9" }} animate={{ opacity: [1, 0.25, 1], scale: [1, 1.8, 1] }} transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }} />
+                <p className="text-xs font-black uppercase tracking-[0.18em]" style={{ color: "#bfdbfe" }}>Notification center</p>
+              </div>
+              <h2 className="text-3xl font-black tracking-tight">Live Eurostar alerting</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6" style={{ color: "rgba(255,255,255,0.72)" }}>
+                This page turns your current Eurostar feeds into operational notifications for near departures, last trains, disruptions, crowding and crew-linked risk.
+              </p>
+              <div className="mt-5 grid grid-cols-4 gap-3 max-md:grid-cols-2">
+                <MetricTile label="Alerts live" value={alerts.length} sub="currently surfaced on this page" tone="#7dd3fc" />
+                <MetricTile label="Critical" value={criticalCount} sub="cancelled, suspended or severe risk" tone="#ef4444" />
+                <MetricTile label="Watch" value={warningCount} sub="requires operator attention" tone="#f59e0b" />
+                <MetricTile label="Soon" value={departureCount} sub="departures inside 30 minutes" tone={EUROSTAR_GOLD} />
+              </div>
+            </section>
+
+            <section className="rounded-[28px] border bg-white p-4" style={{ borderColor: "#e2e8f0" }}>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-black uppercase tracking-[0.16em]" style={{ color: INK }}>Alert search</div>
+                  <div className="text-xs" style={{ color: "#667085" }}>Filter critical and live alerts by service, route, time, or message</div>
+                </div>
+                <div className="min-w-[280px] flex-1 max-w-md">
+                  <label className="flex items-center gap-2 rounded-xl border bg-[#f8fafc] px-3 py-2.5 transition focus-within:border-[#7aa2d6] focus-within:shadow-[0_0_0_2px_rgba(0,51,102,.12)]" style={{ borderColor: "#e2e8f0" }}>
+                    <Search size={14} style={{ color: "#667085" }} />
+                    <input
+                      value={alertSearch}
+                      onChange={event => setAlertSearch(event.target.value)}
+                      placeholder="Search alerts, service, route, issue..."
+                      className="w-full bg-transparent text-sm outline-none"
+                      style={{ color: INK, WebkitTextFillColor: INK, colorScheme: "light", caretColor: INK }}
+                    />
+                  </label>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[28px] border bg-white p-4" style={{ borderColor: "#fecaca", background: "linear-gradient(180deg, rgba(255,245,245,0.98), rgba(255,255,255,0.98))" }}>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.16em]" style={{ color: "#991b1b" }}>
+                    <Siren size={15} />
+                    Critical alerts
+                  </div>
+                  <div className="text-xs" style={{ color: "#7f1d1d" }}>Highest-priority Eurostar issues surfaced first</div>
+                </div>
+                <div className="rounded-full border px-3 py-1.5 text-[11px] font-black" style={{ borderColor: "#fecaca", background: "#fff1f2", color: "#b91c1c" }}>
+                  {criticalAlerts.length} visible
+                </div>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-2">
+                {criticalAlerts.map(alert => {
+                  const meta = toneMeta(alert.tone)
+                  return (
+                    <motion.div
+                      key={alert.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0, boxShadow: ["0 0 0 rgba(239,68,68,0)", "0 0 0 4px rgba(239,68,68,.08)", "0 0 0 rgba(239,68,68,0)"] }}
+                      transition={{ boxShadow: { duration: 1.2, repeat: Infinity, ease: "easeInOut" } }}
+                      className="rounded-[24px] border px-4 py-4"
+                      style={criticalCardStyle(meta, alert.tone)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <motion.span
+                              className="flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-600"
+                              animate={{ opacity: [0.6, 1, 0.6], scale: [1, 1.08, 1] }}
+                              transition={{ duration: 0.9, repeat: Infinity, ease: "easeInOut" }}
+                            >
+                              <Siren size={13} />
+                            </motion.span>
+                            <div className="text-base font-black" style={{ color: INK }}>{alert.title}</div>
+                          </div>
+                          <div className="mt-1 text-sm" style={{ color: "#475467" }}>{alert.message}</div>
+                        </div>
+                        <span className="rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em]" style={{ borderColor: meta.border, color: meta.text, background: "rgba(255,255,255,0.72)" }}>
+                          {alert.tone}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-3 gap-2">
+                        <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: "#e2e8f0", background: "rgba(255,255,255,0.74)" }}>
+                          <div className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: "#667085" }}>Time</div>
+                          <div className="mt-1 text-sm font-black" style={{ color: INK }}>{alert.timeLabel}</div>
+                        </div>
+                        <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: "#e2e8f0", background: "rgba(255,255,255,0.74)" }}>
+                          <div className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: "#667085" }}>Route</div>
+                          <div className="mt-1 text-sm font-black" style={{ color: INK }}>{alert.routeLabel}</div>
+                        </div>
+                        <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: "#e2e8f0", background: "rgba(255,255,255,0.74)" }}>
+                          <div className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: "#667085" }}>Service</div>
+                          <div className="mt-1 text-sm font-black" style={{ color: INK }}>{alert.serviceCode ?? "Network"}</div>
+                        </div>
+                      </div>
+
+                      <AlertExplanation alert={alert} accent="#b91c1c" subtle="#475467" />
+
+                      {onAsk && alert.ask && (
+                        <button
+                          type="button"
+                          className="mt-4 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-black"
+                          style={{ borderColor: "#fecaca", background: "#fff1f2", color: "#b91c1c" }}
+                          onClick={() => { onClose(); onAsk(alert.ask!) }}
+                        >
+                          <Siren size={12} />
+                          Ask from this alert
+                        </button>
+                      )}
+                    </motion.div>
+                  )
+                })}
+                {criticalAlerts.length === 0 && (
+                  <div className="col-span-full rounded-[24px] border border-dashed px-6 py-8 text-center" style={{ borderColor: "#fecaca", color: "#7f1d1d" }}>
+                    No critical alerts match the current search.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-[28px] border bg-white p-4" style={{ borderColor: "#e2e8f0" }}>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-black uppercase tracking-[0.16em]" style={{ color: INK }}>Saved rule matches</div>
+                  <div className="text-xs" style={{ color: "#667085" }}>Alerts produced specifically by your enabled notification rules</div>
+                </div>
+                <div className="rounded-full border px-3 py-1.5 text-[11px] font-black" style={{ borderColor: "#dbe7f3", background: "#f8fbff", color: "#475467" }}>
+                  {ruleAlerts.length} matches
+                </div>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-2">
+                {ruleAlerts.map(alert => {
+                  const meta = toneMeta(alert.tone)
+                  return (
+                    <motion.div
+                      key={alert.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={alert.tone === "critical"
+                        ? { opacity: 1, y: 0, boxShadow: ["0 0 0 rgba(239,68,68,0)", "0 0 0 4px rgba(239,68,68,.08)", "0 0 0 rgba(239,68,68,0)"] }
+                        : { opacity: 1, y: 0 }}
+                      transition={alert.tone === "critical" ? { boxShadow: { duration: 1.2, repeat: Infinity, ease: "easeInOut" } } : undefined}
+                      className="rounded-[24px] border px-4 py-4"
+                      style={criticalCardStyle(meta, alert.tone)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            {alert.tone === "critical" ? (
+                              <motion.span
+                                className="flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-600"
+                                animate={{ opacity: [0.6, 1, 0.6], scale: [1, 1.08, 1] }}
+                                transition={{ duration: 0.9, repeat: Infinity, ease: "easeInOut" }}
+                              >
+                                <Siren size={13} />
+                              </motion.span>
+                            ) : (
+                              <span className="h-2.5 w-2.5 rounded-full" style={{ background: meta.dot }} />
+                            )}
+                            <div className="text-base font-black" style={{ color: INK }}>{alert.title}</div>
+                          </div>
+                          <div className="mt-1 text-sm" style={{ color: "#475467" }}>{alert.message}</div>
+                        </div>
+                        <span className="rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em]" style={{ borderColor: meta.border, color: meta.text, background: "rgba(255,255,255,0.72)" }}>
+                          {alert.matchedRules?.[0] ?? alert.tone}
+                        </span>
+                      </div>
+                      <AlertExplanation alert={alert} accent={meta.text} subtle="#475467" />
+                      {onAsk && alert.ask && (
+                        <button type="button" className="mt-4 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-black" style={{ borderColor: "#bfdbfe", background: "#eff6ff", color: EUROSTAR_BLUE }} onClick={() => { onClose(); onAsk(alert.ask!) }}>
+                          <Bell size={12} />
+                          Ask from this match
+                        </button>
+                      )}
+                    </motion.div>
+                  )
+                })}
+                {ruleAlerts.length === 0 && (
+                  <div className="col-span-full rounded-[24px] border border-dashed px-6 py-8 text-center" style={{ borderColor: "#d0d5dd", color: "#667085" }}>
+                    No enabled rules are matching the live Eurostar feed right now.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-[28px] border bg-white p-4" style={{ borderColor: "#e2e8f0" }}>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-black uppercase tracking-[0.16em]" style={{ color: INK }}>Live alert feed</div>
+                  <div className="text-xs" style={{ color: "#667085" }}>Auto-composed from watchlist, departures, last train and traveler load, excluding criticals above</div>
+                </div>
+                <div className="rounded-full border px-3 py-1.5 text-[11px] font-black" style={{ borderColor: "#dbe7f3", background: "#f8fbff", color: "#475467" }}>
+                  {filteredAlerts.length} visible
+                </div>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-2">
+                {filteredAlerts.map(alert => {
+                  const meta = toneMeta(alert.tone)
+                  return (
+                    <motion.div
+                      key={alert.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="rounded-[24px] border px-4 py-4"
+                      style={{ borderColor: meta.border, background: meta.bg }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="h-2.5 w-2.5 rounded-full" style={{ background: meta.dot }} />
+                            <div className="text-base font-black" style={{ color: INK }}>{alert.title}</div>
+                          </div>
+                          <div className="mt-1 text-sm" style={{ color: "#475467" }}>{alert.message}</div>
+                        </div>
+                        <span className="rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em]" style={{ borderColor: meta.border, color: meta.text, background: "rgba(255,255,255,0.72)" }}>
+                          {alert.tone}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-3 gap-2">
+                        <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: "#e2e8f0", background: "rgba(255,255,255,0.74)" }}>
+                          <div className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: "#667085" }}>Time</div>
+                          <div className="mt-1 text-sm font-black" style={{ color: INK }}>{alert.timeLabel}</div>
+                        </div>
+                        <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: "#e2e8f0", background: "rgba(255,255,255,0.74)" }}>
+                          <div className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: "#667085" }}>Route</div>
+                          <div className="mt-1 text-sm font-black" style={{ color: INK }}>{alert.routeLabel}</div>
+                        </div>
+                        <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: "#e2e8f0", background: "rgba(255,255,255,0.74)" }}>
+                          <div className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: "#667085" }}>Service</div>
+                          <div className="mt-1 text-sm font-black" style={{ color: INK }}>{alert.serviceCode ?? "Network"}</div>
+                        </div>
+                      </div>
+
+                      <AlertExplanation alert={alert} accent={meta.text} subtle="#475467" />
+
+                      {onAsk && alert.ask && (
+                        <button
+                          type="button"
+                          className="mt-4 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-black"
+                          style={{ borderColor: "#bfdbfe", background: "#eff6ff", color: EUROSTAR_BLUE }}
+                          onClick={() => { onClose(); onAsk(alert.ask!) }}
+                        >
+                          {alert.tone === "critical" ? <Siren size={12} /> : alert.id.startsWith("depart-") ? <Clock3 size={12} /> : alert.id.startsWith("load-") ? <Users size={12} /> : alert.id === "all-clear" ? <CheckCircle2 size={12} /> : <Train size={12} />}
+                          Ask from this alert
+                        </button>
+                      )}
+                    </motion.div>
+                  )
+                })}
+                {filteredAlerts.length === 0 && (
+                  <div className="col-span-full rounded-[24px] border border-dashed px-6 py-8 text-center" style={{ borderColor: "#d0d5dd", color: "#667085" }}>
+                    No live alerts match the current search.
+                  </div>
+                )}
+              </div>
+            </section>
           </div>
 
-          <div className="grid grid-cols-1 gap-3">
+          <aside className="grid grid-cols-1 gap-3">
             <div className="rounded-[24px] border bg-white px-4 py-4 shadow-[0_10px_28px_rgba(0,0,0,.04)]" style={{ borderColor: "#e7ecf3" }}>
               <div className="text-sm font-black" style={{ color: INK }}>Create saved rule</div>
               <div className="mt-1 text-xs" style={{ color: "#667085" }}>
@@ -976,120 +1374,8 @@ export function EurostarNotifications({
                 </div>
               </div>
             ))}
-          </div>
-        </section>
-
-        <section className="mb-5 rounded-[28px] border bg-white p-4" style={{ borderColor: "#e2e8f0" }}>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="text-sm font-black uppercase tracking-[0.16em]" style={{ color: INK }}>Saved rule matches</div>
-              <div className="text-xs" style={{ color: "#667085" }}>Alerts produced specifically by your enabled notification rules</div>
-            </div>
-            <div className="rounded-full border px-3 py-1.5 text-[11px] font-black" style={{ borderColor: "#dbe7f3", background: "#f8fbff", color: "#475467" }}>
-              {ruleAlerts.length} matches
-            </div>
-          </div>
-
-          <div className="grid gap-3 lg:grid-cols-2">
-            {ruleAlerts.map(alert => {
-              const meta = toneMeta(alert.tone)
-              return (
-                <motion.div key={alert.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-[24px] border px-4 py-4" style={{ borderColor: meta.border, background: meta.bg }}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: meta.dot }} />
-                        <div className="text-base font-black" style={{ color: INK }}>{alert.title}</div>
-                      </div>
-                      <div className="mt-1 text-sm" style={{ color: "#475467" }}>{alert.message}</div>
-                    </div>
-                    <span className="rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em]" style={{ borderColor: meta.border, color: meta.text, background: "rgba(255,255,255,0.72)" }}>
-                      {alert.matchedRules?.[0] ?? alert.tone}
-                    </span>
-                  </div>
-                  {onAsk && alert.ask && (
-                    <button type="button" className="mt-4 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-black" style={{ borderColor: "#bfdbfe", background: "#eff6ff", color: EUROSTAR_BLUE }} onClick={() => { onClose(); onAsk(alert.ask!) }}>
-                      <Bell size={12} />
-                      Ask from this match
-                    </button>
-                  )}
-                </motion.div>
-              )
-            })}
-            {ruleAlerts.length === 0 && (
-              <div className="col-span-full rounded-[24px] border border-dashed px-6 py-8 text-center" style={{ borderColor: "#d0d5dd", color: "#667085" }}>
-                No enabled rules are matching the live Eurostar feed right now.
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section className="rounded-[28px] border bg-white p-4" style={{ borderColor: "#e2e8f0" }}>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="text-sm font-black uppercase tracking-[0.16em]" style={{ color: INK }}>Live alert feed</div>
-              <div className="text-xs" style={{ color: "#667085" }}>Auto-composed from watchlist, departures, last train and traveler load</div>
-            </div>
-            <div className="rounded-full border px-3 py-1.5 text-[11px] font-black" style={{ borderColor: "#dbe7f3", background: "#f8fbff", color: "#475467" }}>
-              {date}
-            </div>
-          </div>
-
-          <div className="grid gap-3 lg:grid-cols-2">
-            {alerts.map(alert => {
-              const meta = toneMeta(alert.tone)
-              return (
-                <motion.div
-                  key={alert.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-[24px] border px-4 py-4"
-                  style={{ borderColor: meta.border, background: meta.bg }}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: meta.dot }} />
-                        <div className="text-base font-black" style={{ color: INK }}>{alert.title}</div>
-                      </div>
-                      <div className="mt-1 text-sm" style={{ color: "#475467" }}>{alert.message}</div>
-                    </div>
-                    <span className="rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em]" style={{ borderColor: meta.border, color: meta.text, background: "rgba(255,255,255,0.72)" }}>
-                      {alert.tone}
-                    </span>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-3 gap-2">
-                    <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: "#e2e8f0", background: "rgba(255,255,255,0.74)" }}>
-                      <div className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: "#667085" }}>Time</div>
-                      <div className="mt-1 text-sm font-black" style={{ color: INK }}>{alert.timeLabel}</div>
-                    </div>
-                    <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: "#e2e8f0", background: "rgba(255,255,255,0.74)" }}>
-                      <div className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: "#667085" }}>Route</div>
-                      <div className="mt-1 text-sm font-black" style={{ color: INK }}>{alert.routeLabel}</div>
-                    </div>
-                    <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: "#e2e8f0", background: "rgba(255,255,255,0.74)" }}>
-                      <div className="text-[10px] font-black uppercase tracking-[0.14em]" style={{ color: "#667085" }}>Service</div>
-                      <div className="mt-1 text-sm font-black" style={{ color: INK }}>{alert.serviceCode ?? "Network"}</div>
-                    </div>
-                  </div>
-
-                  {onAsk && alert.ask && (
-                    <button
-                      type="button"
-                      className="mt-4 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-black"
-                      style={{ borderColor: "#bfdbfe", background: "#eff6ff", color: EUROSTAR_BLUE }}
-                      onClick={() => { onClose(); onAsk(alert.ask!) }}
-                    >
-                      {alert.tone === "critical" ? <Siren size={12} /> : alert.id.startsWith("depart-") ? <Clock3 size={12} /> : alert.id.startsWith("load-") ? <Users size={12} /> : alert.id === "all-clear" ? <CheckCircle2 size={12} /> : <Train size={12} />}
-                      Ask from this alert
-                    </button>
-                  )}
-                </motion.div>
-              )
-            })}
-          </div>
-        </section>
+          </aside>
+        </div>
       </main>
     </motion.div>
   )

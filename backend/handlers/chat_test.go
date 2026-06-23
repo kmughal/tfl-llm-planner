@@ -19,3 +19,39 @@ func TestSummarizeRoadDisruptionsResult(t *testing.T) {
 		t.Fatalf("summarizeRoadDisruptionsResult = %q, want %q", got, want)
 	}
 }
+
+func TestSummarizeImmediateEurostarPlansPrefersNextActiveService(t *testing.T) {
+	raw := "" +
+		"PLAN_START:20260623-9028|commercial|9028|deleted|13:31|15:48\n" +
+		"MAP_STATION:SPX|origin|0|0|13:31||London St Pancras\n" +
+		"MAP_STATION:PNO|destination|0|0||15:48|Paris Gare du Nord\n" +
+		"PLAN_END\n" +
+		"PLAN_START:20260623-9032|commercial|9032|active|15:01|17:18\n" +
+		"MAP_STATION:SPX|origin|0|0|15:01||London St Pancras\n" +
+		"MAP_STATION:PNO|destination|0|0||17:18|Paris Gare du Nord\n" +
+		"PLAN_END\n" +
+		"PLAN_START:20260623-9040|commercial|9040|active|16:31|18:48\n" +
+		"MAP_STATION:SPX|origin|0|0|16:31||London St Pancras\n" +
+		"MAP_STATION:PNO|destination|0|0||18:48|Paris Gare du Nord\n" +
+		"PLAN_END\n"
+
+	got := summarizeImmediateEurostarPlans(raw)
+	want := "The next Eurostar from London St Pancras to Paris Gare du Nord is service 9032 at 15:01, arriving at 17:18. There are 1 later matching services after that."
+	if got != want {
+		t.Fatalf("summarizeImmediateEurostarPlans = %q, want %q", got, want)
+	}
+}
+
+func TestSummarizeImmediateEurostarPlansHandlesOnlyCancelledMatch(t *testing.T) {
+	raw := "" +
+		"PLAN_START:20260623-9028|commercial|9028|deleted|13:31|15:48\n" +
+		"MAP_STATION:SPX|origin|0|0|13:31||London St Pancras\n" +
+		"MAP_STATION:PNO|destination|0|0||15:48|Paris Gare du Nord\n" +
+		"PLAN_END\n"
+
+	got := summarizeImmediateEurostarPlans(raw)
+	want := "The next Eurostar from London St Pancras to Paris Gare du Nord in this result is service 9028 at 13:31, but it is currently deleted."
+	if got != want {
+		t.Fatalf("summarizeImmediateEurostarPlans = %q, want %q", got, want)
+	}
+}

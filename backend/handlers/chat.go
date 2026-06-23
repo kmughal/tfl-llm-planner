@@ -740,35 +740,93 @@ func summarizeRoadDisruptionsResult(s string) string {
 
 func summarizeImmediateEurostarPlans(raw string) string {
 	type planSummary struct {
-		service string
-		status  string
-		dep     string
-		arr     string
+		service     string
+		status      string
+		dep         string
+		arr         string
+		originCode  string
+		destCode    string
+		originName  string
+		destName    string
 	}
 	var plans []planSummary
+	var current *planSummary
 	for _, line := range strings.Split(raw, "\n") {
-		if !strings.HasPrefix(strings.TrimSpace(line), "PLAN_START:") {
-			continue
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, "PLAN_START:"):
+			parts := strings.Split(strings.TrimPrefix(trimmed, "PLAN_START:"), "|")
+			if len(parts) < 6 {
+				current = nil
+				continue
+			}
+			current = &planSummary{
+				service: parts[2],
+				status:  parts[3],
+				dep:     parts[4],
+				arr:     parts[5],
+			}
+		case strings.HasPrefix(trimmed, "MAP_STATION:") && current != nil:
+			parts := strings.Split(strings.TrimPrefix(trimmed, "MAP_STATION:"), "|")
+			if len(parts) < 7 {
+				continue
+			}
+			code := parts[0]
+			stopType := strings.ToLower(parts[1])
+			name := strings.TrimSpace(parts[6])
+			if name == "" {
+				name = stationNameForCode(code)
+			}
+			switch stopType {
+			case "origin":
+				current.originCode = code
+				current.originName = name
+			case "destination":
+				current.destCode = code
+				current.destName = name
+			}
+		case trimmed == "PLAN_END" && current != nil:
+			plans = append(plans, *current)
+			current = nil
 		}
-		parts := strings.Split(strings.TrimPrefix(strings.TrimSpace(line), "PLAN_START:"), "|")
-		if len(parts) < 6 {
-			continue
-		}
-		plans = append(plans, planSummary{
-			service: parts[2],
-			status:  parts[3],
-			dep:     parts[4],
-			arr:     parts[5],
-		})
 	}
 	if len(plans) == 0 {
 		return ""
 	}
-	next := plans[0]
-	if len(plans) == 1 {
-		return fmt.Sprintf("The next matching Eurostar I found is service %s, departing at %s and arriving at %s.", next.service, next.dep, next.arr)
+
+	chosen := plans[0]
+	activeCount := 0
+	for _, plan := range plans {
+		if !strings.EqualFold(plan.status, "deleted") && !strings.EqualFold(plan.status, "cancelled") {
+			if activeCount == 0 {
+				chosen = plan
+			}
+			activeCount++
+		}
 	}
-	return fmt.Sprintf("I found %d matching Eurostar services from now. The next one is service %s, departing at %s and arriving at %s.", len(plans), next.service, next.dep, next.arr)
+
+	origin := chosen.originName
+	if origin == "" {
+		origin = stationNameForCode(chosen.originCode)
+	}
+	destination := chosen.destName
+	if destination == "" {
+		destination = stationNameForCode(chosen.destCode)
+	}
+	if origin == "" {
+		origin = "the selected origin"
+	}
+	if destination == "" {
+		destination = "the selected destination"
+	}
+
+	if activeCount == 0 {
+		return fmt.Sprintf("The next Eurostar from %s to %s in this result is service %s at %s, but it is currently %s.", origin, destination, chosen.service, chosen.dep, chosen.status)
+	}
+	if activeCount == 1 {
+		return fmt.Sprintf("The next Eurostar from %s to %s is service %s at %s, arriving at %s.", origin, destination, chosen.service, chosen.dep, chosen.arr)
+	}
+	return fmt.Sprintf("The next Eurostar from %s to %s is service %s at %s, arriving at %s. There are %d later matching services after that.", origin, destination, chosen.service, chosen.dep, chosen.arr, activeCount-1)
 }
 
 // validToolNames builds a set of available tool names from the tools slice.
