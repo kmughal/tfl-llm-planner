@@ -80,8 +80,44 @@ export function EurostarDisplayStyles() {
     .es-theme-contrast .text-gray-800, .es-theme-contrast .text-gray-700, .es-theme-contrast .text-gray-600 { color:var(--es-text) !important; }
     .es-theme-dark .text-gray-500, .es-theme-dark .text-gray-400,
     .es-theme-contrast .text-gray-500, .es-theme-contrast .text-gray-400 { color:var(--es-muted) !important; }
+    .es-theme-dark .text-slate-950, .es-theme-dark .text-slate-900, .es-theme-dark .text-slate-800,
+    .es-theme-dark .text-slate-700, .es-theme-dark .text-slate-600,
+    .es-theme-contrast .text-slate-950, .es-theme-contrast .text-slate-900, .es-theme-contrast .text-slate-800,
+    .es-theme-contrast .text-slate-700, .es-theme-contrast .text-slate-600 { color:var(--es-text) !important; }
+    .es-theme-dark .text-slate-500, .es-theme-dark .text-slate-400, .es-theme-dark .text-slate-300,
+    .es-theme-contrast .text-slate-500, .es-theme-contrast .text-slate-400, .es-theme-contrast .text-slate-300 { color:var(--es-muted) !important; }
     .es-theme-dark .border-gray-100, .es-theme-dark .border-gray-200,
     .es-theme-contrast .border-gray-100, .es-theme-contrast .border-gray-200 { border-color:var(--es-border) !important; }
+    .es-theme-light .bg-white, .es-theme-light .bg-white\\/95, .es-theme-light .bg-white\\/90,
+    .es-theme-light .bg-white\\/88, .es-theme-light .bg-white\\/85, .es-theme-light .bg-white\\/80,
+    .es-theme-light .bg-gray-50, .es-theme-light .bg-gray-100,
+    .es-theme-light .bg-slate-50, .es-theme-light .bg-slate-100 { color:#101828 !important; }
+    .es-theme-light .bg-white.text-white, .es-theme-light .bg-white\\/95.text-white, .es-theme-light .bg-white\\/90.text-white,
+    .es-theme-light .bg-white\\/88.text-white, .es-theme-light .bg-white\\/85.text-white, .es-theme-light .bg-white\\/80.text-white,
+    .es-theme-light .bg-gray-50.text-white, .es-theme-light .bg-gray-100.text-white,
+    .es-theme-light .bg-slate-50.text-white, .es-theme-light .bg-slate-100.text-white { color:#101828 !important; }
+    .es-theme-light .bg-white .text-white, .es-theme-light .bg-white .text-white\\/90,
+    .es-theme-light .bg-white .text-white\\/80, .es-theme-light .bg-white .text-white\\/70,
+    .es-theme-light .bg-white .text-white\\/60, .es-theme-light .bg-white .text-white\\/50,
+    .es-theme-light .bg-white\\/95 .text-white, .es-theme-light .bg-white\\/90 .text-white,
+    .es-theme-light .bg-white\\/88 .text-white, .es-theme-light .bg-white\\/85 .text-white,
+    .es-theme-light .bg-white\\/80 .text-white, .es-theme-light .bg-gray-50 .text-white,
+    .es-theme-light .bg-gray-100 .text-white, .es-theme-light .bg-slate-50 .text-white,
+    .es-theme-light .bg-slate-100 .text-white { color:#101828 !important; }
+    .es-theme-dark .bg-slate-950, .es-theme-dark .bg-slate-900, .es-theme-dark .bg-gray-950,
+    .es-theme-dark .bg-gray-900, .es-theme-dark .bg-black,
+    .es-theme-contrast .bg-slate-950, .es-theme-contrast .bg-slate-900,
+    .es-theme-contrast .bg-gray-950, .es-theme-contrast .bg-gray-900, .es-theme-contrast .bg-black { color:#f8fafc !important; }
+    .es-theme-dark .bg-slate-950 .text-slate-950, .es-theme-dark .bg-slate-950 .text-black,
+    .es-theme-dark .bg-slate-900 .text-slate-950, .es-theme-dark .bg-slate-900 .text-black,
+    .es-theme-dark .bg-gray-950 .text-slate-950, .es-theme-dark .bg-gray-950 .text-black,
+    .es-theme-dark .bg-gray-900 .text-slate-950, .es-theme-dark .bg-gray-900 .text-black,
+    .es-theme-dark .bg-black .text-slate-950, .es-theme-dark .bg-black .text-black,
+    .es-theme-contrast .bg-slate-950 .text-slate-950, .es-theme-contrast .bg-slate-950 .text-black,
+    .es-theme-contrast .bg-slate-900 .text-slate-950, .es-theme-contrast .bg-slate-900 .text-black,
+    .es-theme-contrast .bg-gray-950 .text-slate-950, .es-theme-contrast .bg-gray-950 .text-black,
+    .es-theme-contrast .bg-gray-900 .text-slate-950, .es-theme-contrast .bg-gray-900 .text-black,
+    .es-theme-contrast .bg-black .text-slate-950, .es-theme-contrast .bg-black .text-black { color:#f8fafc !important; }
     .es-theme-light.es-legacy-dark [style*="color: rgba(255,255,255"],
     .es-theme-light.es-legacy-dark [style*="color: rgba(255, 255, 255"] { color:var(--es-text) !important; }
     .es-theme-light.es-legacy-dark [style*="background: rgba(255,255,255,0.04)"],

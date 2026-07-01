@@ -19,6 +19,7 @@ import { LoadingCounter } from "./components/LoadingCounter"
 import { BusLinesExplorer } from "./components/BusLinesExplorer"
 import { EurostarHub } from "./components/EurostarHub"
 import { EurostarSchedule } from "./components/EurostarSchedule"
+import { EurostarProjectionJourney } from "./components/EurostarProjectionJourney"
 import { EurostarCommandCenter } from "./components/EurostarCommandCenter"
 import { EurostarLoadAnalytics } from "./components/EurostarLoadAnalytics"
 import { EurostarNotifications } from "./components/EurostarNotifications"
@@ -36,7 +37,7 @@ import "./index.css"
 
 const TFL_TOOLS      = new Set(["plan_journey", "get_line_status", "get_status_by_mode", "search_stops"])
 const SNCF_TOOLS     = new Set(["plan_sncf_journey", "search_sncf_stations", "get_sncf_disruptions", "get_sncf_departures", "get_sncf_arrivals", "get_sncf_train", "get_sncf_dashboard"])
-const EUROSTAR_TOOLS = new Set(["get_euromap_plans", "get_euromap_technical_plans", "get_euromap_plan_by_id", "get_euromap_technical_plan_by_id", "get_eurostar_dashboard", "get_eurostar_live_map", "get_traveler_summary", "get_crew_activities", "get_crew_monthly_schedule"])
+const EUROSTAR_TOOLS = new Set(["get_euromap_plans", "get_euromap_technical_plans", "get_euromap_plan_by_id", "get_euromap_technical_plan_by_id", "get_eurostar_dashboard", "get_eurostar_live_map", "get_traveler_summary", "get_crew_activities", "get_crew_monthly_schedule", "get_projection_live_map", "get_projection_commercial_services", "get_projection_service_detail", "get_projection_journey_explorer", "get_projection_services", "get_projection_news"])
 const EUROSTAR_CATALOG_STORAGE_KEY = "eurostar-train-catalog-v1"
 const API = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080"
 
@@ -380,6 +381,7 @@ export default function App() {
   const [busExplorerOpen, setBusExplorerOpen]   = useState(false)
   const [eurostarHubOpen, setEurostarHubOpen]               = useState(false)
   const [eurostarScheduleOpen, setEurostarScheduleOpen]     = useState(false)
+  const [eurostarProjectionJourneyOpen, setEurostarProjectionJourneyOpen] = useState(false)
   const [eurostarLoadAnalyticsOpen, setEurostarLoadAnalyticsOpen] = useState(false)
   const [eurostarNotificationsOpen, setEurostarNotificationsOpen] = useState(false)
   const [commandCenterOpen, setCommandCenterOpen]           = useState(false)
@@ -499,6 +501,10 @@ export default function App() {
   const activeNetwork = useMemo(
     () => detectNetwork(messages, TFL_TOOLS, SNCF_TOOLS, EUROSTAR_TOOLS),
     [messages],
+  )
+  const projectionEnabled = useMemo(
+    () => services.some(service => service.id === "eurostar-projection" && service.enabled),
+    [services],
   )
 
   function handleNewConversation() {
@@ -906,6 +912,7 @@ export default function App() {
           onClose={() => setEurostarHubOpen(false)}
           onSend={sendMessage}
           onSchedule={() => { setEurostarHubOpen(false); setEurostarScheduleOpen(true) }}
+          onProjectionJourney={projectionEnabled ? () => { setEurostarHubOpen(false); setEurostarProjectionJourneyOpen(true) } : undefined}
           onCommandCenter={() => setCommandCenterOpen(true)}
           onLoadAnalytics={() => setEurostarLoadAnalyticsOpen(true)}
           onNotifications={() => setEurostarNotificationsOpen(true)}
@@ -937,6 +944,7 @@ export default function App() {
             onAsk={sendMessage}
             onLoadAnalytics={() => { setCommandCenterOpen(false); setEurostarLoadAnalyticsOpen(true) }}
             onNotifications={() => { setCommandCenterOpen(false); setEurostarNotificationsOpen(true) }}
+            projectionEnabled={projectionEnabled}
           />
         )}
       </AnimatePresence>
@@ -954,6 +962,7 @@ export default function App() {
           <EurostarNotifications
             onClose={() => setEurostarNotificationsOpen(false)}
             onAsk={sendMessage}
+            projectionEnabled={projectionEnabled}
           />
         )}
       </AnimatePresence>
@@ -995,6 +1004,12 @@ export default function App() {
       {eurostarScheduleOpen && (
         <EurostarSchedule onClose={() => setEurostarScheduleOpen(false)} />
       )}
+
+      <AnimatePresence>
+        {eurostarProjectionJourneyOpen && (
+          <EurostarProjectionJourney onClose={() => setEurostarProjectionJourneyOpen(false)} />
+        )}
+      </AnimatePresence>
 
       {/* Bus lines explorer modal */}
       <AnimatePresence>

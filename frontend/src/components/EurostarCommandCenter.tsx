@@ -30,6 +30,7 @@ import {
 } from "lucide-react"
 import { useEurostarDisplay } from "./EurostarDisplay"
 import { readResponseState, responseSourceMeta, staleLabel, type ResponseState } from "../lib/responseState"
+import { ProjectionHealthBanner, summarizeProjectionHealth } from "./EurostarProjectionSnapshot"
 import { DisabledServiceBanner, ServicePowerBadge } from "./ServicePowerBadge"
 
 const API = (import.meta.env.VITE_API_URL as string | undefined) ?? ""
@@ -123,11 +124,75 @@ type EurostarWatchlist = {
   items: EurostarWatchlistItem[]
 }
 
+type ProjectionBookingClassTotal = {
+  serviceClass: string
+  count: number
+}
+
+type ProjectionBookingFlow = {
+  originCode: string
+  originShort: string
+  destCode: string
+  destShort: string
+  serviceClass: string
+  count: number
+}
+
+type ProjectionBookingSummary = {
+  projectionEnabled: boolean
+  date: string
+  count: number
+  totalBookings: number
+  classTotals: ProjectionBookingClassTotal[]
+  topFlows: ProjectionBookingFlow[]
+}
+
+type ProjectionNewsItem = {
+  id: string
+  department: string
+  category: string
+  publishedAt: string
+  updatedAt: string
+}
+
+type ProjectionNewsSummary = {
+  projectionEnabled: boolean
+  department?: string
+  category?: string
+  count: number
+  items: ProjectionNewsItem[]
+}
+
+type ProjectionBeaconEvent = {
+  stopCode: string
+  shortCode: string
+  stopName: string
+  eventType: string
+  actualTime: string
+  isCorrection: boolean
+  source: string
+}
+
+type ProjectionBeaconSummary = {
+  projectionEnabled: boolean
+  date: string
+  beacons: {
+    count: number
+    pathwayCount: number
+    latest?: ProjectionBeaconEvent | null
+  }
+}
+
 type HubData = {
   trains: EuromapPlan[]
   crew: EnrichedCrew[]
   traveler: TravelerSummary | null
   watchlist: EurostarWatchlist | null
+  projectionBookings: ProjectionBookingSummary | null
+  projectionBeacons: ProjectionBeaconSummary | null
+  projectionNews: ProjectionNewsSummary | null
+  projectionResponseStates?: ResponseState[]
+  projectionError?: string
   fetchedAt: Date
   issues: string[]
   responseStates?: ResponseState[]
@@ -206,6 +271,23 @@ function fmtISOTime(iso: string | undefined): string {
 
 function fmtClock(d: Date): string {
   return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+}
+
+function bookingClassLabel(serviceClass: string): string {
+  switch (serviceClass) {
+    case "SERVICE_CLASS_STANDARD":
+      return "Standard"
+    case "SERVICE_CLASS_PLUS":
+      return "Plus"
+    case "SERVICE_CLASS_PREMIER":
+      return "Premier"
+    default:
+      return serviceClass
+        .replace("SERVICE_CLASS_", "")
+        .replaceAll("_", " ")
+        .toLowerCase()
+        .replace(/\b\w/g, char => char.toUpperCase())
+  }
 }
 
 function fmtDuration(dep: string, arr: string): string {
@@ -494,12 +576,15 @@ function TravelerMixChart({ traveler }: { readonly traveler: TravelerService }) 
   )
 }
 
-async function fetchHubData(date: string): Promise<HubData> {
-  const [trainsRes, crewRes, travelerRes, watchlistRes] = await Promise.allSettled([
+async function fetchHubData(date: string, projectionEnabled: boolean): Promise<HubData> {
+  const [trainsRes, crewRes, travelerRes, watchlistRes, projectionBookingsRes, projectionBeaconsRes, projectionNewsRes] = await Promise.allSettled([
     fetch(`${API}/api/eurostar/trains?date=${date}`),
     fetch(`${API}/api/crew/activities?date=${date}`),
     fetch(`${API}/api/eurostar/traveler-summary?date=${date}`),
     fetch(`${API}/api/eurostar/watchlist?date=${date}`),
+    projectionEnabled ? fetch(`${API}/api/eurostar/projection/bookings?date=${date}`) : Promise.resolve(null),
+    projectionEnabled ? fetch(`${API}/api/eurostar/projection/beacons?date=${date}`) : Promise.resolve(null),
+    projectionEnabled ? fetch(`${API}/api/eurostar/projection/news`) : Promise.resolve(null),
   ])
 
   const issues: string[] = []
@@ -507,7 +592,12 @@ async function fetchHubData(date: string): Promise<HubData> {
   let crew: EnrichedCrew[] = []
   let traveler: TravelerSummary | null = null
   let watchlist: EurostarWatchlist | null = null
+  let projectionBookings: ProjectionBookingSummary | null = null
+  let projectionBeacons: ProjectionBeaconSummary | null = null
+  let projectionNews: ProjectionNewsSummary | null = null
+  let projectionError: string | undefined
   const responseStates: ResponseState[] = []
+  const projectionResponseStates: ResponseState[] = []
 
   if (trainsRes.status === "fulfilled" && trainsRes.value.ok) {
     const body = await trainsRes.value.json() as EuromapPlan[]
@@ -550,7 +640,61 @@ async function fetchHubData(date: string): Promise<HubData> {
     issues.push("Operational watchlist is unavailable. Attention scoring is temporarily offline.")
   }
 
-  return { trains, crew, traveler, watchlist, fetchedAt: new Date(), issues, responseStates }
+  if (projectionBookingsRes.status === "fulfilled" && projectionBookingsRes.value?.ok) {
+      const body = await projectionBookingsRes.value.json() as ProjectionBookingSummary
+      const responseState = readResponseState(projectionBookingsRes.value, body)
+      responseStates.push(responseState)
+      projectionResponseStates.push(responseState)
+      projectionBookings = body
+  } else if (projectionEnabled && projectionBookingsRes.status === "fulfilled" && projectionBookingsRes.value) {
+      const body = await projectionBookingsRes.value.json().catch(() => ({}))
+      const responseState = readResponseState(projectionBookingsRes.value, body)
+      projectionResponseStates.push(responseState)
+      if (!responseState.disabled) {
+        projectionError = responseState.error || (body as { error?: string }).error || "Projection booking data is unavailable."
+        issues.push("Projection booking data is unavailable. The board is showing the core Eurostar view without seat-demand overlays.")
+      }
+  } else if (projectionEnabled && projectionBookingsRes.status !== "fulfilled") {
+    projectionError = projectionError || "Projection booking data could not be reached."
+  }
+
+  if (projectionBeaconsRes.status === "fulfilled" && projectionBeaconsRes.value?.ok) {
+      const body = await projectionBeaconsRes.value.json() as ProjectionBeaconSummary
+      const responseState = readResponseState(projectionBeaconsRes.value, body)
+      responseStates.push(responseState)
+      projectionResponseStates.push(responseState)
+      projectionBeacons = body
+  } else if (projectionEnabled && projectionBeaconsRes.status === "fulfilled" && projectionBeaconsRes.value) {
+      const body = await projectionBeaconsRes.value.json().catch(() => ({}))
+      const responseState = readResponseState(projectionBeaconsRes.value, body)
+      projectionResponseStates.push(responseState)
+      if (!responseState.disabled) {
+        projectionError = projectionError || responseState.error || (body as { error?: string }).error || "Projection beacon coverage is unavailable."
+        issues.push("Projection beacon coverage is unavailable. Live beacon signal summaries are hidden until that feed returns.")
+      }
+  } else if (projectionEnabled && projectionBeaconsRes.status !== "fulfilled") {
+    projectionError = projectionError || "Projection beacon coverage could not be reached."
+  }
+
+  if (projectionNewsRes.status === "fulfilled" && projectionNewsRes.value?.ok) {
+      const body = await projectionNewsRes.value.json() as ProjectionNewsSummary
+      const responseState = readResponseState(projectionNewsRes.value, body)
+      responseStates.push(responseState)
+      projectionResponseStates.push(responseState)
+      projectionNews = body
+  } else if (projectionEnabled && projectionNewsRes.status === "fulfilled" && projectionNewsRes.value) {
+      const body = await projectionNewsRes.value.json().catch(() => ({}))
+      const responseState = readResponseState(projectionNewsRes.value, body)
+      projectionResponseStates.push(responseState)
+      if (!responseState.disabled) {
+        projectionError = projectionError || responseState.error || (body as { error?: string }).error || "Projection news is unavailable."
+        issues.push("Projection news is unavailable. Operational notices are hidden until that feed returns.")
+      }
+  } else if (projectionEnabled && projectionNewsRes.status !== "fulfilled") {
+    projectionError = projectionError || "Projection news could not be reached."
+  }
+
+  return { trains, crew, traveler, watchlist, projectionBookings, projectionBeacons, projectionNews, projectionResponseStates, projectionError, fetchedAt: new Date(), issues, responseStates }
 }
 
 function metricLabel(value: number | string, label: string, sub: string, accent: string) {
@@ -2017,11 +2161,13 @@ export function EurostarCommandCenter({
   onAsk,
   onLoadAnalytics,
   onNotifications,
+  projectionEnabled = false,
 }: {
   readonly onClose: () => void
   readonly onAsk?: (query: string) => void
   readonly onLoadAnalytics?: () => void
   readonly onNotifications?: () => void
+  readonly projectionEnabled?: boolean
 }) {
   const date = todayDate()
 
@@ -2052,13 +2198,13 @@ export function EurostarCommandCenter({
     setLoading(true)
     setError(null)
     try {
-      setData(await fetchHubData(date))
+      setData(await fetchHubData(date, projectionEnabled))
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load Eurostar data")
     } finally {
       setLoading(false)
     }
-  }, [date])
+  }, [date, projectionEnabled])
 
   useEffect(() => { void load() }, [load])
 
@@ -2091,6 +2237,15 @@ export function EurostarCommandCenter({
   const crew = data?.crew ?? []
   const traveler = data?.traveler ?? null
   const watchlist = data?.watchlist ?? null
+  const projectionBookings = data?.projectionBookings ?? null
+  const projectionBeacons = data?.projectionBeacons ?? null
+  const projectionNews = data?.projectionNews ?? null
+  const projectionHealth = summarizeProjectionHealth({
+    responseStates: data?.projectionResponseStates ?? [],
+    loading,
+    hasLoadedOnce: !!data,
+    error: data?.projectionError ?? null,
+  })
 
   const crewByService = useMemo(() => {
     const grouped: Record<string, EnrichedCrew[]> = {}
@@ -2226,6 +2381,10 @@ export function EurostarCommandCenter({
     .filter(t => new Date(t.departureDateTime).getTime() >= now)
     .sort((a, b) => a.departureDateTime.localeCompare(b.departureDateTime))[0]
   const minutesToNext = minsUntil(nextDeparture?.departureDateTime, now)
+  const projectionClassTotals = projectionBookings?.classTotals ?? []
+  const projectionTopFlows = projectionBookings?.topFlows ?? []
+  const projectionBeaconInfo = projectionBeacons?.beacons ?? null
+  const projectionNewsItems = projectionNews?.items ?? []
 
   const filteredTrains = [...displayTrains]
     .sort((a, b) => a.departureDateTime.localeCompare(b.departureDateTime))
@@ -2777,6 +2936,133 @@ export function EurostarCommandCenter({
           )}
           <CommandButton icon={<Globe2 size={15} />} label="Weather" query="What's the weather in London, Paris, Brussels and Amsterdam right now?" onAsk={commandAsk} />
         </section>
+
+        {projectionEnabled && (projectionBookings || projectionBeaconInfo || projectionNewsItems.length > 0 || (data?.projectionResponseStates?.length ?? 0) > 0 || !!data?.projectionError) && (
+          <section className="mb-5 space-y-4">
+            <ProjectionHealthBanner health={projectionHealth} tone="light" heading="Projection Refresh" />
+            <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
+            {(projectionBookings || projectionBeaconInfo) && (
+              <div className="overflow-hidden rounded-lg border bg-white px-5 py-4" style={{ borderColor: "#eaecf0" }}>
+                <SectionHeader icon={<Users size={16} />} title="Projection Signals" detail="Projection-only demand and beacon coverage" />
+                <div className="grid gap-3 lg:grid-cols-[auto_minmax(0,1fr)]">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {projectionBookings && (
+                      <div className="rounded-2xl border bg-[#f8fafc] px-4 py-4" style={{ borderColor: "#e2e8f0" }}>
+                        <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>
+                          Seat bookings
+                        </div>
+                        <div className="mt-2 text-3xl font-black tabular-nums" style={{ color: INK }}>
+                          {projectionBookings.totalBookings.toLocaleString("en-GB")}
+                        </div>
+                        <div className="mt-1 text-xs" style={{ color: "#667085" }}>
+                          {projectionBookings.count} booking segment{projectionBookings.count === 1 ? "" : "s"} across the projection feed
+                        </div>
+                      </div>
+                    )}
+                    {projectionBeaconInfo && (
+                      <div className="rounded-2xl border bg-[#f8fafc] px-4 py-4" style={{ borderColor: "#e2e8f0" }}>
+                        <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>
+                          Beacon events
+                        </div>
+                        <div className="mt-2 text-3xl font-black tabular-nums" style={{ color: INK }}>
+                          {projectionBeaconInfo.count.toLocaleString("en-GB")}
+                        </div>
+                        <div className="mt-1 text-xs" style={{ color: "#667085" }}>
+                          {projectionBeaconInfo.pathwayCount} live pathway{projectionBeaconInfo.pathwayCount === 1 ? "" : "s"} in beacon coverage
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {projectionClassTotals.slice(0, 3).map(classTotal => (
+                      <div key={classTotal.serviceClass} className="rounded-2xl border bg-white px-4 py-4" style={{ borderColor: "#e2e8f0" }}>
+                        <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>
+                          {bookingClassLabel(classTotal.serviceClass)}
+                        </div>
+                        <div className="mt-2 text-2xl font-black tabular-nums" style={{ color: INK }}>
+                          {classTotal.count}
+                        </div>
+                        <div className="mt-1 text-xs" style={{ color: "#667085" }}>
+                          booked seats
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {projectionTopFlows.length > 0 && (
+                  <div className="mt-4 rounded-2xl border bg-[#fcfcfd] px-4 py-4" style={{ borderColor: "#e4e7ec" }}>
+                    <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>
+                      Strongest Booking Flows
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {projectionTopFlows.slice(0, 6).map(flow => (
+                        <div key={`${flow.serviceClass}-${flow.originShort}-${flow.destShort}-${flow.count}`} className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-3" style={{ boxShadow: "inset 0 0 0 1px rgba(226,232,240,1)" }}>
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold" style={{ color: INK }}>
+                              {flow.originShort} → {flow.destShort}
+                            </div>
+                            <div className="text-[11px] font-bold" style={{ color: "#667085" }}>
+                              {bookingClassLabel(flow.serviceClass)}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-base font-black tabular-nums" style={{ color: EUROSTAR_BLUE }}>
+                              {flow.count}
+                            </div>
+                            <div className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: "#98a2b3" }}>
+                              seats
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {projectionBeaconInfo?.latest && (
+                  <div className="mt-4 rounded-2xl border bg-[#fcfcfd] px-4 py-4" style={{ borderColor: "#e4e7ec" }}>
+                    <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>
+                      Latest beacon
+                    </div>
+                    <div className="text-sm font-semibold" style={{ color: INK }}>
+                      {(projectionBeaconInfo.latest.stopName || projectionBeaconInfo.latest.shortCode || projectionBeaconInfo.latest.stopCode)} {projectionBeaconInfo.latest.eventType.toLowerCase().replaceAll("_", " ")}
+                    </div>
+                    <div className="mt-1 text-xs" style={{ color: "#667085" }}>
+                      {fmtISOTime(projectionBeaconInfo.latest.actualTime)} · {projectionBeaconInfo.latest.source}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {projectionNewsItems.length > 0 && (
+              <div className="overflow-hidden rounded-lg border bg-white px-5 py-4" style={{ borderColor: "#eaecf0" }}>
+                <SectionHeader icon={<Bell size={16} />} title="Projection Notices" detail="Active operational news from the projection feed" />
+                <div className="grid gap-3">
+                  {projectionNewsItems.slice(0, 5).map(item => (
+                    <div key={item.id} className="rounded-2xl border bg-[#f8fafc] px-4 py-4" style={{ borderColor: "#e2e8f0" }}>
+                      <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>
+                        <span>{item.department || "Projection"}</span>
+                        <span style={{ color: "#98a2b3" }}>•</span>
+                        <span>{item.category || "Notice"}</span>
+                      </div>
+                      <div className="mt-2 text-sm font-semibold" style={{ color: INK }}>
+                        Published {fmtISOTime(item.publishedAt)}{item.publishedAt ? ` · ${new Date(item.publishedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}` : ""}
+                      </div>
+                      {item.updatedAt && item.updatedAt !== item.publishedAt && (
+                        <div className="mt-1 text-xs" style={{ color: "#667085" }}>
+                          Updated {fmtISOTime(item.updatedAt)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            </div>
+          </section>
+        )}
 
         <section className="mb-5 grid gap-4 2xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.7fr)]">
           <HeroNetworkCanvas

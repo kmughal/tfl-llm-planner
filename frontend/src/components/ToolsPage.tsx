@@ -34,6 +34,7 @@ const TOOL_DEFS: ToolDef[] = [
   { name: "get_euromap_technical_plan_by_id", label: "Tech Plan by ID",     desc: "Single technical plan by date + service code",         provider: "eurostar", icon: <Layers  className="w-3.5 h-3.5" /> },
   { name: "get_eurostar_dashboard",         label: "Dashboard",             desc: "Live departure board — all services today",            provider: "eurostar", icon: <Radio   className="w-3.5 h-3.5" /> },
   { name: "get_eurostar_live_map",          label: "Live Map",              desc: "Real-time train positions across the network",         provider: "eurostar", icon: <Map     className="w-3.5 h-3.5" /> },
+  { name: "get_projection_journey_explorer",label: "Projection Journey",    desc: "Projection-only stop timeline with beacon/GPS events", provider: "eurostar", icon: <Activity className="w-3.5 h-3.5" /> },
   // Crew
   { name: "get_crew_activities",            label: "Crew Activities",       desc: "Drivers & crew assigned to services for a date",       provider: "crew",     icon: <Users   className="w-3.5 h-3.5" /> },
   { name: "get_crew_monthly_schedule",      label: "Monthly Schedule",      desc: "Full month's shifts for a specific crew member",       provider: "crew",     icon: <Users   className="w-3.5 h-3.5" /> },

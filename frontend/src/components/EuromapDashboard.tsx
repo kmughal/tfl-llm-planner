@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Train, ChevronDown, ChevronUp, Search, X, Users, Phone } from "lucide-react"
 import { cn } from "../lib/utils"
 import { EurostarDisplayMenu, EurostarDisplayStyles, eurostarDisplayClass, useEurostarDisplay } from "./EurostarDisplay"
+import { ProjectionSignalBanner, useProjectionSnapshot } from "./EurostarProjectionSnapshot"
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080"
 
@@ -568,7 +569,7 @@ function ServiceRow({
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export function EuromapDashboard({ result }: { readonly result: string }) {
+export function EuromapDashboard({ result, projectionMode = false }: { readonly result: string; readonly projectionMode?: boolean }) {
   const { theme, compact } = useEurostarDisplay()
   const [filter, setFilter] = useState<FilterTab>("all")
   const [search, setSearch] = useState("")
@@ -600,6 +601,7 @@ export function EuromapDashboard({ result }: { readonly result: string }) {
   if (!data) return null
 
   const { summary, services } = data
+  const { snapshot: projectionSnapshot } = useProjectionSnapshot({ date: summary.date, enabled: projectionMode })
 
   const isOutbound = (s: DashboardService) => UK_CODES.has(s.origin.toUpperCase())
 
@@ -658,6 +660,12 @@ export function EuromapDashboard({ result }: { readonly result: string }) {
           <StatTile label="Inbound"   value={summary.inbound}   textColor="#c4b5fd"  bgColor="rgba(196,181,253,0.15)" />
         </div>
       </div>
+
+      {projectionMode && projectionSnapshot && (
+        <div className="border-b border-gray-100 bg-white px-3 py-3">
+          <ProjectionSignalBanner snapshot={projectionSnapshot} tone="light" heading="Projection Signal Layer" />
+        </div>
+      )}
 
       {/* Filter tabs + live highlight toggle */}
       <div className="flex items-center gap-1 px-3 py-2 bg-white border-b border-gray-100 overflow-x-auto scrollbar-none">

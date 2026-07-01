@@ -171,10 +171,6 @@ type EnrichedCrew struct {
 
 // GetCrewActivities handles GET /api/crew/activities?date=YYYY-MM-DD&serviceCode=9113
 func GetCrewActivities(c *gin.Context) {
-	if !IsServiceEnabled("crew") {
-		serviceDisabledJSON(c, "crew")
-		return
-	}
 	date := c.Query("date")
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
@@ -184,6 +180,28 @@ func GetCrewActivities(c *gin.Context) {
 		return
 	}
 	cacheKey := "crew/activities/" + date + "/" + c.Query("serviceCode")
+
+	if !IsServiceEnabled("crew") {
+		if IsServiceEnabled("eurostar-projection") {
+			serviceCode := c.Query("serviceCode")
+			if serviceCode == "" {
+				respondJSONAndCache(c, cacheKey, http.StatusOK, []EnrichedCrew{})
+				return
+			}
+			crew, err := projectionAsCrewActivities(date, serviceCode)
+			if err != nil {
+				if respondWithCachedSnapshot(c, cacheKey, err.Error()) {
+					return
+				}
+				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+				return
+			}
+			respondJSONAndCache(c, cacheKey, http.StatusOK, crew)
+			return
+		}
+		serviceDisabledJSON(c, "crew")
+		return
+	}
 
 	// Fetch activities.
 	actBody, err := sotclient().get("/v1/activities?operationalDate=" + date)

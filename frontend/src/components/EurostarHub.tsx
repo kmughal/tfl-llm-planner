@@ -76,6 +76,7 @@ export function EurostarHub({
   onClose,
   onSend,
   onSchedule,
+  onProjectionJourney,
   onCommandCenter,
   onLoadAnalytics,
   onNotifications,
@@ -83,6 +84,7 @@ export function EurostarHub({
   readonly onClose:          () => void
   readonly onSend:           (msg: string) => void
   readonly onSchedule:       () => void
+  readonly onProjectionJourney?: () => void
   readonly onCommandCenter?: () => void
   readonly onLoadAnalytics?: () => void
   readonly onNotifications?: () => void
@@ -229,6 +231,42 @@ export function EurostarHub({
                 Live →
               </div>
             </motion.button>
+
+            {onProjectionJourney && (
+              <motion.button
+                type="button"
+                onClick={() => { onClose(); onProjectionJourney() }}
+                className="es-preserve-inverse w-full flex items-center gap-4 p-4 rounded-lg text-left"
+                style={{
+                  background: "linear-gradient(135deg, rgba(3,37,65,0.76) 0%, rgba(8,145,178,0.22) 100%)",
+                  border: "1px solid rgba(34,211,238,0.26)",
+                }}
+                whileHover={{ scale: 1.015, borderColor: "rgba(34,211,238,0.46)" }}
+                whileTap={{ scale: 0.985 }}
+                transition={{ duration: 0.15 }}
+              >
+                <div
+                  className="flex items-center justify-center w-12 h-12 rounded-xl shrink-0"
+                  style={{ background: "rgba(34,211,238,0.14)", border: "1px solid rgba(34,211,238,0.22)" }}
+                >
+                  <Map style={{ width: 22, height: 22, color: "#67e8f9" }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm" style={{ color: "rgba(255,255,255,0.95)" }}>
+                    Journey Story
+                  </p>
+                  <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
+                    Projection-only stop story with schedule, GPS and beacon detail
+                  </p>
+                </div>
+                <div
+                  className="text-xs font-semibold px-2.5 py-1 rounded-full shrink-0"
+                  style={{ background: "rgba(34,211,238,0.12)", color: "#67e8f9", border: "1px solid rgba(34,211,238,0.22)" }}
+                >
+                  New →
+                </div>
+              </motion.button>
+            )}
 
             {onLoadAnalytics && (
               <motion.button

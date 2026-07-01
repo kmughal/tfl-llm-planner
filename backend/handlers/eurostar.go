@@ -282,7 +282,8 @@ func getCachedEurostarCatalog(date string) ([]EurostarCatalogItem, bool, time.Ti
 
 // GetEurostarTrains handles GET /api/eurostar/trains?date=YYYY-MM-DD
 func GetEurostarTrains(c *gin.Context) {
-	if !IsServiceEnabled("eurostar") {
+	useProjection := IsServiceEnabled("eurostar-projection")
+	if !useProjection && !IsServiceEnabled("eurostar") {
 		serviceDisabledJSON(c, "eurostar")
 		return
 	}
@@ -294,11 +295,24 @@ func GetEurostarTrains(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date, use YYYY-MM-DD"})
 		return
 	}
+	cacheKey := "eurostar/trains/" + date
+
+	if useProjection {
+		plans, err := projectionAsEuromapPlans(date)
+		if err != nil {
+			if respondWithCachedSnapshot(c, cacheKey, err.Error()) {
+				return
+			}
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+		respondJSONAndCache(c, cacheKey, http.StatusOK, plans)
+		return
+	}
 
 	params := url.Values{}
 	params.Set("fromDateTime", date+"T00:00:00Z")
 	params.Set("range", "thalys,channel")
-	cacheKey := "eurostar/trains/" + date
 
 	body, err := eclient().get("/v1/plans", params)
 	if err != nil {
@@ -322,7 +336,8 @@ func GetEurostarTrains(c *gin.Context) {
 
 // GetEurostarTrainByID handles GET /api/eurostar/trains/:planID
 func GetEurostarTrainByID(c *gin.Context) {
-	if !IsServiceEnabled("eurostar") {
+	useProjection := IsServiceEnabled("eurostar-projection")
+	if !useProjection && !IsServiceEnabled("eurostar") {
 		serviceDisabledJSON(c, "eurostar")
 		return
 	}
@@ -332,6 +347,25 @@ func GetEurostarTrainByID(c *gin.Context) {
 		return
 	}
 	cacheKey := "eurostar/train/" + planID
+
+	if useProjection {
+		// planID format: YYYYMMDD-{serviceNumber} e.g. "20260628-9001"
+		parts := strings.SplitN(planID, "-", 2)
+		if len(parts) == 2 {
+			date := parts[0][:4] + "-" + parts[0][4:6] + "-" + parts[0][6:]
+			svcNum := parts[1]
+			plan, err := projectionAsEuromapPlan(date, svcNum)
+			if err != nil {
+				if respondWithCachedSnapshot(c, cacheKey, err.Error()) {
+					return
+				}
+				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+				return
+			}
+			respondJSONAndCache(c, cacheKey, http.StatusOK, plan)
+			return
+		}
+	}
 
 	body, err := eclient().get("/v1/plans/"+planID, nil)
 	if err != nil {
@@ -355,7 +389,8 @@ func GetEurostarTrainByID(c *gin.Context) {
 
 // GetEurostarCatalog handles GET /api/eurostar/catalog?date=YYYY-MM-DD
 func GetEurostarCatalog(c *gin.Context) {
-	if !IsServiceEnabled("eurostar") {
+	useProjection := IsServiceEnabled("eurostar-projection")
+	if !useProjection && !IsServiceEnabled("eurostar") {
 		serviceDisabledJSON(c, "eurostar")
 		return
 	}
@@ -368,6 +403,19 @@ func GetEurostarCatalog(c *gin.Context) {
 		return
 	}
 	cacheKey := "eurostar/catalog/" + date
+
+	if useProjection {
+		catalog, err := projectionAsCatalog(date)
+		if err != nil {
+			if respondWithCachedSnapshot(c, cacheKey, err.Error()) {
+				return
+			}
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+		respondJSONAndCache(c, cacheKey, http.StatusOK, catalog)
+		return
+	}
 
 	services, cached, fetchedAt, err := getCachedEurostarCatalog(date)
 	if err != nil {

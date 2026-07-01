@@ -3,6 +3,7 @@ import { motion, useInView, useMotionValue, useTransform, animate } from "framer
 import { Train } from "lucide-react"
 import { cn } from "../lib/utils"
 import { EurostarDisplayMenu, EurostarDisplayStyles, eurostarDisplayClass, useEurostarDisplay } from "./EurostarDisplay"
+import { ProjectionServiceInsightCard, useProjectionSnapshot } from "./EurostarProjectionSnapshot"
 
 const ES_NAVY  = "#003366"
 const ES_GOLD  = "#FFD700"
@@ -38,6 +39,13 @@ interface MapStation {
   name:      string
 }
 
+interface ActualEvent {
+  code: string
+  eventType: string
+  time: string
+  source: string
+}
+
 interface EuromapPlan {
   planID:      string
   planType:    string
@@ -50,6 +58,7 @@ interface EuromapPlan {
   destCode?:   string
   stations:    MapStation[]
   isTechnical: boolean
+  actualEvent?: ActualEvent
 }
 
 interface StatusSummary {
@@ -122,6 +131,11 @@ function parseResult(raw: string): EuromapPlan[] {
       if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
         cur.stations.push({ shortCode: p[0] ?? "", stopType: p[1] ?? "",
           lat, lng, dep: p[4] ?? "", arr: p[5] ?? "", name: p[6] ?? "" })
+      }
+    } else if (t.startsWith("ACTUAL_EVENT:") && cur) {
+      const p = t.slice("ACTUAL_EVENT:".length).split("|")
+      if (p.length >= 4) {
+        cur.actualEvent = { code: p[0] ?? "", eventType: p[1] ?? "", time: p[2] ?? "", source: p[3] ?? "" }
       }
     }
   }
@@ -520,7 +534,17 @@ function StopCard({
 }
 
 // ── Journey Stage PlanCard ─────────────────────────────────────────────────────
-function PlanCard({ plans, crewResult, selection }: { readonly plans: EuromapPlan[]; readonly crewResult?: string; readonly selection?: "first" | "last" }) {
+function PlanCard({
+  plans,
+  crewResult,
+  selection,
+  projectionMode = false,
+}: {
+  readonly plans: EuromapPlan[]
+  readonly crewResult?: string
+  readonly selection?: "first" | "last"
+  readonly projectionMode?: boolean
+}) {
   const [sel, setSel] = useState(0)
   const cardRef = useRef<HTMLDivElement>(null)
   const inView  = useInView(cardRef, { once: true, margin: "-60px" })
@@ -532,6 +556,11 @@ function PlanCard({ plans, crewResult, selection }: { readonly plans: EuromapPla
   const dest   = stns.find(s => s.stopType === "destination")
   const bDate  = plan.travelDate ?? planDate(plan.planID)
   const bUrl   = origin && dest && bDate ? bookingUrl(origin.shortCode, dest.shortCode, bDate) : null
+  const { snapshot: projectionSnapshot } = useProjectionSnapshot({
+    date: bDate,
+    enabled: projectionMode,
+    serviceNumber: plan.serviceCode,
+  })
 
   return (
     <div
@@ -703,6 +732,7 @@ function PlanCard({ plans, crewResult, selection }: { readonly plans: EuromapPla
 
         {/* Right: service info panel */}
         <div className="flex flex-col gap-3 pt-1">
+          {projectionMode && <ProjectionServiceInsightCard snapshot={projectionSnapshot} />}
 
           {/* Journey summary card */}
           <div
@@ -787,6 +817,26 @@ function PlanCard({ plans, crewResult, selection }: { readonly plans: EuromapPla
               })}
             </div>
           </div>
+
+          {plan.actualEvent && (
+            <div
+              className="rounded-xl p-3"
+              style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.18)" }}
+            >
+              <div className="text-[8px] uppercase tracking-widest font-bold mb-1.5" style={{ color: "#a5b4fc" }}>
+                Last confirmed movement
+              </div>
+              <div className="text-sm font-black text-white">
+                {(plan.stations.find(s => s.shortCode === plan.actualEvent?.code)?.name) || plan.actualEvent.code}
+              </div>
+              <div className="mt-1 text-[11px] uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.72)" }}>
+                {plan.actualEvent.eventType} at {plan.actualEvent.time}
+              </div>
+              <div className="mt-1 text-[9px] font-mono uppercase" style={{ color: "#818cf8" }}>
+                source: {plan.actualEvent.source}
+              </div>
+            </div>
+          )}
 
           {/* Crew section */}
           {allCrew.length > 0 && (
@@ -881,7 +931,15 @@ function PlanCard({ plans, crewResult, selection }: { readonly plans: EuromapPla
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export function EuromapCard({ result, crewResult }: { readonly result: string; readonly crewResult?: string }) {
+export function EuromapCard({
+  result,
+  crewResult,
+  projectionMode = false,
+}: {
+  readonly result: string
+  readonly crewResult?: string
+  readonly projectionMode?: boolean
+}) {
   const { theme, compact } = useEurostarDisplay()
   const summary = parseStatusSummary(result)
   const plans = parseResult(result)
@@ -893,7 +951,7 @@ export function EuromapCard({ result, crewResult }: { readonly result: string; r
     <div className={`${eurostarDisplayClass(theme, compact)} relative w-full`}>
       <EurostarDisplayStyles />
       <div className="absolute right-3 top-3 z-40"><EurostarDisplayMenu inverted={theme !== "light" || !summary} /></div>
-      {summary ? <StatusSummaryCard summary={summary} /> : <PlanCard plans={plans} crewResult={crewResult} selection={selection} />}
+      {summary ? <StatusSummaryCard summary={summary} /> : <PlanCard plans={plans} crewResult={crewResult} selection={selection} projectionMode={projectionMode} />}
     </div>
   )
 }

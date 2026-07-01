@@ -414,6 +414,24 @@ export function TravelerSummaryCard({ result }: { readonly result: string }) {
       transition={spring(0)}
     >
       <EurostarDisplayStyles />
+      <style>{`
+        .traveler-summary-light .text-slate-950,
+        .traveler-summary-light .text-slate-900,
+        .traveler-summary-light .text-slate-800,
+        .traveler-summary-light .text-slate-700,
+        .traveler-summary-light .text-slate-600,
+        .traveler-summary-light .text-gray-700,
+        .traveler-summary-light .text-gray-600,
+        .traveler-summary-light .text-gray-500,
+        .traveler-summary-light .text-gray-400 {
+          color: #0f172a !important;
+        }
+
+        .traveler-summary-light .text-slate-500,
+        .traveler-summary-light .text-slate-400 {
+          color: #64748b !important;
+        }
+      `}</style>
       <div className="absolute right-3 top-3 z-40">
         <EurostarDisplayMenu inverted />
       </div>
@@ -467,7 +485,7 @@ export function TravelerSummaryCard({ result }: { readonly result: string }) {
         </div>
       </div>
 
-      <div className="grid gap-0 xl:grid-cols-[280px_minmax(0,1fr)]">
+      <div className="traveler-summary-light grid gap-0 xl:grid-cols-[280px_minmax(0,1fr)]">
         <div className="border-b border-slate-200/80 bg-slate-50/80 p-4 xl:border-b-0 xl:border-r">
           <div className="mb-3 flex items-center gap-2 text-slate-500">
             <Train className="h-4 w-4" />
@@ -475,25 +493,31 @@ export function TravelerSummaryCard({ result }: { readonly result: string }) {
           </div>
           <div className="space-y-2">
             {visibleServices.map((service, i) => (
+              (() => {
+                const isSelected = i === serviceIndex
+                return (
               <button
                 key={service.serviceCode}
                 type="button"
                 onClick={() => setSel(i)}
                 className={cn(
                   "w-full rounded-[22px] border px-4 py-3 text-left transition-all",
-                  i === serviceIndex
-                    ? "border-[#9fc8ff] bg-white shadow-[0_12px_24px_rgba(0,51,102,0.10)]"
+                  isSelected
+                    ? "border-[#0b5ed7] shadow-[0_14px_28px_rgba(0,51,102,0.22)]"
                     : "border-transparent bg-white/70 hover:border-slate-200 hover:bg-white",
                 )}
+                style={isSelected ? { background: "linear-gradient(135deg, #003366 0%, #0055cc 100%)" } : undefined}
               >
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-black tracking-tight text-slate-900">{service.serviceCode}</span>
-                  <span className="text-sm font-black tabular-nums text-[#003366]">{service.totalCount}</span>
+                  <span className={cn("text-sm font-black tracking-tight", isSelected ? "text-white" : "text-slate-900")}>{service.serviceCode}</span>
+                  <span className={cn("text-sm font-black tabular-nums", isSelected ? "text-white" : "text-[#003366]")}>{service.totalCount}</span>
                 </div>
-                <div className="mt-1 text-xs font-medium text-slate-500">
+                <div className={cn("mt-1 text-xs font-medium", isSelected ? "text-white/75" : "text-slate-500")}>
                   {service.origin} to {service.destination}
                 </div>
               </button>
+                )
+              })()
             ))}
           </div>
           {summary.services.length > visibleServices.length && (

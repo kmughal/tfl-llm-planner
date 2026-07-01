@@ -6,6 +6,7 @@ import { ToolCallBadge } from "./ToolCallBadge"
 import { EuromapCard } from "./EuromapCard"
 import { EuromapDashboard } from "./EuromapDashboard"
 import { EuromapLiveMap } from "./EuromapLiveMap"
+import { ProjectionJourneyCard } from "./ProjectionJourneyCard"
 import { SNCFDisruptions } from "./SNCFDisruptions"
 import { SNCFDepartures } from "./SNCFDepartures"
 import { SNCFArrivals } from "./SNCFArrivals"
@@ -26,6 +27,11 @@ import { Train, Bus, MapPin, Clock, ArrowRight, Volume2, VolumeX, RefreshCw, Map
 
 const DASHBOARD_TOOL      = "get_eurostar_dashboard"
 const LIVEMAP_TOOL        = "get_eurostar_live_map"
+const PROJ_LIVEMAP_TOOL   = "get_projection_live_map"
+const PROJ_DASHBOARD_TOOL = "get_projection_commercial_services"
+const PROJ_JOURNEY_TOOL   = "get_projection_journey_explorer"
+const ALL_LIVEMAP_TOOLS   = new Set([LIVEMAP_TOOL, PROJ_LIVEMAP_TOOL])
+const ALL_DASHBOARD_TOOLS = new Set([DASHBOARD_TOOL, PROJ_DASHBOARD_TOOL])
 const DISRUPTIONS_TOOL    = "get_sncf_disruptions"
 const DEPARTURES_TOOL     = "get_sncf_departures"
 const ARRIVALS_TOOL       = "get_sncf_arrivals"
@@ -53,6 +59,11 @@ const EUROMAP_TOOLS = new Set([
   "get_euromap_technical_plan_by_id",
   DASHBOARD_TOOL,
   LIVEMAP_TOOL,
+  PROJ_LIVEMAP_TOOL,
+  PROJ_DASHBOARD_TOOL,
+  PROJ_JOURNEY_TOOL,
+  "get_projection_service_detail",
+  "get_projection_services",
 ])
 
 // ── Debug tool tag — shown above every rich card ─────────────────────────────
@@ -1246,13 +1257,13 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
       {!isUser && toolEvents.length > 0 && (
         <div className="flex flex-col gap-2 w-full">
           <ObservabilityPanel toolEvents={toolEvents} />
-          {toolEvents.some(ev => ev.name === LIVEMAP_TOOL && ev.type === "tool_call") &&
-            !toolEvents.some(ev => ev.name === LIVEMAP_TOOL && ev.type === "tool_result") && <EurostarMapLoading />}
+          {toolEvents.some(ev => ALL_LIVEMAP_TOOLS.has(ev.name) && ev.type === "tool_call") &&
+            !toolEvents.some(ev => ALL_LIVEMAP_TOOLS.has(ev.name) && ev.type === "tool_result") && <EurostarMapLoading />}
           {/* Regular tool badges (and euromap tool_call pending badges) */}
           <div className="flex flex-wrap gap-1.5 px-1">
             {toolEvents
               .filter(ev => ev.type !== "selection")
-              .filter(ev => (((!EUROMAP_TOOLS.has(ev.name) && !SNCF_RICH_TOOLS.has(ev.name) && !TFL_ROAD_TOOLS.has(ev.name) && !CREW_TOOLS.has(ev.name) && !TFL_STATUS_TOOLS.has(ev.name) && ev.name !== TRAVELER_TOOL && ev.name !== BUS_ARRIVALS_TOOL && ev.name !== BUS_LINES_TOOL && ev.name !== WEATHER_TOOL && ev.name !== OPERATIONS_WALL_TOOL && !NRAIL_TOOLS.has(ev.name) && ev.name !== PARIS_METRO_TOOL) || ev.type === "tool_call") && !(ev.name === LIVEMAP_TOOL && ev.type === "tool_call")))
+              .filter(ev => (((!EUROMAP_TOOLS.has(ev.name) && !SNCF_RICH_TOOLS.has(ev.name) && !TFL_ROAD_TOOLS.has(ev.name) && !CREW_TOOLS.has(ev.name) && !TFL_STATUS_TOOLS.has(ev.name) && ev.name !== TRAVELER_TOOL && ev.name !== BUS_ARRIVALS_TOOL && ev.name !== BUS_LINES_TOOL && ev.name !== WEATHER_TOOL && ev.name !== OPERATIONS_WALL_TOOL && !NRAIL_TOOLS.has(ev.name) && ev.name !== PARIS_METRO_TOOL) || ev.type === "tool_call") && !(ALL_LIVEMAP_TOOLS.has(ev.name) && ev.type === "tool_call")))
               .filter(ev => !(ev.type === "tool_call" && toolEvents.some(result => result.type === "tool_result" && result.name === ev.name)))
               .map((ev) => (
                 <ToolCallBadge key={`${ev.type}-${ev.name}`} event={ev} />
@@ -1322,12 +1333,14 @@ export function MessageBubble({ message }: { readonly message: ChatMessage }) {
             .filter(ev => EUROMAP_TOOLS.has(ev.name) && ev.type === "tool_result" && !!ev.result)
             .map((ev) => {
               const r = ev.result ?? ""
-              if (ev.name === DASHBOARD_TOOL) return withTag(ev.name, <EuromapDashboard key={`dashboard-${ev.name}`} result={r} />)
-              if (ev.name === LIVEMAP_TOOL)   return withTag(ev.name, <EuromapLiveMap   key={`livemap-${ev.name}`}   result={r} />)
+              const projectionMode = ev.name.startsWith("get_projection_")
+              if (ALL_DASHBOARD_TOOLS.has(ev.name)) return withTag(ev.name, <EuromapDashboard key={`dashboard-${ev.name}`} result={r} projectionMode={projectionMode} />)
+              if (ALL_LIVEMAP_TOOLS.has(ev.name))   return withTag(ev.name, <EuromapLiveMap   key={`livemap-${ev.name}`}   result={r} projectionMode={projectionMode} />)
+              if (ev.name === PROJ_JOURNEY_TOOL)    return withTag(ev.name, <ProjectionJourneyCard key={`proj-journey-${ev.name}`} result={r} />)
               const crewEv = ev.name === "get_euromap_plan_by_id"
                 ? toolEvents.find(e => e.name === CREW_ACTIVITIES_TOOL && e.type === "tool_result" && !!e.result)
                 : undefined
-              return withTag(ev.name, <EuromapCard key={`euromap-${ev.name}`} result={r} crewResult={crewEv?.result} />)
+              return withTag(ev.name, <EuromapCard key={`euromap-${ev.name}`} result={r} crewResult={crewEv?.result} projectionMode={projectionMode} />)
             })}
         </div>
       )}

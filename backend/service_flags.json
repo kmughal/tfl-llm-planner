@@ -3,63 +3,70 @@
     "id": "crew",
     "label": "Crew / SOT",
     "description": "Start-on-Time crew activities and roster coverage",
-    "enabled": true,
-    "updatedAt": "2026-06-22T13:16:41Z"
+    "enabled": false,
+    "updatedAt": "2026-07-01T15:15:52Z"
   },
   {
     "id": "eurostar",
     "label": "Eurostar",
     "description": "Euromap trains, schedules, maps and cross-channel services",
+    "enabled": false,
+    "updatedAt": "2026-07-01T15:15:52Z"
+  },
+  {
+    "id": "eurostar-projection",
+    "label": "Eurostar Projection",
+    "description": "Local projection API — richer service data with stops, crew, couplings and bookings. When enabled, replaces Euromap for schedule queries.",
     "enabled": true,
-    "updatedAt": "2026-06-22T13:16:41Z"
+    "updatedAt": "2026-07-01T15:15:52Z"
   },
   {
     "id": "national-rail",
     "label": "National Rail",
     "description": "UK mainline boards, hubs and onward movement",
     "enabled": true,
-    "updatedAt": "2026-06-22T13:16:41Z"
+    "updatedAt": "2026-07-01T15:15:52Z"
   },
   {
     "id": "operations-wall",
     "label": "Operations Wall",
     "description": "Cross-border wall view that combines all live networks",
     "enabled": true,
-    "updatedAt": "2026-06-22T13:16:41Z"
+    "updatedAt": "2026-07-01T15:15:52Z"
   },
   {
     "id": "paris-rer",
     "label": "Paris RER",
     "description": "Paris interchange boards and suburban movement",
     "enabled": true,
-    "updatedAt": "2026-06-22T13:16:41Z"
+    "updatedAt": "2026-07-01T15:15:52Z"
   },
   {
     "id": "sncf",
     "label": "SNCF",
     "description": "French national departures, arrivals and disruptions",
     "enabled": true,
-    "updatedAt": "2026-06-22T13:16:41Z"
+    "updatedAt": "2026-07-01T15:15:52Z"
   },
   {
     "id": "tfl",
     "label": "TfL",
     "description": "Tube, Elizabeth line, DLR, buses, roads and London journeys",
     "enabled": true,
-    "updatedAt": "2026-06-22T13:16:41Z"
+    "updatedAt": "2026-07-01T15:15:52Z"
   },
   {
     "id": "traveler",
     "label": "Traveler Load",
     "description": "Eurostar passenger load and cabin mix",
     "enabled": true,
-    "updatedAt": "2026-06-22T13:16:41Z"
+    "updatedAt": "2026-07-01T15:15:52Z"
   },
   {
     "id": "weather",
     "label": "Weather",
     "description": "Travel weather and journey conditions",
     "enabled": true,
-    "updatedAt": "2026-06-22T13:16:41Z"
+    "updatedAt": "2026-07-01T15:15:52Z"
   }
 ]

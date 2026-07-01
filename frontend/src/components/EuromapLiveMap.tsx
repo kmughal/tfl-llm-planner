@@ -3,8 +3,9 @@ import { MapContainer, TileLayer, Marker, Polyline, Tooltip, useMap } from "reac
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 import { AnimatePresence, motion } from "framer-motion"
-import { X, Search } from "lucide-react"
+import { X, Search, MapPin, Clock3, Route, Users, Activity } from "lucide-react"
 import { EurostarDisplayMenu, EurostarDisplayStyles, eurostarDisplayClass, useEurostarDisplay } from "./EurostarDisplay"
+import { ProjectionSignalBanner, useProjectionSnapshot } from "./EurostarProjectionSnapshot"
 
 let _stylesInjected = false
 function injectStyles() {
@@ -24,9 +25,10 @@ function injectStyles() {
 
 interface LiveStop  { code: string; lat: number; lon: number; time: string; stopType: string }
 interface LiveCrew  { role: string; id: string; name: string; depot: string }
+interface LiveActualEvent { code: string; eventType: string; time: string; source: string }
 interface LiveService {
   serviceCode: string; status: string; direction: "outbound" | "inbound"
-  rameNumber: string; coaches: number; dep: string; arr: string; stops: LiveStop[]; crew: LiveCrew[]
+  rameNumber: string; coaches: number; dep: string; arr: string; stops: LiveStop[]; crew: LiveCrew[]; actualEvent?: LiveActualEvent
 }
 interface MapStats  { date: string; total: number; active: number; cancelled: number; nowUtc: string }
 type TrainState = "future" | "active" | "past"
@@ -52,8 +54,12 @@ export function parseLiveMap(raw: string): { stats: MapStats; services: LiveServ
         const [role, id, name, depot] = row.split("~")
         return role || id ? [{ role: role || "Crew", id: id || "", name: name || id || "Assigned crew", depot: depot || "" }] : []
       })
+      const actualParts = (p[9] ?? "").split("~")
+      const actualEvent = actualParts.length >= 4 && actualParts[0]
+        ? { code: actualParts[0], eventType: actualParts[1], time: actualParts[2], source: actualParts[3] }
+        : undefined
       if (!stops.length) continue
-      services.push({ serviceCode: p[0], status: p[1], direction: p[2] as "outbound" | "inbound", rameNumber: p[3], coaches: Number.parseInt(p[4] ?? "0", 10), dep: p[5], arr: p[6], stops, crew })
+      services.push({ serviceCode: p[0], status: p[1], direction: p[2] as "outbound" | "inbound", rameNumber: p[3], coaches: Number.parseInt(p[4] ?? "0", 10), dep: p[5], arr: p[6], stops, crew, actualEvent })
     }
   }
   return { stats, services }
@@ -78,6 +84,12 @@ function nowUTCMinutes() { const n = new Date(); return n.getUTCHours() * 60 + n
 function nowUTCHHMM()    { const n = new Date(); return `${String(n.getUTCHours()).padStart(2,"0")}:${String(n.getUTCMinutes()).padStart(2,"0")}` }
 
 function interpolate(svc: LiveService, now: number): { lat: number; lon: number; state: TrainState } | null {
+  if (svc.actualEvent?.code) {
+    const confirmed = svc.stops.find(stop => stop.code === svc.actualEvent?.code)
+    if (confirmed) {
+      return { lat: confirmed.lat, lon: confirmed.lon, state: "active" }
+    }
+  }
   const stops = svc.stops.filter(s => toMinutes(s.time) >= 0)
   if (!stops.length) return null
   const last = stops.at(-1) ?? stops[0]
@@ -110,6 +122,42 @@ function buildRouteSegments(services: LiveService[]) {
 function svcColor(svc: LiveService) {
   if (svc.status === "cancelled") return "#dc2626"
   return svc.direction === "outbound" ? "#2563eb" : "#f59e0b"
+}
+
+function stationLabel(code: string) {
+  return STATION_NAMES[code] ?? code
+}
+
+function serviceRouteLabel(svc: LiveService) {
+  const origin = svc.stops[0]?.code ? stationLabel(svc.stops[0].code) : svc.dep || "Origin"
+  const dest = svc.stops.at(-1)?.code ? stationLabel(svc.stops.at(-1)?.code ?? "") : svc.arr || "Destination"
+  return `${origin} → ${dest}`
+}
+
+function serviceLiveState(svc: LiveService, now: number): TrainState {
+  return interpolate(svc, now)?.state ?? "future"
+}
+
+function serviceStateLabel(svc: LiveService, now: number) {
+  if (svc.status === "cancelled") return "Cancelled"
+  const state = serviceLiveState(svc, now)
+  if (state === "active") return "En route"
+  if (state === "past") return "Completed"
+  return "Upcoming"
+}
+
+function serviceStateTone(svc: LiveService, now: number) {
+  if (svc.status === "cancelled") {
+    return { bg: "rgba(239,68,68,0.12)", border: "rgba(248,113,113,0.28)", text: "#fca5a5" }
+  }
+  const state = serviceLiveState(svc, now)
+  if (state === "active") {
+    return { bg: "rgba(34,197,94,0.12)", border: "rgba(74,222,128,0.26)", text: "#86efac" }
+  }
+  if (state === "past") {
+    return { bg: "rgba(148,163,184,0.14)", border: "rgba(148,163,184,0.18)", text: "#cbd5e1" }
+  }
+  return { bg: "rgba(59,130,246,0.12)", border: "rgba(96,165,250,0.24)", text: "#93c5fd" }
 }
 
 function makeIcon(svc: LiveService, state: TrainState): L.DivIcon {
@@ -186,6 +234,11 @@ function TrainTooltip({ svc, state, now }: { readonly svc: LiveService; readonly
           {svc.coaches > 0 && <div><div style={{ fontSize: 8, color: "#64748b", textTransform: "uppercase" as const }}>Units</div><div style={{ fontSize: 11, color: "#e2e8f0", fontWeight: 700 }}>{svc.coaches}</div></div>}
         </div>
       )}
+      {svc.actualEvent && (
+        <div style={{ marginBottom: 7, fontSize: 10, color: "#a5b4fc" }}>
+          Last confirmed: <strong style={{ color: "#e2e8f0" }}>{STATION_NAMES[svc.actualEvent.code] ?? svc.actualEvent.code}</strong> {svc.actualEvent.eventType} at {svc.actualEvent.time} ({svc.actualEvent.source})
+        </div>
+      )}
       {state==="active"&&next&&<div style={{ fontSize: 10, color: "#60a5fa", display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", display: "inline-block", flexShrink: 0 }} />Next stop: <strong style={{ color: "#e2e8f0" }}>{STATION_NAMES[next.code]??next.code}</strong> at {next.time}</div>}
       <div style={{ marginTop: 8, fontSize: 9, color: "#334155", textAlign: "right" as const }}>Click to full itinerary</div>
     </div>
@@ -202,11 +255,11 @@ function DetailPanel({ svc, now, onClose }: { readonly svc: LiveService; readonl
 
   return (
     <motion.div
-      initial={{ width: 0, opacity: 0 }} animate={{ width: 272, opacity: 1 }} exit={{ width: 0, opacity: 0 }}
-      transition={{ type: "spring", stiffness: 340, damping: 32 }}
-      style={{ overflow: "hidden", borderLeft: "1px solid rgba(255,255,255,0.07)", background: "#0d1628", flexShrink: 0 }}
+      initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
+      style={{ overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#0d1628", borderRadius: 22 }}
     >
-      <div style={{ width: 272, padding: "14px 14px 18px", overflowY: "auto", maxHeight: 490, fontFamily: "system-ui,sans-serif" }}>
+      <div style={{ padding: "14px 14px 18px", overflowY: "auto", maxHeight: 540, fontFamily: "system-ui,sans-serif" }}>
 
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
@@ -269,6 +322,11 @@ function DetailPanel({ svc, now, onClose }: { readonly svc: LiveService; readonl
           <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" as const }}>Live Timeline</span>
           <motion.div style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e" }} animate={{ opacity: [1,0.3,1] }} transition={{ duration: 1.6, repeat: Infinity }} />
         </div>
+        {svc.actualEvent && (
+          <div style={{ marginBottom: 8, fontSize: 10, color: "#818cf8", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.18)", borderRadius: 8, padding: "6px 8px" }}>
+            Last confirmed movement: {STATION_NAMES[svc.actualEvent.code] ?? svc.actualEvent.code} {svc.actualEvent.eventType} at {svc.actualEvent.time} from {svc.actualEvent.source}
+          </div>
+        )}
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
           {svc.stops.map((stop, i) => {
             const mins = toMinutes(stop.time)
@@ -332,15 +390,15 @@ function Legend() {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export function EuromapLiveMap({ result }: { readonly result: string }) {
+export function EuromapLiveMap({ result, projectionMode = false }: { readonly result: string; readonly projectionMode?: boolean }) {
   const { theme, compact } = useEurostarDisplay()
   const { stats, services } = useMemo(() => parseLiveMap(result), [result])
+  const { snapshot: projectionSnapshot, health: projectionHealth } = useProjectionSnapshot({ date: stats.date, enabled: projectionMode })
   const seedNow = useMemo(() => { const m = toMinutes(stats.nowUtc); return m >= 0 ? m : nowUTCMinutes() }, [stats.nowUtc])
   const [now, setNow]     = useState(seedNow)
   const [clock, setClock] = useState(() => stats.nowUtc || nowUTCHHMM())
   const [selected, setSelected] = useState<string | null>(null)
   const [filter, setFilter]     = useState<"all"|"outbound"|"inbound">("all")
-  const [viewTab, setViewTab]   = useState<"stations"|"routes"|"trains"|"crew">("trains")
   const [search, setSearch]     = useState("")
 
   useEffect(() => { setNow(seedNow); setClock(stats.nowUtc || nowUTCHHMM()) }, [seedNow, stats.nowUtc])
@@ -352,126 +410,268 @@ export function EuromapLiveMap({ result }: { readonly result: string }) {
 
   const segments = useMemo(() => buildRouteSegments(services), [services])
   const visible  = useMemo(() => services.filter(s => {
-    if (s.status === "cancelled") return false
     if (filter === "outbound" && s.direction !== "outbound") return false
     if (filter === "inbound"  && s.direction !== "inbound")  return false
-    if (search.trim()) { const q = search.trim().toLowerCase(); if (!s.serviceCode.toLowerCase().includes(q)) return false }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      const route = serviceRouteLabel(s).toLowerCase()
+      if (!s.serviceCode.toLowerCase().includes(q) && !route.includes(q) && !s.stops.some(stop => stationLabel(stop.code).toLowerCase().includes(q) || stop.code.toLowerCase().includes(q))) {
+        return false
+      }
+    }
     return true
   }), [services, filter, search])
 
+  const mappedServices = useMemo(() => visible.filter(s => s.status !== "cancelled"), [visible])
+
   const positions = useMemo(() =>
-    visible.map(s => ({ svc:s, pos:interpolate(s,now) }))
+    mappedServices.map(s => ({ svc:s, pos:interpolate(s,now) }))
       .filter((x): x is { svc: LiveService; pos: { lat:number; lon:number; state:TrainState } } => x.pos !== null),
-    [visible, now])
+    [mappedServices, now])
 
   const inFlight    = positions.filter(p => p.pos.state === "active").length
-  const selectedSvc = selected ? (services.find(s => s.serviceCode === selected) ?? null) : null
+  const selectedSvc = selected ? (visible.find(s => s.serviceCode === selected) ?? services.find(s => s.serviceCode === selected) ?? null) : null
+  const visibleStopCount = useMemo(() => new Set(mappedServices.flatMap(s => s.stops.map(stop => stop.code))).size, [mappedServices])
+  const visibleCrewCount = useMemo(() => mappedServices.reduce((sum, svc) => sum + svc.crew.length, 0), [mappedServices])
+  const liveTraceCount = useMemo(() => mappedServices.filter(svc => !!svc.actualEvent).length, [mappedServices])
+
+  useEffect(() => {
+    if (!selected && visible.length > 0) {
+      setSelected(visible[0].serviceCode)
+      return
+    }
+    if (selected && visible.length > 0 && !visible.some(service => service.serviceCode === selected)) {
+      setSelected(visible[0].serviceCode)
+      return
+    }
+    if (visible.length === 0 && selected) {
+      setSelected(null)
+    }
+  }, [selected, visible])
 
   if (!services.length) return (
     <div style={{ background:"#080c18", border:"1px solid rgba(255,255,255,0.08)", borderRadius:14, padding:32, textAlign:"center", color:"#475569", fontFamily:"system-ui,sans-serif", fontSize:13 }}>No services found</div>
   )
 
   const pill = (f: "all"|"outbound"|"inbound", l: string) => (
-    <button key={f} onClick={() => setFilter(f)} style={{ padding:"4px 14px", borderRadius:999, fontSize:11, fontWeight:600, cursor:"pointer", border:`1px solid ${filter===f?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.07)"}`, background:filter===f?"rgba(255,255,255,0.1)":"transparent", color:filter===f?"#fff":"#64748b", fontFamily:"system-ui,sans-serif", transition:"all 0.15s" }}>{l}</button>
+    <button key={f} onClick={() => setFilter(f)} style={{ padding:"6px 14px", borderRadius:999, fontSize:11, fontWeight:700, cursor:"pointer", border:`1px solid ${filter===f?"rgba(255,255,255,0.18)":"rgba(255,255,255,0.07)"}`, background:filter===f?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.04)", color:filter===f?"#f8fafc":"#94a3b8", fontFamily:"system-ui,sans-serif", transition:"all 0.15s" }}>{l}</button>
   )
-  const VIEW_TABS = [{ k:"stations" as const,l:"Stations" },{ k:"routes" as const,l:"Routes" },{ k:"trains" as const,l:"Trains" },{ k:"crew" as const,l:"Crew" }]
 
   return (
-    <div className={`${eurostarDisplayClass(theme, compact)} es-themed-panel euromap-live-shell`} style={{ background:"#080c18", borderRadius:8, overflow:"hidden", border:"1px solid rgba(255,255,255,0.08)", boxShadow:"0 8px 40px rgba(0,0,0,0.6)", fontFamily:"system-ui,sans-serif" }}>
+    <div className={`${eurostarDisplayClass(theme, compact)} es-themed-panel euromap-live-shell`} style={{ background:"linear-gradient(180deg, #061121 0%, #081425 100%)", borderRadius:20, overflow:"hidden", border:"1px solid rgba(255,255,255,0.08)", boxShadow:"0 28px 80px rgba(0,0,0,0.52)", fontFamily:"system-ui,sans-serif" }}>
       <EurostarDisplayStyles />
 
-      {/* Command bar */}
-      <div style={{ background:"#0a1020", borderBottom:"1px solid rgba(255,255,255,0.06)", padding:"10px 16px" }}>
-        <div style={{ position:"relative", marginBottom:10 }}>
-          <Search size={13} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:"#4b5563", pointerEvents:"none" }} />
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search for Train Number, Station, or Route..."
-            style={{ width:"100%", padding:"9px 14px 9px 34px", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, color:"#e2e8f0", fontSize:13, fontFamily:"system-ui,sans-serif", outline:"none", boxSizing:"border-box" as const }} />
-        </div>
-        <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" as const }}>
-          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-            <div style={{ width:32, height:32, borderRadius:"50%", background:"#f59e0b", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-              <svg width="16" height="12" viewBox="0 0 18 14" fill="none"><path d="M1 2h16M1 7h12M1 12h16" stroke="white" strokeWidth="2.2" strokeLinecap="round"/></svg>
+      <div style={{ padding:"18px 18px 16px", borderBottom:"1px solid rgba(255,255,255,0.06)", background:"linear-gradient(180deg, rgba(9,16,31,0.88), rgba(9,16,31,0.62))" }}>
+        <div style={{ display:"flex", alignItems:"flex-start", gap:14, flexWrap:"wrap" as const }}>
+          <div style={{ minWidth:0, flex:1 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" as const }}>
+              <div style={{ display:"flex", height:42, width:42, alignItems:"center", justifyContent:"center", borderRadius:14, background:"linear-gradient(135deg, #0f3d74 0%, #1d4ed8 100%)", boxShadow:"inset 0 0 0 1px rgba(255,255,255,0.08)" }}>
+                <Route size={18} color="#f8fafc" />
+              </div>
+              <div>
+                <div style={{ color:"#e2e8f0", fontSize:24, fontWeight:800, letterSpacing:"-0.05em" }}>Eurostar Live Network</div>
+                <div style={{ color:"#94a3b8", fontSize:12 }}>
+                  {projectionMode ? "Projection map with optional beacon and booking layer" : "Euromap + SOT live position view"} · {stats.date} · {clock} UTC
+                </div>
+              </div>
             </div>
-            <div>
-              <div style={{ color:"#fff", fontWeight:700, fontSize:13, letterSpacing:"0.08em" }}>EUROSTAR OPERATIONAL COMMAND</div>
-              <div style={{ color:"#4b5563", fontSize:10 }}>Advanced Search &amp; Filters</div>
+        <div style={{ marginTop:12, display:"flex", gap:8, flexWrap:"wrap" as const }}>
+          <div style={{ borderRadius:999, padding:"6px 10px", border:"1px solid rgba(255,255,255,0.08)", background:"rgba(255,255,255,0.04)", color:"#cbd5e1", fontSize:11, fontWeight:700 }}>
+            {projectionMode ? "Source: projection" : "Source: Euromap + SOT"}
+          </div>
+              <div style={{ borderRadius:999, padding:"6px 10px", border:"1px solid rgba(255,255,255,0.08)", background:"rgba(255,255,255,0.04)", color:"#cbd5e1", fontSize:11, fontWeight:700 }}>
+                {visible.length} visible services
+              </div>
+              <div style={{ borderRadius:999, padding:"6px 10px", border:"1px solid rgba(255,255,255,0.08)", background:"rgba(255,255,255,0.04)", color:"#cbd5e1", fontSize:11, fontWeight:700 }}>
+                {visibleStopCount} mapped stops
+              </div>
             </div>
           </div>
-          <div style={{ display:"flex", gap:8, marginLeft:"auto", flexWrap:"wrap" as const }}>
+          <div style={{ display:"flex", gap:10, marginLeft:"auto", alignItems:"center", flexWrap:"wrap" as const }}>
             <EurostarDisplayMenu inverted />
             {[
-              { label:"Total Services", value:String(stats.total),    color:"#94a3b8", dot:null         },
-              { label:"Active",         value:String(stats.active),   color:"#38bdf8", dot:"#38bdf8"    },
-              { label:"In Flight",      value:String(inFlight),       color:"#34d399", dot:"#34d399"    },
-              { label:"Cancelled",      value:String(stats.cancelled),color:"#f87171", dot:"#f87171"    },
-            ].map(s => (
-              <div key={s.label} style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8, padding:"6px 12px", textAlign:"center" as const, minWidth:72 }}>
-                <div style={{ fontSize:9, color:"#64748b", marginBottom:2, letterSpacing:"0.04em" }}>{s.label}</div>
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:4 }}>
-                  {s.dot && <span style={{ width:6, height:6, borderRadius:"50%", background:s.dot, display:"inline-block", boxShadow:`0 0 5px ${s.dot}` }}/>}
-                  <span style={{ fontSize:18, fontWeight:700, color:s.color, fontFamily:"'Courier New',monospace" }}>{s.value}</span>
-                </div>
+              { label:"Tracked", value:String(stats.total), color:"#e2e8f0" },
+              { label:"Live", value:String(inFlight), color:"#86efac" },
+              { label:"Confirmed", value:String(liveTraceCount), color:"#7dd3fc" },
+              { label:"Cancelled", value:String(stats.cancelled), color:"#fca5a5" },
+            ].map(item => (
+              <div key={item.label} style={{ minWidth:82, borderRadius:16, padding:"9px 12px", border:"1px solid rgba(255,255,255,0.08)", background:"rgba(255,255,255,0.04)" }}>
+                <div style={{ fontSize:10, color:"#64748b", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:3 }}>{item.label}</div>
+                <div style={{ fontSize:20, color:item.color, fontWeight:800, letterSpacing:"-0.05em" }}>{item.value}</div>
               </div>
             ))}
           </div>
         </div>
-      </div>
-
-      {/* Map header */}
-      <div style={{ padding:"8px 14px", borderBottom:"1px solid rgba(255,255,255,0.06)", background:"#0a1020", display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" as const }}>
-        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-          <motion.span style={{ width:7, height:7, borderRadius:"50%", background:"#22c55e", display:"inline-block" }} animate={{ opacity:[1,0.3,1] }} transition={{ duration:1.6, repeat:Infinity }} />
-          <span style={{ fontSize:11, fontWeight:700, color:"#94a3b8", letterSpacing:"0.1em", textTransform:"uppercase" as const }}>Eurostar Live Map</span>
-        </div>
-        <span style={{ fontSize:11, color:"#374151", fontFamily:"monospace" }}>{stats.date} · {clock} UTC</span>
-        <div style={{ marginLeft:"auto", display:"flex", gap:10, fontSize:11, alignItems:"center" }}>
-          <span style={{ color:"#64748b" }}>{stats.total} services</span>
-          <span style={{ color:"#34d399", fontWeight:600 }}>{stats.active} active</span>
-          {inFlight>0&&<span style={{ color:"#38bdf8", fontWeight:700 }}>{inFlight} in flight</span>}
-        </div>
-      </div>
-
-      {/* Filter + view tabs */}
-      <div style={{ padding:"8px 14px", borderBottom:"1px solid rgba(255,255,255,0.06)", background:"#0a1020", display:"flex", alignItems:"center", gap:5, flexWrap:"wrap" as const }}>
-        <div style={{ display:"flex", gap:4 }}>{pill("all","All")}{pill("outbound","Outbound")}{pill("inbound","Inbound")}</div>
-        <div style={{ marginLeft:"auto", display:"flex", gap:4 }}>
-          {VIEW_TABS.map(t=>(
-            <button key={t.k} onClick={()=>setViewTab(t.k)} style={{ padding:"4px 10px", borderRadius:7, fontSize:10, fontWeight:600, cursor:"pointer", border:`1px solid ${viewTab===t.k?"rgba(255,255,255,0.15)":"rgba(255,255,255,0.06)"}`, background:viewTab===t.k?"rgba(255,255,255,0.08)":"transparent", color:viewTab===t.k?"#e2e8f0":"#4b5563", fontFamily:"system-ui,sans-serif" }}>{t.l}</button>
+        <div style={{ marginTop:14, display:"grid", gap:10, gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))" }}>
+          {[
+            { icon:<MapPin size={14} color="#7dd3fc" />, label:"Mapped stops", value:`${visibleStopCount} unique`, meta:"Origin, intermediate and destination points" },
+            { icon:<Users size={14} color="#fbbf24" />, label:"Crew links", value:`${visibleCrewCount}`, meta:"Visible crew assignments from SOT" },
+            { icon:<Activity size={14} color="#86efac" />, label:"Movement traces", value:`${liveTraceCount}`, meta:"Services with a confirmed event" },
+            { icon:<Clock3 size={14} color="#c4b5fd" />, label:"View cadence", value:"10s", meta:"Map and clock refresh automatically" },
+          ].map(card => (
+            <div key={card.label} style={{ borderRadius:18, padding:"12px 14px", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                {card.icon}
+                <div style={{ fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700 }}>{card.label}</div>
+              </div>
+              <div style={{ marginTop:8, fontSize:20, color:"#f8fafc", fontWeight:800, letterSpacing:"-0.05em" }}>{card.value}</div>
+              <div style={{ marginTop:2, fontSize:11, color:"#64748b" }}>{card.meta}</div>
+            </div>
           ))}
         </div>
+
+        {projectionMode && (
+          <div style={{ marginTop:14, borderRadius:18, padding:"12px 14px", border:`1px solid ${projectionHealth.disabled ? "rgba(248,113,113,0.24)" : projectionHealth.stale ? "rgba(251,191,36,0.24)" : projectionHealth.hasError ? "rgba(248,113,113,0.24)" : "rgba(34,197,94,0.22)"}`, background: projectionHealth.disabled ? "rgba(127,29,29,0.16)" : projectionHealth.stale ? "rgba(120,53,15,0.18)" : projectionHealth.hasError ? "rgba(127,29,29,0.14)" : "rgba(6,95,70,0.16)" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
+              <motion.span
+                style={{
+                  width:10,
+                  height:10,
+                  borderRadius:"50%",
+                  background: projectionHealth.disabled ? "#f87171" : projectionHealth.stale ? "#fbbf24" : projectionHealth.hasError ? "#fb7185" : "#4ade80",
+                  boxShadow: `0 0 0 6px ${projectionHealth.disabled ? "rgba(248,113,113,0.12)" : projectionHealth.stale ? "rgba(251,191,36,0.12)" : projectionHealth.hasError ? "rgba(251,113,133,0.12)" : "rgba(74,222,128,0.12)"}`,
+                }}
+                animate={projectionHealth.loading ? { opacity:[0.35,1,0.35], scale:[0.95,1.08,0.95] } : { opacity: 1, scale: 1 }}
+                transition={{ duration: 1.2, repeat: projectionHealth.loading ? Infinity : 0, ease: "easeInOut" }}
+              />
+              <div>
+                <div style={{ fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:800 }}>Projection refresh health</div>
+                <div style={{ marginTop:2, fontSize:15, color:"#f8fafc", fontWeight:800, letterSpacing:"-0.04em" }}>{projectionHealth.label}</div>
+              </div>
+              <div style={{ marginLeft:"auto", fontSize:11, color:"#cbd5e1", maxWidth:420 }}>
+                {projectionHealth.detail}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Map + panel */}
-      <div className="euromap-map-layout" style={{ display:"flex" }}>
-        <div style={{ flex:1, minWidth:0 }}>
-          <MapContainer center={[50.5,2.5]} zoom={6} className="euromap-map-canvas" style={{ height:"clamp(480px, 62vh, 680px)", width:"100%" }} scrollWheelZoom>
-            <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com">CARTO</a>'
-              subdomains="abcd" maxZoom={18} />
-            <FitBoundsUpdater services={services} />
-            <MapResizer hasSidebar={!!selectedSvc} />
-            {segments.map(seg=>(
-              <Polyline key={`${seg.pts[0][0]},${seg.pts[0][1]}~${seg.pts[1][0]},${seg.pts[1][1]}`} positions={seg.pts}
-                pathOptions={{ color:seg.isTunnel?"#f59e0b":"#3b82f6", weight:seg.isTunnel?2.5:2, opacity:seg.isTunnel?0.7:0.5, dashArray:seg.isTunnel?"7 5":undefined }} />
-            ))}
-            {positions.map(({svc,pos})=>(
-              <Marker key={svc.serviceCode} position={[pos.lat,pos.lon]} icon={makeIcon(svc,pos.state)}
-                zIndexOffset={pos.state==="active"?500:0}
-                eventHandlers={{ click:()=>setSelected(s=>s===svc.serviceCode?null:svc.serviceCode) }}>
-                <Tooltip sticky offset={[14,0]}><TrainTooltip svc={svc} state={pos.state} now={now} /></Tooltip>
-              </Marker>
-            ))}
-          </MapContainer>
+      {projectionMode && projectionSnapshot && (
+        <div style={{ padding:"14px 18px 0", background:"transparent" }}>
+          <ProjectionSignalBanner snapshot={projectionSnapshot} tone="dark" heading="Projection Signal Layer" />
         </div>
-        <AnimatePresence>
-          {selectedSvc && <DetailPanel key={selectedSvc.serviceCode} svc={selectedSvc} now={now} onClose={()=>setSelected(null)} />}
-        </AnimatePresence>
-      </div>
+      )}
 
-      {/* Legend */}
-      <div style={{ padding:"9px 16px", borderTop:"1px solid rgba(255,255,255,0.06)", background:"#0a1020", display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, flexWrap:"wrap" as const }}>
-        <Legend />
-        <span style={{ fontSize:10, color:"#334155", fontFamily:"monospace" }}>Hover to inspect · Click for full itinerary · Auto-refreshes every 10s</span>
+      <div style={{ padding:"16px 18px 18px" }}>
+        <div className="grid gap-4 xl:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]" style={{ alignItems:"start" }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+            <div style={{ borderRadius:22, background:"rgba(9,16,31,0.76)", border:"1px solid rgba(255,255,255,0.08)", overflow:"hidden" }}>
+              <div style={{ padding:"14px 14px 12px", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ position:"relative", marginBottom:12 }}>
+                  <Search size={13} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:"#4b5563", pointerEvents:"none" }} />
+                  <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search train, station or route"
+                    style={{ width:"100%", padding:"11px 14px 11px 36px", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:14, color:"#e2e8f0", fontSize:13, fontFamily:"system-ui,sans-serif", outline:"none", boxSizing:"border-box" as const }} />
+                </div>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const }}>{pill("all","All trains")}{pill("outbound","UK → Europe")}{pill("inbound","Europe → UK")}</div>
+              </div>
+              <div style={{ padding:"12px 12px 0" }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                  <div>
+                    <div style={{ fontSize:10, color:"#64748b", textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:800 }}>Service rail</div>
+                    <div style={{ marginTop:4, fontSize:17, color:"#f8fafc", fontWeight:700, letterSpacing:"-0.04em" }}>{visible.length} services in view</div>
+                  </div>
+                  <div style={{ fontSize:11, color:"#64748b" }}>{stats.active} active · {stats.cancelled} cancelled</div>
+                </div>
+              </div>
+              <div style={{ maxHeight:"clamp(260px, 42vh, 520px)", overflowY:"auto", padding:"0 12px 12px", display:"flex", flexDirection:"column", gap:10 }}>
+                {visible.map(service => {
+                  const selectedCard = selected === service.serviceCode
+                  const tone = serviceStateTone(service, now)
+                  const eventLabel = service.actualEvent
+                    ? `${stationLabel(service.actualEvent.code)} · ${service.actualEvent.time}`
+                    : `${service.stops.length} mapped stops`
+                  return (
+                    <button
+                      key={service.serviceCode}
+                      type="button"
+                      onClick={() => setSelected(service.serviceCode)}
+                      style={{
+                        textAlign:"left",
+                        borderRadius:18,
+                        padding:"14px",
+                        background:selectedCard ? "linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.06))" : "rgba(255,255,255,0.03)",
+                        border:selectedCard ? "1px solid rgba(96,165,250,0.32)" : "1px solid rgba(255,255,255,0.06)",
+                        boxShadow:selectedCard ? "0 14px 34px rgba(8,15,30,0.36)" : "none",
+                        cursor:"pointer",
+                      }}
+                    >
+                      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:10 }}>
+                        <div>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" as const }}>
+                            <div style={{ fontSize:20, color:"#f8fafc", fontWeight:800, letterSpacing:"-0.05em" }}>{service.serviceCode}</div>
+                            <span style={{ borderRadius:999, padding:"4px 8px", background:tone.bg, border:`1px solid ${tone.border}`, color:tone.text, fontSize:10, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.12em" }}>
+                              {serviceStateLabel(service, now)}
+                            </span>
+                          </div>
+                          <div style={{ marginTop:6, fontSize:13, color:"#cbd5e1", fontWeight:600 }}>{serviceRouteLabel(service)}</div>
+                        </div>
+                        <div style={{ textAlign:"right", flexShrink:0 }}>
+                          <div style={{ fontSize:16, color:"#f8fafc", fontWeight:800, letterSpacing:"-0.04em" }}>{service.dep}</div>
+                          <div style={{ fontSize:11, color:"#64748b" }}>{service.arr}</div>
+                        </div>
+                      </div>
+                      <div style={{ marginTop:10, display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, fontSize:11 }}>
+                        <span style={{ color:"#64748b" }}>{eventLabel}</span>
+                        <span style={{ color:"#94a3b8", fontWeight:700 }}>{service.crew.length} crew</span>
+                      </div>
+                    </button>
+                  )
+                })}
+                {visible.length === 0 && (
+                  <div style={{ borderRadius:18, padding:"18px 16px", border:"1px dashed rgba(255,255,255,0.10)", color:"#64748b", fontSize:12 }}>
+                    No services match this filter.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <AnimatePresence>
+              {selectedSvc && <DetailPanel key={selectedSvc.serviceCode} svc={selectedSvc} now={now} onClose={()=>setSelected(null)} />}
+            </AnimatePresence>
+          </div>
+
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            <div style={{ borderRadius:24, overflow:"hidden", border:"1px solid rgba(255,255,255,0.08)", background:"rgba(9,16,31,0.72)" }}>
+              <div style={{ padding:"12px 14px", borderBottom:"1px solid rgba(255,255,255,0.06)", display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" as const }}>
+                <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                  <motion.span style={{ width:8, height:8, borderRadius:"50%", background:"#22c55e", display:"inline-block" }} animate={{ opacity:[1,0.3,1] }} transition={{ duration:1.6, repeat:Infinity }} />
+                  <span style={{ fontSize:11, fontWeight:800, color:"#cbd5e1", letterSpacing:"0.12em", textTransform:"uppercase" as const }}>Live map canvas</span>
+                </div>
+                <span style={{ fontSize:11, color:"#64748b" }}>{mappedServices.length} plotted services</span>
+                <div style={{ marginLeft:"auto", display:"flex", gap:8, flexWrap:"wrap" as const }}>
+                  <span style={{ fontSize:11, color:"#94a3b8" }}>Click a train dot or service card to focus</span>
+                </div>
+              </div>
+              <div className="euromap-map-layout" style={{ display:"flex" }}>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <MapContainer center={[50.5,2.5]} zoom={6} className="euromap-map-canvas" style={{ height:"clamp(520px, 68vh, 760px)", width:"100%" }} scrollWheelZoom>
+                    <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com">CARTO</a>'
+                      subdomains="abcd" maxZoom={18} />
+                    <FitBoundsUpdater services={mappedServices} />
+                    <MapResizer hasSidebar={false} />
+                    {segments.map(seg=>(
+                      <Polyline key={`${seg.pts[0][0]},${seg.pts[0][1]}~${seg.pts[1][0]},${seg.pts[1][1]}`} positions={seg.pts}
+                        pathOptions={{ color:seg.isTunnel?"#f59e0b":"#3b82f6", weight:seg.isTunnel?2.5:2, opacity:seg.isTunnel?0.72:0.48, dashArray:seg.isTunnel?"7 5":undefined }} />
+                    ))}
+                    {positions.map(({svc,pos})=>(
+                      <Marker key={svc.serviceCode} position={[pos.lat,pos.lon]} icon={makeIcon(svc,pos.state)}
+                        zIndexOffset={pos.state==="active" || svc.serviceCode === selected ? 500 : 0}
+                        eventHandlers={{ click:()=>setSelected(s=>s===svc.serviceCode?null:svc.serviceCode) }}>
+                        <Tooltip sticky offset={[14,0]}><TrainTooltip svc={svc} state={pos.state} now={now} /></Tooltip>
+                      </Marker>
+                    ))}
+                  </MapContainer>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ borderRadius:20, padding:"12px 14px", border:"1px solid rgba(255,255,255,0.08)", background:"rgba(9,16,31,0.72)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, flexWrap:"wrap" as const }}>
+              <Legend />
+              <span style={{ fontSize:10, color:"#475569", fontFamily:"monospace" }}>Hover markers to inspect · Click to lock a service · Works with Euromap/SOT and projection mode</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

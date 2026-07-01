@@ -23,35 +23,41 @@ const (
 )
 
 var toolFamilies = map[string]toolFamily{
-	"plan_journey":                     familyTFL,
-	"get_line_status":                  familyTFL,
-	"get_status_by_mode":               familyTFL,
-	"search_stops":                     familyTFL,
-	"get_bus_arrivals":                 familyTFL,
-	"get_all_bus_lines":                familyTFL,
-	"get_tfl_roads":                    familyTFL,
-	"get_road_disruptions":             familyTFL,
-	"get_euromap_plans":                familyEurostar,
-	"get_euromap_technical_plans":      familyEurostar,
-	"get_euromap_plan_by_id":           familyEurostar,
-	"get_euromap_technical_plan_by_id": familyEurostar,
-	"get_eurostar_dashboard":           familyEurostar,
-	"get_eurostar_live_map":            familyEurostar,
-	"get_traveler_summary":             familyEurostar,
-	"get_crew_activities":              familyEurostar,
-	"get_crew_monthly_schedule":        familyEurostar,
-	"plan_sncf_journey":                familySNCF,
-	"search_sncf_stations":             familySNCF,
-	"get_sncf_disruptions":             familySNCF,
-	"get_sncf_departures":              familySNCF,
-	"get_sncf_arrivals":                familySNCF,
-	"get_sncf_train":                   familySNCF,
-	"get_sncf_dashboard":               familySNCF,
-	"get_national_rail_departures":     familyNRail,
-	"get_national_rail_arrivals":       familyNRail,
-	"get_national_rail_dashboard":      familyNRail,
-	"get_paris_metro_departures":       familyParis,
-	"get_weather":                      familyWeather,
+	"plan_journey":                       familyTFL,
+	"get_line_status":                    familyTFL,
+	"get_status_by_mode":                 familyTFL,
+	"search_stops":                       familyTFL,
+	"get_bus_arrivals":                   familyTFL,
+	"get_all_bus_lines":                  familyTFL,
+	"get_tfl_roads":                      familyTFL,
+	"get_road_disruptions":               familyTFL,
+	"get_euromap_plans":                  familyEurostar,
+	"get_euromap_technical_plans":        familyEurostar,
+	"get_euromap_plan_by_id":             familyEurostar,
+	"get_euromap_technical_plan_by_id":   familyEurostar,
+	"get_eurostar_dashboard":             familyEurostar,
+	"get_eurostar_live_map":              familyEurostar,
+	"get_traveler_summary":               familyEurostar,
+	"get_crew_activities":                familyEurostar,
+	"get_crew_monthly_schedule":          familyEurostar,
+	"get_projection_live_map":            familyEurostar,
+	"get_projection_commercial_services": familyEurostar,
+	"get_projection_service_detail":      familyEurostar,
+	"get_projection_journey_explorer":    familyEurostar,
+	"get_projection_services":            familyEurostar,
+	"get_projection_news":                familyEurostar,
+	"plan_sncf_journey":                  familySNCF,
+	"search_sncf_stations":               familySNCF,
+	"get_sncf_disruptions":               familySNCF,
+	"get_sncf_departures":                familySNCF,
+	"get_sncf_arrivals":                  familySNCF,
+	"get_sncf_train":                     familySNCF,
+	"get_sncf_dashboard":                 familySNCF,
+	"get_national_rail_departures":       familyNRail,
+	"get_national_rail_arrivals":         familyNRail,
+	"get_national_rail_dashboard":        familyNRail,
+	"get_paris_metro_departures":         familyParis,
+	"get_weather":                        familyWeather,
 }
 
 var toolAliases = map[string]string{
@@ -258,32 +264,102 @@ func selectSNCFTools(message string, tools []llm.Tool) []llm.Tool {
 // selectEurostarTools narrows the Eurostar family to the smallest useful tool
 // set. This gives smaller local models a much clearer choice than advertising
 // every commercial, technical, dashboard, map, and crew tool at once.
+// When the "eurostar-projection" service flag is enabled, projection tools are
+// used instead of Euromap for schedule and service-detail queries.
 func selectEurostarTools(message string, tools []llm.Tool) []llm.Tool {
 	q := strings.ToLower(message)
 	wanted := map[string]bool{}
 	hasService := fourDigitService.MatchString(q)
+	available := make(map[string]bool, len(tools))
+	for _, tool := range tools {
+		available[tool.Function.Name] = true
+	}
+	useProjection := IsServiceEnabled("eurostar-projection") && hasAnyTool(available,
+		"get_projection_live_map",
+		"get_projection_commercial_services",
+		"get_projection_service_detail",
+		"get_projection_journey_explorer",
+		"get_projection_services",
+		"get_projection_news",
+	)
+
+	chooseMapTool := func() string {
+		if useProjection && available["get_projection_live_map"] {
+			return "get_projection_live_map"
+		}
+		return "get_eurostar_live_map"
+	}
+	chooseDashboardTool := func() string {
+		if useProjection && available["get_projection_commercial_services"] {
+			return "get_projection_commercial_services"
+		}
+		return "get_eurostar_dashboard"
+	}
+	chooseDetailTool := func() string {
+		if useProjection && available["get_projection_service_detail"] {
+			return "get_projection_service_detail"
+		}
+		return "get_euromap_plan_by_id"
+	}
+	chooseJourneyTool := func() string {
+		if useProjection && available["get_projection_journey_explorer"] {
+			return "get_projection_journey_explorer"
+		}
+		if available["get_euromap_plan_by_id"] {
+			return "get_euromap_plan_by_id"
+		}
+		return "get_euromap_plans"
+	}
+	chooseOperationalDetailTool := func() string {
+		if useProjection && available["get_projection_service_detail"] {
+			return "get_projection_service_detail"
+		}
+		return "get_euromap_technical_plan_by_id"
+	}
+	chooseOperationalListTool := func() string {
+		if useProjection && available["get_projection_services"] {
+			return "get_projection_services"
+		}
+		return "get_euromap_technical_plans"
+	}
 
 	switch {
 	case containsAny(q, "monthly rota", "monthly schedule"):
 		wanted["get_crew_monthly_schedule"] = true
 	case containsAny(q, "live map", "map", "plot", "visualise", "visualize", "where are the trains", "train positions"):
-		wanted["get_eurostar_live_map"] = true
+		wanted[chooseMapTool()] = true
 	case containsAny(q, "passenger load", "passenger loads", "occupancy", "seat availability", "how busy", "traveller", "traveler", "capacity", "passenger numbers"):
 		wanted["get_traveler_summary"] = true
+	case containsAny(q, "journey explorer", "journey view", "stop timeline", "station by station", "show stops", "stop by stop", "beacon movement", "journey animation"):
+		wanted[chooseJourneyTool()] = true
 	case containsAny(q, "crew", "driver", "train manager", "on duty", "roster", "rota", "who is driving"):
-		wanted["get_crew_activities"] = true
-	case hasService && containsAny(q, "technical", "operational", "engineering", "formation", "passage point"):
-		wanted["get_euromap_technical_plan_by_id"] = true
+		if useProjection && hasService {
+			wanted["get_projection_service_detail"] = true
+		} else {
+			wanted["get_crew_activities"] = true
+		}
+	case containsAny(q, "news", "notice", "alert", "bulletin"):
+		if useProjection {
+			wanted["get_projection_news"] = true
+		} else {
+			wanted["get_euromap_plans"] = true
+		}
+	case hasService && containsAny(q, "technical", "operational", "engineering", "formation", "passage point", "stops", "crew", "bookings", "coupling"):
+		wanted[chooseOperationalDetailTool()] = true
 	case hasService:
-		wanted["get_euromap_plan_by_id"] = true
+		wanted[chooseDetailTool()] = true
 	case containsAny(q, "dashboard", "departure board", "full schedule", "all departures", "all services", "all trains", "cancelled", "canceled", "delayed", "disrupted", "disruption", "affected services"):
-		wanted["get_eurostar_dashboard"] = true
-	case containsAny(q, "technical", "operational plan", "engineering movement", "depot run"):
-		wanted["get_euromap_technical_plans"] = true
+		wanted[chooseDashboardTool()] = true
+	case containsAny(q, "technical", "operational plan", "engineering movement", "depot run", "train set", "formation"):
+		wanted[chooseOperationalListTool()] = true
 	case asksForWeather(q) && !containsAny(q, "train", "service", "journey", "running", "departure"):
 		wanted["get_weather"] = true
 	default:
-		wanted["get_euromap_plans"] = true
+		if useProjection && available["get_projection_commercial_services"] {
+			wanted["get_projection_commercial_services"] = true
+		} else {
+			wanted["get_euromap_plans"] = true
+		}
 	}
 
 	if asksForWeather(q) {
@@ -300,6 +376,15 @@ func selectEurostarTools(message string, tools []llm.Tool) []llm.Tool {
 		return tools
 	}
 	return selected
+}
+
+func hasAnyTool(available map[string]bool, names ...string) bool {
+	for _, name := range names {
+		if available[name] {
+			return true
+		}
+	}
+	return false
 }
 
 func detectToolFamilies(message string) map[toolFamily]bool {
@@ -478,6 +563,43 @@ func normalizeToolCall(call llm.ToolCall, userMessage string) llm.ToolCall {
 			}
 			if wantsImmediateEurostarOption(q) {
 				args["fromDateTime"] = time.Now().UTC().Format(time.RFC3339)
+			}
+		}
+	case "get_projection_live_map", "get_projection_commercial_services", "get_projection_services":
+		switch {
+		case containsAny(strings.ToLower(userMessage), "today", "tonight", "right now", "now"):
+			args["date"] = time.Now().UTC().Format(dateFmt)
+		case containsAny(strings.ToLower(userMessage), "tomorrow"):
+			args["date"] = time.Now().UTC().AddDate(0, 0, 1).Format(dateFmt)
+		case containsAny(strings.ToLower(userMessage), "yesterday"):
+			args["date"] = time.Now().UTC().AddDate(0, 0, -1).Format(dateFmt)
+		default:
+			d, _ := args["date"].(string)
+			if d == "" || d == "null" || d == "nil" || d == "undefined" {
+				args["date"] = time.Now().UTC().Format(dateFmt)
+			} else if _, ok := args["date"]; !ok {
+				args["date"] = time.Now().UTC().Format(dateFmt)
+			}
+		}
+	case "get_projection_service_detail", "get_projection_journey_explorer":
+		switch {
+		case containsAny(strings.ToLower(userMessage), "today", "tonight", "right now", "now"):
+			args["date"] = time.Now().UTC().Format(dateFmt)
+		case containsAny(strings.ToLower(userMessage), "tomorrow"):
+			args["date"] = time.Now().UTC().AddDate(0, 0, 1).Format(dateFmt)
+		case containsAny(strings.ToLower(userMessage), "yesterday"):
+			args["date"] = time.Now().UTC().AddDate(0, 0, -1).Format(dateFmt)
+		default:
+			d, _ := args["date"].(string)
+			if d == "" || d == "null" || d == "nil" || d == "undefined" {
+				args["date"] = time.Now().UTC().Format(dateFmt)
+			} else if _, ok := args["date"]; !ok {
+				args["date"] = time.Now().UTC().Format(dateFmt)
+			}
+		}
+		if _, ok := args["serviceNumber"]; !ok {
+			if match := fourDigitService.FindStringSubmatch(userMessage); len(match) == 2 {
+				args["serviceNumber"] = match[1]
 			}
 		}
 	case "get_crew_activities":

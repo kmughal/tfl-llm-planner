@@ -30,6 +30,7 @@ var globalServiceRegistry = &serviceRegistry{}
 var defaultServiceStates = []ServiceState{
 	{ID: "tfl", Label: "TfL", Description: "Tube, Elizabeth line, DLR, buses, roads and London journeys", Enabled: true},
 	{ID: "eurostar", Label: "Eurostar", Description: "Euromap trains, schedules, maps and cross-channel services", Enabled: true},
+	{ID: "eurostar-projection", Label: "Eurostar Projection", Description: "Local projection API — richer service data with stops, crew, couplings and bookings. When enabled, replaces Euromap for schedule queries.", Enabled: false},
 	{ID: "sncf", Label: "SNCF", Description: "French national departures, arrivals and disruptions", Enabled: true},
 	{ID: "national-rail", Label: "National Rail", Description: "UK mainline boards, hubs and onward movement", Enabled: true},
 	{ID: "paris-rer", Label: "Paris RER", Description: "Paris interchange boards and suburban movement", Enabled: true},
@@ -177,6 +178,8 @@ func serviceIDForTool(name string) string {
 		return "tfl"
 	case "get_euromap_plans", "get_euromap_technical_plans", "get_euromap_plan_by_id", "get_euromap_technical_plan_by_id", "get_eurostar_dashboard", "get_eurostar_live_map":
 		return "eurostar"
+	case "get_projection_live_map", "get_projection_commercial_services", "get_projection_service_detail", "get_projection_journey_explorer", "get_projection_services", "get_projection_news":
+		return "eurostar-projection"
 	case "get_traveler_summary":
 		return "traveler"
 	case "get_crew_activities", "get_crew_monthly_schedule":

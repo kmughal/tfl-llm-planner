@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { motion } from "framer-motion"
 import { AlertTriangle, Bell, CheckCircle2, ChevronDown, Check, Clock3, Plus, RefreshCw, Search, Siren, Train, Users, X } from "lucide-react"
 import { readResponseState, staleLabel, type ResponseState } from "../lib/responseState"
+import { ProjectionHealthBanner, summarizeProjectionHealth } from "./EurostarProjectionSnapshot"
 
 const API = (import.meta.env.VITE_API_URL as string | undefined) ?? ""
 const EUROSTAR_BLUE = "#003366"
@@ -79,10 +80,72 @@ type EurostarWatchlist = {
   items: EurostarWatchlistItem[]
 }
 
+type ProjectionBookingClassTotal = {
+  serviceClass: string
+  count: number
+}
+
+type ProjectionBookingFlow = {
+  originCode: string
+  originShort: string
+  destCode: string
+  destShort: string
+  serviceClass: string
+  count: number
+}
+
+type ProjectionBookingSummary = {
+  projectionEnabled: boolean
+  date: string
+  count: number
+  totalBookings: number
+  classTotals: ProjectionBookingClassTotal[]
+  topFlows: ProjectionBookingFlow[]
+}
+
+type ProjectionNewsItem = {
+  id: string
+  department: string
+  category: string
+  publishedAt: string
+  updatedAt: string
+}
+
+type ProjectionNewsSummary = {
+  projectionEnabled: boolean
+  count: number
+  items: ProjectionNewsItem[]
+}
+
+type ProjectionBeaconEvent = {
+  stopCode: string
+  shortCode: string
+  stopName: string
+  eventType: string
+  actualTime: string
+  isCorrection: boolean
+  source: string
+}
+
+type ProjectionBeaconSummary = {
+  projectionEnabled: boolean
+  date: string
+  beacons: {
+    count: number
+    pathwayCount: number
+    latest?: ProjectionBeaconEvent | null
+  }
+}
+
 type NotificationData = {
   trains: EuromapPlan[]
   traveler: TravelerSummary | null
   watchlist: EurostarWatchlist | null
+  projectionBookings: ProjectionBookingSummary | null
+  projectionNews: ProjectionNewsSummary | null
+  projectionBeacons: ProjectionBeaconSummary | null
+  projectionResponseStates?: ResponseState[]
+  projectionError?: string
   responseStates?: ResponseState[]
 }
 
@@ -190,6 +253,23 @@ function fmtTime(value?: string) {
   }
 }
 
+function bookingClassLabel(serviceClass: string) {
+  switch (serviceClass) {
+    case "SERVICE_CLASS_STANDARD":
+      return "Standard"
+    case "SERVICE_CLASS_PLUS":
+      return "Plus"
+    case "SERVICE_CLASS_PREMIER":
+      return "Premier"
+    default:
+      return serviceClass
+        .replace("SERVICE_CLASS_", "")
+        .replaceAll("_", " ")
+        .toLowerCase()
+        .replace(/\b\w/g, char => char.toUpperCase())
+  }
+}
+
 function minutesUntil(value?: string) {
   if (!value) return null
   const diff = new Date(value).getTime() - Date.now()
@@ -279,17 +359,25 @@ function saveStoredCatalog(catalog: EurostarCatalogResponse) {
   window.localStorage.setItem(CATALOG_STORAGE_KEY, JSON.stringify(catalog))
 }
 
-async function loadNotifications(date: string): Promise<NotificationData> {
-  const [trainsRes, travelerRes, watchlistRes] = await Promise.allSettled([
+async function loadNotifications(date: string, projectionEnabled: boolean): Promise<NotificationData> {
+  const [trainsRes, travelerRes, watchlistRes, projectionBookingsRes, projectionBeaconsRes, projectionNewsRes] = await Promise.allSettled([
     fetch(`${API}/api/eurostar/trains?date=${date}`),
     fetch(`${API}/api/eurostar/traveler-summary?date=${date}`),
     fetch(`${API}/api/eurostar/watchlist?date=${date}`),
+    projectionEnabled ? fetch(`${API}/api/eurostar/projection/bookings?date=${date}`) : Promise.resolve(null),
+    projectionEnabled ? fetch(`${API}/api/eurostar/projection/beacons?date=${date}`) : Promise.resolve(null),
+    projectionEnabled ? fetch(`${API}/api/eurostar/projection/news`) : Promise.resolve(null),
   ])
 
   let trains: EuromapPlan[] = []
   let traveler: TravelerSummary | null = null
   let watchlist: EurostarWatchlist | null = null
+  let projectionBookings: ProjectionBookingSummary | null = null
+  let projectionBeacons: ProjectionBeaconSummary | null = null
+  let projectionNews: ProjectionNewsSummary | null = null
+  let projectionError: string | undefined
   const responseStates: ResponseState[] = []
+  const projectionResponseStates: ResponseState[] = []
 
   if (trainsRes.status === "fulfilled" && trainsRes.value.ok) {
     responseStates.push(readResponseState(trainsRes.value))
@@ -309,7 +397,47 @@ async function loadNotifications(date: string): Promise<NotificationData> {
     watchlist = await watchlistRes.value.json()
   }
 
-  return { trains, traveler, watchlist, responseStates }
+  if (projectionBookingsRes.status === "fulfilled" && projectionBookingsRes.value?.ok) {
+    const responseState = readResponseState(projectionBookingsRes.value)
+    responseStates.push(responseState)
+    projectionResponseStates.push(responseState)
+    projectionBookings = await projectionBookingsRes.value.json()
+  } else if (projectionEnabled && projectionBookingsRes.status === "fulfilled" && projectionBookingsRes.value) {
+    const body = await projectionBookingsRes.value.json().catch(() => ({}))
+    const responseState = readResponseState(projectionBookingsRes.value, body)
+    projectionResponseStates.push(responseState)
+    if (!responseState.disabled) projectionError = responseState.error || body.error || "Projection booking data is unavailable."
+  } else if (projectionEnabled && projectionBookingsRes.status !== "fulfilled") {
+    projectionError = "Projection booking data could not be reached."
+  }
+  if (projectionBeaconsRes.status === "fulfilled" && projectionBeaconsRes.value?.ok) {
+    const responseState = readResponseState(projectionBeaconsRes.value)
+    responseStates.push(responseState)
+    projectionResponseStates.push(responseState)
+    projectionBeacons = await projectionBeaconsRes.value.json()
+  } else if (projectionEnabled && projectionBeaconsRes.status === "fulfilled" && projectionBeaconsRes.value) {
+    const body = await projectionBeaconsRes.value.json().catch(() => ({}))
+    const responseState = readResponseState(projectionBeaconsRes.value, body)
+    projectionResponseStates.push(responseState)
+    if (!responseState.disabled) projectionError = projectionError || responseState.error || body.error || "Projection beacon data is unavailable."
+  } else if (projectionEnabled && projectionBeaconsRes.status !== "fulfilled") {
+    projectionError = projectionError || "Projection beacon data could not be reached."
+  }
+  if (projectionNewsRes.status === "fulfilled" && projectionNewsRes.value?.ok) {
+    const responseState = readResponseState(projectionNewsRes.value)
+    responseStates.push(responseState)
+    projectionResponseStates.push(responseState)
+    projectionNews = await projectionNewsRes.value.json()
+  } else if (projectionEnabled && projectionNewsRes.status === "fulfilled" && projectionNewsRes.value) {
+    const body = await projectionNewsRes.value.json().catch(() => ({}))
+    const responseState = readResponseState(projectionNewsRes.value, body)
+    projectionResponseStates.push(responseState)
+    if (!responseState.disabled) projectionError = projectionError || responseState.error || body.error || "Projection news is unavailable."
+  } else if (projectionEnabled && projectionNewsRes.status !== "fulfilled") {
+    projectionError = projectionError || "Projection news could not be reached."
+  }
+
+  return { trains, traveler, watchlist, projectionBookings, projectionBeacons, projectionNews, projectionResponseStates, projectionError, responseStates }
 }
 
 function buildAlerts(data: NotificationData): AlertItem[] {
@@ -799,9 +927,11 @@ function SearchableSelect({
 export function EurostarNotifications({
   onClose,
   onAsk,
+  projectionEnabled = false,
 }: {
   readonly onClose: () => void
   readonly onAsk?: (query: string) => void
+  readonly projectionEnabled?: boolean
 }) {
   const [date, setDate] = useState(todayDate())
   const [data, setData] = useState<NotificationData | null>(null)
@@ -821,7 +951,7 @@ export function EurostarNotifications({
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const next = await loadNotifications(date)
+      const next = await loadNotifications(date, projectionEnabled)
       setData(next)
       setError(null)
     } catch (cause) {
@@ -829,7 +959,7 @@ export function EurostarNotifications({
     } finally {
       setLoading(false)
     }
-  }, [date])
+  }, [date, projectionEnabled])
 
   useEffect(() => { void load() }, [load])
   useEffect(() => { saveStoredRules(rules) }, [rules])
@@ -887,6 +1017,15 @@ export function EurostarNotifications({
   const criticalCount = alerts.filter(alert => alert.tone === "critical").length
   const warningCount = alerts.filter(alert => alert.tone === "warning").length
   const departureCount = alerts.filter(alert => alert.id.startsWith("depart-")).length
+  const projectionBookings = data?.projectionBookings ?? null
+  const projectionBeacons = data?.projectionBeacons?.beacons ?? null
+  const projectionNews = data?.projectionNews?.items ?? []
+  const projectionHealth = summarizeProjectionHealth({
+    responseStates: data?.projectionResponseStates ?? [],
+    loading,
+    hasLoadedOnce: !!data,
+    error: data?.projectionError ?? null,
+  })
   const refreshLabel = REFRESH_OPTIONS.find(option => option.seconds === refreshSecs)?.label ?? "60s"
   const routeOptions = useMemo(() => {
     const pairs = new Set<string>()
@@ -1089,6 +1228,105 @@ export function EurostarNotifications({
                 </div>
               </div>
             </section>
+
+            {projectionEnabled && (projectionBookings || projectionBeacons || projectionNews.length > 0 || (data?.projectionResponseStates?.length ?? 0) > 0 || !!data?.projectionError) && (
+              <section className="rounded-[28px] border bg-white p-4" style={{ borderColor: "#e2e8f0" }}>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-black uppercase tracking-[0.16em]" style={{ color: INK }}>Projection overlay</div>
+                    <div className="text-xs" style={{ color: "#667085" }}>Projection-only seats, classes, beacons and notices. Hidden automatically outside projection mode.</div>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <ProjectionHealthBanner health={projectionHealth} tone="light" heading="Projection Refresh" />
+                </div>
+
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                  <div className="grid gap-3">
+                    <div className="grid gap-3 md:grid-cols-3">
+                      {projectionBookings && (
+                        <div className="rounded-[24px] border bg-[#f8fafc] px-4 py-4" style={{ borderColor: "#e2e8f0" }}>
+                          <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>Seat bookings</div>
+                          <div className="mt-2 text-2xl font-black tabular-nums" style={{ color: INK }}>{projectionBookings.totalBookings.toLocaleString("en-GB")}</div>
+                          <div className="mt-1 text-xs" style={{ color: "#667085" }}>{projectionBookings.count} booking segments</div>
+                        </div>
+                      )}
+                      {projectionBeacons && (
+                        <div className="rounded-[24px] border bg-[#f8fafc] px-4 py-4" style={{ borderColor: "#e2e8f0" }}>
+                          <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>Beacon events</div>
+                          <div className="mt-2 text-2xl font-black tabular-nums" style={{ color: INK }}>{projectionBeacons.count.toLocaleString("en-GB")}</div>
+                          <div className="mt-1 text-xs" style={{ color: "#667085" }}>{projectionBeacons.pathwayCount} pathways active</div>
+                        </div>
+                      )}
+                      {projectionNews.length > 0 && (
+                        <div className="rounded-[24px] border bg-[#f8fafc] px-4 py-4" style={{ borderColor: "#e2e8f0" }}>
+                          <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>Active notices</div>
+                          <div className="mt-2 text-2xl font-black tabular-nums" style={{ color: INK }}>{projectionNews.length}</div>
+                          <div className="mt-1 text-xs" style={{ color: "#667085" }}>Projection news items</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {projectionBookings?.classTotals?.length ? (
+                      <div className="rounded-[24px] border bg-[#fcfcfd] px-4 py-4" style={{ borderColor: "#e4e7ec" }}>
+                        <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>Booking classes</div>
+                        <div className="flex flex-wrap gap-2">
+                          {projectionBookings.classTotals.map(classTotal => (
+                            <span key={classTotal.serviceClass} className="rounded-full border px-3 py-1.5 text-xs font-black" style={{ borderColor: "#dbe7f3", background: "#f8fbff", color: EUROSTAR_BLUE }}>
+                              {bookingClassLabel(classTotal.serviceClass)} {classTotal.count}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {projectionBookings?.topFlows?.length ? (
+                      <div className="rounded-[24px] border bg-[#fcfcfd] px-4 py-4" style={{ borderColor: "#e4e7ec" }}>
+                        <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>Top booking flows</div>
+                        <div className="grid gap-2 md:grid-cols-2">
+                          {projectionBookings.topFlows.slice(0, 4).map(flow => (
+                            <div key={`${flow.serviceClass}-${flow.originShort}-${flow.destShort}-${flow.count}`} className="rounded-2xl border bg-white px-3 py-3" style={{ borderColor: "#e2e8f0" }}>
+                              <div className="text-sm font-black" style={{ color: INK }}>{flow.originShort} → {flow.destShort}</div>
+                              <div className="mt-1 text-xs" style={{ color: "#667085" }}>{bookingClassLabel(flow.serviceClass)} · {flow.count} seats</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="grid gap-3">
+                    {projectionBeacons?.latest && (
+                      <div className="rounded-[24px] border bg-[#fcfcfd] px-4 py-4" style={{ borderColor: "#e4e7ec" }}>
+                        <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>Latest beacon</div>
+                        <div className="mt-2 text-sm font-black" style={{ color: INK }}>
+                          {projectionBeacons.latest.stopName || projectionBeacons.latest.shortCode || projectionBeacons.latest.stopCode}
+                        </div>
+                        <div className="mt-1 text-xs" style={{ color: "#667085" }}>
+                          {projectionBeacons.latest.eventType} · {fmtTime(projectionBeacons.latest.actualTime)} · {projectionBeacons.latest.source}
+                        </div>
+                      </div>
+                    )}
+
+                    {projectionNews.length > 0 && (
+                      <div className="rounded-[24px] border bg-[#fcfcfd] px-4 py-4" style={{ borderColor: "#e4e7ec" }}>
+                        <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: "#667085" }}>Latest notices</div>
+                        <div className="grid gap-2">
+                          {projectionNews.slice(0, 3).map(item => (
+                            <div key={item.id} className="rounded-2xl border bg-white px-3 py-3" style={{ borderColor: "#e2e8f0" }}>
+                              <div className="text-xs font-black uppercase tracking-[0.14em]" style={{ color: EUROSTAR_BLUE }}>{item.department || "Projection"}</div>
+                              <div className="mt-1 text-sm font-black" style={{ color: INK }}>{item.category || "Operational notice"}</div>
+                              <div className="mt-1 text-xs" style={{ color: "#667085" }}>Published {fmtTime(item.publishedAt)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
 
             <section className="rounded-[28px] border bg-white p-4" style={{ borderColor: "#fecaca", background: "linear-gradient(180deg, rgba(255,245,245,0.98), rgba(255,255,255,0.98))" }}>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

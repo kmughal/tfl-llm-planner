@@ -7,6 +7,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"tfl-mcp-server/euromap"
 	"tfl-mcp-server/nationalrail"
+	"tfl-mcp-server/projection"
 	"tfl-mcp-server/ratp"
 	"tfl-mcp-server/sncf"
 	"tfl-mcp-server/sotenabler"
@@ -25,6 +26,7 @@ func main() {
 	nrailClient := nationalrail.NewClient(os.Getenv("DARWIN_TOKEN"))
 	ratpClient := ratp.NewClient(os.Getenv("SNCF_API_KEY"))
 	sotClient := sotenabler.NewClient(os.Getenv("SOT_CLIENT_ID"), os.Getenv("SOT_CLIENT_SECRET"))
+	projectionClient := projection.NewClient(os.Getenv("PROJECTION_BASE_URL"))
 
 	s := server.NewMCPServer(
 		"transport-journey-planner",
@@ -72,6 +74,14 @@ func main() {
 	// SOT Enabler (Eurostar crew / driver) tools
 	s.AddTool(tools.GetCrewActivitiesTool(), tools.HandleGetCrewActivities(sotClient))
 	s.AddTool(tools.GetCrewMonthlyScheduleTool(), tools.HandleGetCrewMonthlySchedule(sotClient))
+
+	// Eurostar Projection API tools (alternative data source, toggled via service flag)
+	s.AddTool(tools.GetProjectionLiveMapTool(), tools.HandleGetProjectionLiveMap(projectionClient))
+	s.AddTool(tools.GetProjectionCommercialServicesTool(), tools.HandleGetProjectionCommercialServices(projectionClient))
+	s.AddTool(tools.GetProjectionServiceDetailTool(), tools.HandleGetProjectionServiceDetail(projectionClient))
+	s.AddTool(tools.GetProjectionJourneyExplorerTool(), tools.HandleGetProjectionJourneyExplorer(projectionClient))
+	s.AddTool(tools.GetProjectionServicesTool(), tools.HandleGetProjectionServices(projectionClient))
+	s.AddTool(tools.GetProjectionNewsTool(), tools.HandleGetProjectionNews(projectionClient))
 
 	transport := os.Getenv("MCP_TRANSPORT") // "stdio" (default) or "sse"
 

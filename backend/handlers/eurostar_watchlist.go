@@ -43,7 +43,8 @@ type EurostarWatchlistResponse struct {
 }
 
 func (h *Handler) GetEurostarWatchlist(c *gin.Context) {
-	if !IsServiceEnabled("eurostar") {
+	useProjection := IsServiceEnabled("eurostar-projection")
+	if !useProjection && !IsServiceEnabled("eurostar") {
 		serviceDisabledJSON(c, "eurostar")
 		return
 	}
@@ -57,7 +58,7 @@ func (h *Handler) GetEurostarWatchlist(c *gin.Context) {
 	}
 	cacheKey := "eurostar/watchlist/" + date
 
-	result, err := h.buildEurostarWatchlist(c.Request.Context(), date)
+	result, err := h.buildEurostarWatchlist(c.Request.Context(), date, useProjection)
 	if err != nil {
 		if respondWithCachedSnapshot(c, cacheKey, err.Error()) {
 			return
@@ -68,25 +69,33 @@ func (h *Handler) GetEurostarWatchlist(c *gin.Context) {
 	respondJSONAndCache(c, cacheKey, http.StatusOK, result)
 }
 
-func (h *Handler) buildEurostarWatchlist(ctx context.Context, date string) (EurostarWatchlistResponse, error) {
+func (h *Handler) buildEurostarWatchlist(ctx context.Context, date string, useProjection bool) (EurostarWatchlistResponse, error) {
 	response := EurostarWatchlistResponse{
 		Date:        date,
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		Items:       make([]EurostarWatchlistItem, 0, 12),
 	}
 
-	params := url.Values{}
-	params.Set("fromDateTime", date+"T00:00:00Z")
-	params.Set("range", "thalys,channel")
-
-	body, err := eclient().get("/v1/plans", params)
-	if err != nil {
-		return response, err
-	}
-
 	var plans []EuromapPlan
-	if err := json.Unmarshal(body, &plans); err != nil {
-		return response, err
+	if useProjection {
+		var err error
+		plans, err = projectionAsEuromapPlans(date)
+		if err != nil {
+			return response, err
+		}
+	} else {
+		params := url.Values{}
+		params.Set("fromDateTime", date+"T00:00:00Z")
+		params.Set("range", "thalys,channel")
+
+		body, err := eclient().get("/v1/plans", params)
+		if err != nil {
+			return response, err
+		}
+
+		if err := json.Unmarshal(body, &plans); err != nil {
+			return response, err
+		}
 	}
 
 	crewAvailable := false

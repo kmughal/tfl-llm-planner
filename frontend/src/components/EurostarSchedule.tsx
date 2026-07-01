@@ -348,26 +348,22 @@ function TrainCard({
 // ── Detail panel ──────────────────────────────────────────────────────────────
 
 function StopRow({
-  station, isFirst, isLast, idx, onHoverEnter, onHoverLeave,
+  station, isFirst, isLast, idx,
 }: {
   readonly station: EStation
   readonly isFirst: boolean
   readonly isLast: boolean
   readonly idx: number
-  readonly onHoverEnter?: () => void
-  readonly onHoverLeave?: () => void
 }) {
   const dep = fmtHHMM(station.departureDateTime)
   const arr = fmtHHMM(station.arrivalDatetime)
 
   return (
     <motion.div
-      className="flex gap-3 items-stretch cursor-pointer"
+      className="flex gap-3 items-stretch"
       initial={{ opacity: 0, x: -12 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: idx * 0.06, duration: 0.24, ease: "easeOut" }}
-      onMouseEnter={onHoverEnter}
-      onMouseLeave={onHoverLeave}
     >
       {/* Timeline column */}
       <div className="flex flex-col items-center shrink-0" style={{ width: 18 }}>
@@ -606,21 +602,11 @@ function DetailPanel({
   const dur       = fmtDuration(train.departureDateTime, train.arrivalDateTime)
   const cancelled = train.status === "cancelled" || train.status === "suspended"
   const stops     = [...train.stations].sort((a, b) => a.sequenceNumber - b.sequenceNumber)
+  const hasCrewPanel = crew.length > 0 || crewLoading
 
   const [crewVisible, setCrewVisible] = useState(false)
-  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  function handleStopEnter() {
-    if (hoverTimer.current) clearTimeout(hoverTimer.current)
-    if (crew.length > 0 || crewLoading) setCrewVisible(true)
-  }
-
-  function handleStopLeave() {
-    hoverTimer.current = setTimeout(() => setCrewVisible(false), 350)
-  }
 
   function handleOverlayClose() {
-    if (hoverTimer.current) clearTimeout(hoverTimer.current)
     setCrewVisible(false)
   }
 
@@ -730,12 +716,25 @@ function DetailPanel({
       {/* Stops + crew overlay on hover */}
       <div className="flex-1 relative min-h-0">
         <div className="h-full overflow-y-auto px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider mb-3" style={{ color: "rgba(255,255,255,0.3)" }}>
-            All stops · {stops.length}
-            {(crew.length > 0 || crewLoading) && (
-              <span style={{ color: "rgba(251,191,36,0.45)" }}> · hover to see crew</span>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.3)" }}>
+              All stops · {stops.length}
+            </p>
+            {hasCrewPanel && (
+              <button
+                type="button"
+                onClick={() => setCrewVisible(value => !value)}
+                className="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors"
+                style={{
+                  background: crewVisible ? "rgba(251,191,36,0.18)" : "rgba(255,255,255,0.06)",
+                  border: `1px solid ${crewVisible ? "rgba(251,191,36,0.3)" : "rgba(255,255,255,0.08)"}`,
+                  color: crewVisible ? "#fbbf24" : "rgba(255,255,255,0.58)",
+                }}
+              >
+                {crewVisible ? "Hide crew" : crewLoading ? "Loading crew" : `Show crew · ${crew.length}`}
+              </button>
             )}
-          </p>
+          </div>
           {stops.map((s, i) => (
             <StopRow
               key={`${s.shortCode}-${s.sequenceNumber}`}
@@ -743,8 +742,6 @@ function DetailPanel({
               isFirst={i === 0}
               isLast={i === stops.length - 1}
               idx={i}
-              onHoverEnter={handleStopEnter}
-              onHoverLeave={handleStopLeave}
             />
           ))}
         </div>
